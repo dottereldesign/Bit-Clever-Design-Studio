@@ -114,6 +114,7 @@ kbd {
   white-space: nowrap;
 }
 .brand-name > span:first-child {
+  color: #1c1c1e;
   font-weight: 800;
 }
 .brand-name > span:last-child {
