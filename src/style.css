@@ -108,12 +108,13 @@ kbd {
 .brand-name {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  line-height: 1.1;
+  gap: 2px;
+  font-size: 27px;
+  line-height: 1;
   white-space: nowrap;
 }
 .brand-name > span:last-child {
-  font-size: 13px;
+  font-size: 19px;
   letter-spacing: -0.3px;
 }
 .brand-logo {
