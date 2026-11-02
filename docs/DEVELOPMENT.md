@@ -6,21 +6,26 @@ A local Windows inspiration library. Tauri 2, React, TypeScript, Rust and SQLite
 
 Open `app/Design.exe` for the standalone app. The `Open Design` shortcut in this folder launches it directly.
 
-To develop:
+For daily development, open **Design Dev** from the Windows desktop and leave its terminal and app open. CSS and frontend edits hot reload in that window. The ordinary **Design** shortcut continues to open the last standalone build.
+
+On a fresh checkout, install dependencies once and start development from a normal Windows terminal:
 
 ```powershell
-npm install
-npm run prepare:media
-npm run desktop
+npm ci
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-dev.ps1
 ```
 
-The app automatically finds this checkout's `Design` folder. Choose a different folder in Settings. After the first scan, startup uses the saved SQLite index and rescans in the background. New and changed files are detected automatically.
+The launcher uses the existing `npm run desktop` workflow and prepares missing media tools automatically. Its `-Check` option validates prerequisites without starting the app. First startup can compile Rust for several minutes; later frontend edits do not require a native rebuild. Closing the development terminal ends live development.
+
+Launch from your normal Windows session and confirm the expected projects and library on first use. Codex's redirected app-data environment can show a different library; the launcher rejects that known environment and test-data overrides. The app automatically finds this checkout's `Design` folder when no library root has been configured. Choose a different folder in Settings. After the first scan, startup uses the saved SQLite index and rescans in the background. New and changed files are detected automatically.
+
+Refresh the standalone app only at an explicit checkpoint:
 
 ```powershell
-npm run package
+npm run package -- --no-bundle
 ```
 
-Packaging writes a standalone copy to `app/Design.exe`. The build directory is recorded in `.tools/build-path.json`; it contains the portable Microsoft compiler, Windows SDK and `target/release/bundle/nsis` installer output. This also handles Codex's Windows package path redirection. The launch script sets the compiler environment for the build process only, and build artifacts stay outside OneDrive. An installed Visual Studio C++ toolchain is also supported. FFmpeg is downloaded by the free `ffmpeg-static` package and copied into the app bundle by `prepare:media`. React, Tauri, SQLite, Rust image processing, TanStack Virtual and FFmpeg are open-source dependencies; FFmpeg's bundled distribution includes GPL components. Keep its upstream license notices if redistributing the app.
+Packaging writes a standalone copy to `app/Design.exe`; reopen it from the ordinary shortcut. Use `npm run package` without `--no-bundle` only when an installer is explicitly needed. The build directory is recorded in `.tools/build-path.json`; it contains the portable Microsoft compiler, Windows SDK and native build cache. This also handles Codex's Windows package path redirection. The launch script sets the compiler environment for the build process only, and build artifacts stay outside OneDrive. An installed Visual Studio C++ toolchain is also supported. FFmpeg is downloaded by the free `ffmpeg-static` package and copied into the app bundle by `prepare:media`. React, Tauri, SQLite, Rust image processing, TanStack Virtual and FFmpeg are open-source dependencies; FFmpeg's bundled distribution includes GPL components. Keep its upstream license notices if redistributing the app.
 
 ## Use
 

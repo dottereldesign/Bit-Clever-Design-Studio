@@ -27,6 +27,8 @@ npm ci
 npm run desktop
 ```
 
-Create an installer: `npm run package`.
+For local UI iteration, keep the development session open: frontend edits hot reload. On Windows, the **Design Dev** shortcut (or `scripts/start-dev.ps1`) starts this session. Its first startup may take time to compile Rust; ordinary CSS edits do not require rebuilding the desktop app.
+
+Refresh the standalone executable at a checkpoint: `npm run package -- --no-bundle`. Create an installer only when needed: `npm run package`.
 
 [Solo GitHub workflow](docs/WORKFLOW.md) · [Development notes](docs/DEVELOPMENT.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
