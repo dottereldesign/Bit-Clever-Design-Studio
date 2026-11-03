@@ -1367,7 +1367,26 @@ export default function App() {
   );
 }
 
-function MediaGrid({
+function MediaGrid(props: React.ComponentProps<typeof MediaGridLayout>) {
+  const container = useRef<HTMLDivElement>(null);
+  const [layoutWidth, setLayoutWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = container.current;
+    if (!element) return;
+    const update = () => setLayoutWidth(element.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={container} style={{ width: "100%" }}>
+    {layoutWidth > 0 && <MediaGridLayout {...props} layoutWidth={layoutWidth}
+      key={props.masonry ? layoutWidth : "grid"} />}
+  </div>;
+}
+
+function MediaGridLayout({
+  layoutWidth = 1000,
   masonry,
   previewId,
   copy,
@@ -1386,6 +1405,7 @@ function MediaGrid({
   hoverId,
   setHoverId,
 }: {
+  layoutWidth?: number;
   masonry: boolean;
   previewId: number | null;
   copy: (id: number) => Promise<void>;
@@ -1407,7 +1427,7 @@ function MediaGrid({
   const ref = useRef<HTMLDivElement>(null);
   const [positioned, setPositioned] = useState<typeof returnTo>(null);
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
-  const [width, setWidth] = useState(1000),
+  const [width, setWidth] = useState(layoutWidth),
     [offset, setOffset] = useState(0);
   useEffect(() => {
     if (!ref.current) return;
@@ -1441,10 +1461,24 @@ function MediaGrid({
     // Read mounted tiles again now: their observer may not fire a second time.
     if (masonry) {
       ref.current?.querySelectorAll<HTMLDivElement>(".masonry-tile")
-        .forEach((tile) => virtual.measureElement(tile));
+        .forEach((tile) => virtual.resizeItem(Number(tile.dataset.index), tile.getBoundingClientRect().height));
     }
   }, [rowHeight, masonry, columns, virtual]);
   const rows = virtual.getVirtualItems();
+  useLayoutEffect(() => {
+    if (!masonry || !ref.current) return;
+    const tiles = [...ref.current.querySelectorAll<HTMLDivElement>(".masonry-tile")];
+    const measure = (tile: HTMLDivElement) => {
+      virtual.resizeItem(Number(tile.dataset.index), tile.getBoundingClientRect().height);
+    };
+    // Own the measurements so scroll-time suppression and queued old observer
+    // sizes cannot replace a loaded poster's height with its placeholder height.
+    const observer = new ResizeObserver((entries) => {
+      entries.forEach(({ target }) => measure(target as HTMLDivElement));
+    });
+    tiles.forEach((tile) => { observer.observe(tile); measure(tile); });
+    return () => observer.disconnect();
+  }, [rows, masonry, virtual]);
   useEffect(() => {
     if (!returnTo) return;
     const index = items.findIndex((item) => item.id === returnTo.id);
@@ -1475,13 +1509,18 @@ function MediaGrid({
       ref={ref}
       className={`media-grid ${masonry ? "poster-masonry" : ""}`}
       style={{ height: virtual.getTotalSize() }}
+      onLoadCapture={masonry ? (event) => {
+        const tile = (event.target as HTMLElement).closest<HTMLDivElement>(".masonry-tile");
+        // Image loads can coincide with scroll anchoring after the dock resizes.
+        // Apply the real height even while the virtualizer is marked scrolling.
+        if (tile) virtual.resizeItem(Number(tile.dataset.index), tile.getBoundingClientRect().height);
+      } : undefined}
     >
       {rows.map((row) => (
         <div
           className={masonry ? "masonry-tile" : "grid-row"}
           key={row.key}
           data-index={row.index}
-          ref={masonry ? virtual.measureElement : undefined}
           style={{
             transform: `translateY(${row.start - offset}px)`,
             gridTemplateColumns: masonry ? undefined : `repeat(${columns}, minmax(0,1fr))`,

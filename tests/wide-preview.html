@@ -117,7 +117,7 @@ try {
     const bounds = cards.map(card => card.getBoundingClientRect());
     for (let a = 0; a < bounds.length; a++) for (let b = a + 1; b < bounds.length; b++) {
       const x = bounds[a], y = bounds[b];
-      assert(!(x.left < y.right - 1 && x.right > y.left + 1 && x.top < y.bottom - 1 && x.bottom > y.top + 1), 'Masonry cards must not overlap after resize');
+      assert(!(x.left < y.right - 1 && x.right > y.left + 1 && x.top < y.bottom - 1 && x.bottom > y.top + 1), `Masonry overlap at width ${innerWidth}, dock ${!!viewer()}: ${JSON.stringify([x.toJSON(), y.toJSON()])}`);
     }
   }
   await checkMasonry();
