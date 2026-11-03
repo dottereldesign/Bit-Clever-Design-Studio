@@ -6,7 +6,7 @@ import '/src/style.css';
 
 const image = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#dce5d3"/></svg>');
 const library = {
-  items: Array.from({ length: 420 }, (_, n) => ({ id: n + 1, name: `Reference ${String(n + 1).padStart(4, '0')}`, path: `C:/mock/${n + 1}.png`, kind: 'image', source: 'Design', modified: 1, added: n + 1, missing: false, tags: [1], projects: [7], favourites: [] })),
+  items: Array.from({ length: 420 }, (_, n) => ({ id: n + 1, name: `Reference ${String(n + 1).padStart(4, '0')}`, path: `C:/mock/${n + 1}.png`, kind: 'image', source: 'Design', modified: 1, added: n + 1, missing: false, category: 'Poster', tags: [1], projects: [7], favourites: [] })),
   projects: [{ id: 7, name: 'Example project', count: 420 }], tags: [{ id: 1, name: 'School', count: 420 }], sources: ['Design', 'Photography', 'Videos'], root: 'C:/mock', scanning: false,
 };
 let callbackId = 0;
@@ -106,6 +106,31 @@ try {
   await until(() => !viewer(), 'filter closes excluded preview');
   assert(document.activeElement === search, 'Search retains focus');
   checks.push('Arrow navigation, close preserves scroll, search remains usable and clears excluded preview');
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, '');
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  [...document.querySelectorAll('.sidebar button')].find(button => button.textContent.includes('Poster')).click();
+  await until(() => document.querySelector('.poster-masonry .card img'), 'poster masonry');
+  async function checkMasonry() {
+    await pause(350);
+    const cards = [...document.querySelectorAll('.poster-masonry .card')];
+    assert(cards.length > 2, 'Masonry has measurable cards');
+    const bounds = cards.map(card => card.getBoundingClientRect());
+    for (let a = 0; a < bounds.length; a++) for (let b = a + 1; b < bounds.length; b++) {
+      const x = bounds[a], y = bounds[b];
+      assert(!(x.left < y.right - 1 && x.right > y.left + 1 && x.top < y.bottom - 1 && x.bottom > y.top + 1), 'Masonry cards must not overlap after resize');
+    }
+  }
+  await checkMasonry();
+  for (const width of [1920, 3440, 1600]) {
+    await resize(width);
+    document.querySelector('.poster-masonry .card-open').click();
+    await until(() => viewer()?.classList.contains('viewer-docked'), 'poster side preview');
+    await checkMasonry();
+    document.querySelector('.viewer [aria-label="Close viewer"]').click();
+    await until(() => !viewer(), 'close poster preview');
+    await checkMasonry();
+  }
+  checks.push('Poster masonry has no overlaps when side preview opens, closes or changes width');
   document.getElementById('check-result').textContent = JSON.stringify({ ok: true, checks, width: originalWidth });
 } catch (error) {
   document.getElementById('check-result').textContent = JSON.stringify({ ok: false, error: String(error), checks });

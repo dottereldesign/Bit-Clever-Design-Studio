@@ -1435,7 +1435,15 @@ function MediaGrid({
     overscan: masonry ? columns * 2 : 2,
     scrollMargin: offset,
   });
-  useEffect(() => virtual.measure(), [rowHeight, masonry, columns, virtual]);
+  useLayoutEffect(() => {
+    virtual.measure();
+    // A width change can deliver ResizeObserver measurements before this reset.
+    // Read mounted tiles again now: their observer may not fire a second time.
+    if (masonry) {
+      ref.current?.querySelectorAll<HTMLDivElement>(".masonry-tile")
+        .forEach((tile) => virtual.measureElement(tile));
+    }
+  }, [rowHeight, masonry, columns, virtual]);
   const rows = virtual.getVirtualItems();
   useEffect(() => {
     if (!returnTo) return;
