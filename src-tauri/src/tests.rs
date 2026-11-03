@@ -2,6 +2,55 @@ use super::{content, db, library};
 use db::Change;
 use std::fs;
 #[test]
+fn image_thumbnail_geometry_keeps_tall_pages_sharp_without_unbounded_images() {
+    assert_eq!(library::image_thumbnail_size(1200, 6000), (720, 3600));
+    assert_eq!(library::image_thumbnail_size(1200, 900), (720, 540));
+    assert_eq!(library::image_thumbnail_size(320, 2000), (320, 2000));
+    assert_eq!(library::image_thumbnail_size(20, 30), (20, 30));
+    for (width, height) in [(1200, 50000), (10000, 10000), (1, u32::MAX), (u32::MAX, 1), (u32::MAX, u32::MAX)] {
+        let (w, h) = library::image_thumbnail_size(width, height);
+        assert!(w > 0 && h > 0 && w <= 720 && h <= 16384);
+        assert!(w <= width && h <= height);
+        assert!((w as u64) * (h as u64) <= 8_000_000);
+    }
+}
+
+#[test]
+fn image_thumbnail_rebuilds_old_tall_cache_and_preserves_the_original() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("images");fs::create_dir(&root).unwrap();
+    let original = root.join("long-website.png");
+    // Fine rules and blocks stand in for text at the scale of a long web page.
+    let image = image::RgbImage::from_fn(1200, 6000, |x, y| {
+        let line = y % 90 < 5 && x > 100 && x < 1060;
+        let block = y % 600 > 80 && y % 600 < 310 && x > 100 && x < 570;
+        image::Rgb(if line { [25, 25, 25] } else if block { [82, 112, 148] } else { [250, 250, 250] })
+    });
+    image.save(&original).unwrap();
+    let original_bytes = fs::read(&original).unwrap();
+    let dbpath = temp.path().join("test.sqlite");db::init(&dbpath).unwrap();library::scan(&dbpath, &root).unwrap();
+    let item = db::load(&dbpath, false).unwrap().items.remove(0);
+    let cache = temp.path().join("cache");fs::create_dir(&cache).unwrap();
+    let old = cache.join(format!("v1-{}-{}-{}-thumbnail.jpg",item.id,item.modified,original_bytes.len()));
+    let old_image = image::DynamicImage::ImageRgb8(image).thumbnail(720,540);
+    image::codecs::jpeg::JpegEncoder::new_with_quality(fs::File::create(&old).unwrap(),82).encode_image(&old_image).unwrap();
+    assert_eq!(image::image_dimensions(&old).unwrap(), (108,540));
+    let generated = library::media(&dbpath, &cache, std::path::Path::new("unused"), item.id, "thumbnail").unwrap();
+    assert_ne!(std::path::Path::new(&generated), old);
+    assert_eq!(image::image_dimensions(&generated).unwrap(), (720,3600));
+    assert_eq!(fs::read(&original).unwrap(), original_bytes);
+    assert!(old.is_file());
+    let reuse = library::media(&dbpath, &cache, std::path::Path::new("unused"), item.id, "thumbnail").unwrap();
+    assert_eq!(reuse, generated);
+    db::connect(&dbpath).unwrap().execute("UPDATE items SET kind='video' WHERE id=?",[item.id]).unwrap();
+    assert_eq!(std::path::Path::new(&library::media(&dbpath, &cache, std::path::Path::new("unused"), item.id, "thumbnail").unwrap()),old.as_path(),"Video thumbnails retain the existing cache");
+    if let Some(output) = std::env::var_os("DESIGN_THUMBNAIL_QA_DIR") {
+        let output = std::path::PathBuf::from(output);fs::create_dir_all(&output).unwrap();
+        fs::copy(&old,output.join("before.jpg")).unwrap();fs::copy(&generated,output.join("after.jpg")).unwrap();
+    }
+}
+
+#[test]
 fn captures_stay_uncategorised_through_rescans_and_preserve_chosen_categories() {
     let temp=tempfile::tempdir().unwrap();let root=temp.path().join("Design");fs::create_dir(&root).unwrap();
     let path=temp.path().join("library.sqlite");db::init(&path).unwrap();let conn=db::connect(&path).unwrap();
