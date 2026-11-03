@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+if (!['thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
 const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
@@ -61,9 +61,16 @@ try {
         let sentEnter = false;
         let lastPointerAction=0;
         let lastResizeAction=0;
+        let captured = false;
         const deadline = Date.now() + 60000;
         while (Date.now() < deadline) {
-          const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction })', returnByValue: true }, sessionId);
+          const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady })', returnByValue: true }, sessionId);
+          if (fixture === 'thumbnail-loading' && state.value?.capture && !captured) {
+            await mkdir('.tools/checks', { recursive: true });
+            const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
+            await writeFile(`.tools/checks/thumbnails-${dimensions}.png`, Buffer.from(shot.data, 'base64'));
+            captured = true;
+          }
           if (state.value?.resize?.id > lastResizeAction) {
             const action = state.value.resize; lastResizeAction = action.id;
             await call('Emulation.setDeviceMetricsOverride', { width: action.width, height, deviceScaleFactor: 1, mobile: false }, sessionId);

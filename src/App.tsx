@@ -45,7 +45,8 @@ import {
   Undo2,
   Redo2,
 } from "lucide-react";
-import { changeLibrary, loadLibrary, media, type Change } from "./api";
+import { changeLibrary, loadLibrary, media, forgetMedia, type Change } from "./api";
+import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
@@ -966,6 +967,7 @@ export default function App() {
             )}
           </div>
           <div className="header-actions">
+            <ThumbnailProgress />
             <button className="icon-button" aria-label="Undo organisation change" disabled={!lib.undo_label||undoing} title={lib.undo_label?`Undo: ${lib.undo_label} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
             <button className="icon-button" aria-label="Redo organisation change" disabled={!lib.redo_label||undoing} title={lib.redo_label?`Redo: ${lib.redo_label} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
             <label className="search">
@@ -1532,10 +1534,15 @@ function Card({
   const [thumb, setThumb] = useState(""),
     [preview, setPreview] = useState(""),
     [failed, setFailed] = useState(false),
-    [motionError, setMotionError] = useState(false);
+    [motionError, setMotionError] = useState(false),
+    [retry, setRetry] = useState(0);
   const motion = item.kind === "video" || item.kind === "animation";
   useEffect(() => {
     const abort = new AbortController();
+    setThumb("");
+    setFailed(false);
+    setPreview("");
+    setMotionError(false);
     media(item, "thumbnail", abort.signal).then(
       (url) => {
         if (!abort.signal.aborted) setThumb(url);
@@ -1545,7 +1552,7 @@ function Card({
       },
     );
     return () => abort.abort();
-  }, [item.id, item.modified]);
+  }, [item.id, item.modified, item.path, retry]);
   useEffect(() => {
     if (!playing || !motion || motionError) return;
     const abort = new AbortController();
@@ -1621,6 +1628,7 @@ function Card({
           ))}
       </button>
       <div className="card-shade" />
+      {failed && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
       {canPin && (
         <button
           className={`card-pin ${pinned ? "pinned" : ""}`}
