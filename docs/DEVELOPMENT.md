@@ -77,6 +77,8 @@ Video previews are generated on demand, limited to eight seconds, muted and cach
 
 ## Checks
 
+For temporary app/process monitoring and a repeatable synthetic browser workload, see [performance diagnostics](PERFORMANCE.md). Use `npm run diagnose:performance` or `npm run diagnose:processes`; both stop after their capture and keep local reports out of Git.
+
 The main sidebar starts with Links. Media can be browsed through Categories and Projects; All categories provides the combined category view.
 
 Captured media defaults to Uncategorised. Captures remains a storage folder and is excluded from the category list. Pasting into a selected category still assigns that category, and existing category assignments are preserved.

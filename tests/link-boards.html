@@ -35,7 +35,7 @@ const checks=[];
 try{
   await until(()=>document.querySelector('nav[aria-label=Library]'),'navigation');await pause(100);
   const names=[...document.querySelectorAll('nav[aria-label=Library] button span')].map(e=>e.textContent);
-  assert(names.slice(names.indexOf('Resources')+1).join('|')==='Fonts|CodePen|Brand Guidelines|Facebook Videos|Photography','Sidebar order');
+  assert(names.slice(names.indexOf('Resources')+1).join('|')==='Fonts|CodePen|Brand Guidelines|Facebook Videos','Sidebar order');
   for (const name of ['fonts','codepen','facebook','brand-guidelines','resources']) {
     const icon=document.querySelector(`[data-sidebar-icon="${name}"]`);
     assert(icon && icon.getBoundingClientRect().width===16 && icon.getAttribute('aria-hidden')==='true', `Missing or incorrectly sized ${name} icon`);

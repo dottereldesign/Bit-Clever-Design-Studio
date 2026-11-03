@@ -1563,7 +1563,9 @@ main {
   font-size: 11px;
 }
 
-.link-board { display:grid; gap:16px; padding:20px; align-items:start; }
+.link-board { columns: 260px; column-gap:14px; padding:20px; }
+.link-board .link-card { break-inside:avoid; margin-bottom:14px; }
+.link-board .link-card-open img { aspect-ratio:auto; height:auto; }
 .link-card { position:relative; min-width:0; border:1px solid var(--border,#e5e5e2); border-radius:6px; overflow:hidden; background:var(--surface,#fff); }
 .link-card-open { display:flex; flex-direction:column; text-align:left; width:100%; padding:0 0 10px; border:0; background:none; cursor:pointer; }
 .link-card-open img,.link-card-placeholder { width:100%; aspect-ratio:4/3; object-fit:contain; background:#efefec; }
@@ -1667,7 +1669,8 @@ main {
 .viewer-docked footer { flex-wrap: wrap; gap: 10px; padding: 16px 20px; }
 .card.previewed { box-shadow: 0 0 0 3px #879c76; }
 
-/* Poster-only trial: measured, virtualized columns preserve image proportions. */
-.poster-masonry .masonry-tile { position: absolute; top: 0; padding-bottom: 14px; }
-.poster-masonry .card-open { height: auto; min-height: 80px; }
-.poster-masonry .card img:not(.hover-preview) { height: auto; }
+/* Measured, virtualized masonry preserves media proportions in all collections. */
+.poster-masonry .masonry-tile { position: absolute; top: 0; left: 0; }
+.poster-masonry .card { height:100%; }
+.poster-masonry .card-open { height:100%; }
+.poster-masonry .card img:not(.hover-preview) { height:100%; }

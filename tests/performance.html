@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Performance diagnostics</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from '/src/App.tsx';
+import '/src/style.css';
+const metrics = { observersCreated: 0, observerCallbacks: 0, rectangleReads: 0, mediaCalls: 0, peakCards: 0, commits: 0, renderMs: 0, longTasks: 0, longTaskMs: 0 };
+const NativeObserver = window.ResizeObserver;
+window.ResizeObserver = class extends NativeObserver {
+  constructor(callback) { metrics.observersCreated++; super((...args) => { metrics.observerCallbacks++; callback(...args); }); }
+};
+const rect = Element.prototype.getBoundingClientRect;
+Element.prototype.getBoundingClientRect = function() { metrics.rectangleReads++; return rect.call(this); };
+const longTasks = new PerformanceObserver(list => list.getEntries().forEach(entry => { metrics.longTasks++; metrics.longTaskMs += entry.duration; }));
+longTasks.observe({ type: 'longtask' });
+const image = id => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${[600,300,800,400][Number(id)%4]}"><rect width="400" height="800" fill="#dce5d3"/></svg>`);
+const library = { items: Array.from({length:1200}, (_,n) => ({id:n+1,name:`Reference ${n+1}`,path:`C:/mock/${n+1}.png`,kind:'image',source:'Design',category:'Poster',modified:1,added:n+1,missing:false,tags:[],projects:[7],favourites:[]})), projects:[{id:7,name:'Example project',count:1200}],tags:[],sources:['Design'],root:'C:/mock',scanning:false };
+let callbackId=0;
+window.isTauri=true;
+window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:path=>image(path),invoke:async(command,args)=>{
+  if(command==='get_library')return library;
+  if(command==='get_media'){metrics.mediaCalls++;return String(args.id);}
+  if(command.startsWith('plugin:event|'))return ++callbackId;
+  throw Error(command);
+}};
+window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(React.Profiler,{id:'app',onRender:(_,__,duration)=>{metrics.commits++;metrics.renderMs+=duration;}},React.createElement(App)));
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>8000)throw Error(label);await pause(30);}}
+function sample(){metrics.peakCards=Math.max(metrics.peakCards,document.querySelectorAll('.card').length);}
+async function noOverlap(){await pause(250);sample();const boxes=[...document.querySelectorAll('.card')].map(el=>el.getBoundingClientRect());for(let a=0;a<boxes.length;a++)for(let b=a+1;b<boxes.length;b++){const x=boxes[a],y=boxes[b];if(x.left<y.right-1&&x.right>y.left+1&&x.top<y.bottom-1&&x.bottom>y.top+1)throw Error('Overlapping thumbnails');}}
+try {
+  await until(()=>document.querySelector('.card'),'Library startup');
+  [...document.querySelectorAll('.sidebar button')].find(el=>el.textContent.includes('Poster')).click();
+  await until(()=>document.querySelector('.poster-masonry'),'Masonry startup');
+  await pause(500); sample();
+  const content=document.querySelector('.content');
+  for(let n=0;n<12;n++){content.scrollTop=n*450;await pause(80);sample();}
+  content.scrollTop=0;await pause(300);
+  for(let n=0;n<3;n++){
+    document.querySelector('.card-open').click();await until(()=>document.querySelector('.viewer-docked'),'Dock');await noOverlap();
+    document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close');await noOverlap();
+  }
+  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['1200 mixed-aspect thumbnails, scroll, repeated dock/undock without overlaps'],metrics});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),metrics});}
+longTasks.disconnect();
+</script></body></html>

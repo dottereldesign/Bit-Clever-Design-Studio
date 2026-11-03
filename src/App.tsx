@@ -13,7 +13,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { openUrl } from "./api";
 import appLogo from "./assets/app-logo.png";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { arrangeMasonry } from "./masonry";
 import {
   ArrowDownUp,
   ArrowLeft,
@@ -1214,7 +1214,7 @@ export default function App() {
             <>
               {images.length > 0 && (
                 <MediaGrid
-                  masonry={/^posters?$/i.test(category?.trim() ?? "")}
+                  masonry={true}
                   copy={copyImage}
                   copying={copying}
                   previewId={dockedPreview ? viewer : null}
@@ -1367,26 +1367,9 @@ export default function App() {
   );
 }
 
-function MediaGrid(props: React.ComponentProps<typeof MediaGridLayout>) {
-  const container = useRef<HTMLDivElement>(null);
-  const [layoutWidth, setLayoutWidth] = useState(0);
-  useLayoutEffect(() => {
-    const element = container.current;
-    if (!element) return;
-    const update = () => setLayoutWidth(element.clientWidth);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return <div ref={container} style={{ width: "100%" }}>
-    {layoutWidth > 0 && <MediaGridLayout {...props} layoutWidth={layoutWidth}
-      key={props.masonry ? layoutWidth : "grid"} />}
-  </div>;
-}
-
-function MediaGridLayout({
-  layoutWidth = 1000,
+// Cache only dimensions, never image bytes or user paths. Reuse across category switches.
+const thumbnailRatios = new Map<string, number>();
+function MediaGrid({
   masonry,
   previewId,
   copy,
@@ -1405,7 +1388,6 @@ function MediaGridLayout({
   hoverId,
   setHoverId,
 }: {
-  layoutWidth?: number;
   masonry: boolean;
   previewId: number | null;
   copy: (id: number) => Promise<void>;
@@ -1425,113 +1407,66 @@ function MediaGridLayout({
   setHoverId: (id: number | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [positioned, setPositioned] = useState<typeof returnTo>(null);
+  const [width, setWidth] = useState(1000);
+  const [viewport, setViewport] = useState({ top: 0, height: 1000 });
+  const [revision, setRevision] = useState(0);
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
-  const [width, setWidth] = useState(layoutWidth),
-    [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-    const observer = new ResizeObserver(() => {
-      setWidth(el.clientWidth);
-      setOffset(
-        el.getBoundingClientRect().top -
-          (parent.current?.getBoundingClientRect().top || 0) +
-          (parent.current?.scrollTop || 0),
-      );
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [parent]);
-  const columns = Math.max(1, Math.floor((width + 14) / (size + 14))),
-    tileWidth = (width - (columns - 1) * 14) / columns,
-    rowHeight = tileWidth * 0.75 + 14;
-  const virtual = useVirtualizer({
-    count: masonry ? items.length : Math.ceil(items.length / columns),
-    lanes: masonry ? columns : 1,
-    getItemKey: (index) => masonry ? items[index].id : index,
-    getScrollElement: () => parent.current,
-    estimateSize: () => masonry ? tileWidth * 1.4 + 14 : rowHeight,
-    overscan: masonry ? columns * 2 : 2,
-    scrollMargin: offset,
-  });
+  const ratioFrame = useRef(0);
   useLayoutEffect(() => {
-    virtual.measure();
-    // A width change can deliver ResizeObserver measurements before this reset.
-    // Read mounted tiles again now: their observer may not fire a second time.
-    if (masonry) {
-      ref.current?.querySelectorAll<HTMLDivElement>(".masonry-tile")
-        .forEach((tile) => virtual.resizeItem(Number(tile.dataset.index), tile.getBoundingClientRect().height));
-    }
-  }, [rowHeight, masonry, columns, virtual]);
-  const rows = virtual.getVirtualItems();
-  useLayoutEffect(() => {
-    if (!masonry || !ref.current) return;
-    const tiles = [...ref.current.querySelectorAll<HTMLDivElement>(".masonry-tile")];
-    const measure = (tile: HTMLDivElement) => {
-      virtual.resizeItem(Number(tile.dataset.index), tile.getBoundingClientRect().height);
+    const grid = ref.current, scroller = parent.current;
+    if (!grid || !scroller) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      setWidth(grid.clientWidth);
+      const offset = grid.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      setViewport({ top: scroller.scrollTop - offset, height: scroller.clientHeight });
     };
-    // Own the measurements so scroll-time suppression and queued old observer
-    // sizes cannot replace a loaded poster's height with its placeholder height.
-    const observer = new ResizeObserver((entries) => {
-      entries.forEach(({ target }) => measure(target as HTMLDivElement));
-    });
-    tiles.forEach((tile) => { observer.observe(tile); measure(tile); });
-    return () => observer.disconnect();
-  }, [rows, masonry, virtual]);
-  useEffect(() => {
-    if (!returnTo) return;
-    const index = items.findIndex((item) => item.id === returnTo.id);
-    if (index < 0) { onReturned(); return; }
-    // Let closing the viewer remove inert before scrolling the virtual grid.
-    const frame = requestAnimationFrame(() => {
-      virtual.scrollToIndex(masonry ? index : Math.floor(index / columns), { align: "center", behavior: "auto" });
-      setPositioned(returnTo);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [returnTo, items, columns, rowHeight, offset, virtual, onReturned, masonry]);
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(grid); observer.observe(scroller);
+    scroller.addEventListener("scroll", schedule, { passive: true });
+    update();
+    return () => { observer.disconnect(); scroller.removeEventListener("scroll", schedule); cancelAnimationFrame(frame); };
+  }, [parent]);
+  useEffect(() => () => cancelAnimationFrame(ratioFrame.current), []);
+  const layout = useMemo(() => arrangeMasonry(items.map(item => thumbnailRatios.get(`${item.id}:${item.modified}`) ?? 1 / 1.4), width, size), [items, width, size, revision]);
+  const visible = layout.tiles.filter(tile => tile.top + tile.height >= viewport.top - viewport.height && tile.top <= viewport.top + viewport.height * 2);
   useLayoutEffect(() => {
-    if (!returnTo || positioned !== returnTo) return;
-    // A distant thumbnail only exists after the virtualizer renders its row.
-    const button = ref.current?.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
-    if (!button) return;
-    button.focus({ preventScroll: true });
-    setHighlighted(returnTo);
-    onReturned();
-  }, [returnTo, positioned, rows, onReturned]);
+    if (!returnTo) return;
+    const index = items.findIndex(item => item.id === returnTo.id);
+    if (index < 0) { onReturned(); return; }
+    const tile = layout.tiles[index], scroller = parent.current, grid = ref.current;
+    if (!scroller || !grid) return;
+    const offset = grid.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    scroller.scrollTop = Math.max(0, offset + tile.top - Math.max(0, (scroller.clientHeight - tile.height) / 2));
+    setViewport({ top: scroller.scrollTop - offset, height: scroller.clientHeight });
+    const button = grid.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
+    const image = button?.querySelector('img');
+    if (button && (!image || image.complete)) {
+      button.focus({ preventScroll: true }); setHighlighted(returnTo); onReturned();
+    }
+  }, [returnTo, items, layout, parent, onReturned, viewport.top]);
   useEffect(() => {
     if (!highlighted) return;
     const timer = window.setTimeout(() => setHighlighted(null), 2000);
     return () => window.clearTimeout(timer);
   }, [highlighted]);
-  return (
-    <div
-      ref={ref}
-      className={`media-grid ${masonry ? "poster-masonry" : ""}`}
-      style={{ height: virtual.getTotalSize() }}
-      onLoadCapture={masonry ? (event) => {
-        const tile = (event.target as HTMLElement).closest<HTMLDivElement>(".masonry-tile");
-        // Image loads can coincide with scroll anchoring after the dock resizes.
-        // Apply the real height even while the virtualizer is marked scrolling.
-        if (tile) virtual.resizeItem(Number(tile.dataset.index), tile.getBoundingClientRect().height);
-      } : undefined}
-    >
-      {rows.map((row) => (
-        <div
-          className={masonry ? "masonry-tile" : "grid-row"}
-          key={row.key}
-          data-index={row.index}
-          style={{
-            transform: `translateY(${row.start - offset}px)`,
-            gridTemplateColumns: masonry ? undefined : `repeat(${columns}, minmax(0,1fr))`,
-            height: masonry ? undefined : rowHeight - 14,
-            width: masonry ? tileWidth : undefined,
-            left: masonry ? row.lane * (tileWidth + 14) : undefined,
-          }}
-        >
-          {items
-            .slice(masonry ? row.index : row.index * columns, masonry ? row.index + 1 : (row.index + 1) * columns)
-            .map((item) => (
+  return <div ref={ref} className="media-grid poster-masonry" style={{ height: layout.height }}
+    onLoadCapture={event => {
+      const image = event.target as HTMLImageElement;
+      if (image.tagName !== 'IMG' || image.classList.contains('hover-preview') || !image.naturalWidth || !image.naturalHeight) return;
+      const key = image.closest<HTMLElement>('[data-media-key]')?.dataset.mediaKey;
+      const ratio = image.naturalWidth / image.naturalHeight;
+      if (!key || thumbnailRatios.get(key) === ratio) return;
+      if (thumbnailRatios.size > 10000) thumbnailRatios.clear();
+      thumbnailRatios.set(key, ratio);
+      if (!ratioFrame.current) ratioFrame.current = requestAnimationFrame(() => { ratioFrame.current = 0; setRevision(value => value + 1); });
+    }}>
+    {visible.map(row => {
+      const item = items[row.index];
+      return <div className="masonry-tile" key={`${item.id}:${item.modified}`} data-media-key={`${item.id}:${item.modified}`}
+        style={{ transform: `translate(${row.left}px, ${row.top}px)`, width: row.width, height: row.height }}>
               <Card
                 copy={() => void copy(item.id)}
                 copying={copying !== null}
@@ -1547,7 +1482,7 @@ function MediaGridLayout({
                 open={(e) => openItem(item, e)}
                 menu={() => onMenu(item.id)}
                 playing={hoverId === item.id}
-                hover={(value) => setHoverId(value ? item.id : null)}
+                hover={(value) => setHoverId(value && (item.kind === "video" || item.kind === "animation") ? item.id : null)}
                 drag={(e) => {
                   const ids = selected.has(item.id) ? [...selected] : [item.id];
                   e.dataTransfer.setData(
@@ -1557,11 +1492,9 @@ function MediaGridLayout({
                   e.dataTransfer.effectAllowed = "copyMove";
                 }}
               />
-            ))}
-        </div>
-      ))}
-    </div>
-  );
+      </div>;
+    })}
+  </div>;
 }
 function Card({
   previewed,

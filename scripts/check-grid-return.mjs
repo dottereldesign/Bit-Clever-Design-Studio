@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
-const port = fixture === "wide-preview" ? "1422" : "1421";
+if (!['performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
 const chrome = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA]
@@ -22,7 +22,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!started) throw Error('Test server did not start');
-  for (const dimensions of (fixture === 'wide-preview' ? ['3440,1440', '1920,1080', '1600,940', '1599,940'] : ['1440,940', '960,700'])) {
+  for (const dimensions of (fixture === 'performance' ? ['1920,1080'] : fixture === 'wide-preview' ? ['3440,1440', '1920,1080', '1600,940', '1599,940'] : ['1440,940', '960,700'])) {
     const profile = await mkdtemp(join(tmpdir(), 'design-grid-check-'));
     try {
       // An isolated headless process uses real browser frames and keyboard events.
@@ -95,7 +95,10 @@ try {
           if (state.value?.report && state.value.report !== 'pending') { result = JSON.parse(state.value.report); break; }
           await new Promise(resolve => setTimeout(resolve, 100));
         }
-        if (!result) throw Error('Headless check timed out');
+        if (!result) {
+          const { result: debug } = await call('Runtime.evaluate', { expression: 'JSON.stringify({progress:window.__checkProgress, report:document.getElementById("check-result")?.textContent, viewer:document.querySelector(".viewer")?.dataset.itemId, cards:document.querySelectorAll(".card").length, focus:document.activeElement?.tagName})', returnByValue:true }, sessionId);
+          throw Error(`Headless check timed out: ${debug.value}`);
+        }
       } finally {
         if (child.exitCode === null) {
           const exited = new Promise(resolve => child.once('exit', resolve));
@@ -104,6 +107,12 @@ try {
         }
       }
       console.log(JSON.stringify({ dimensions, ...result }, null, 2));
+      if (fixture === 'performance') {
+        const label = process.env.DESIGN_PERF_LABEL || 'latest';
+        if (!/^[a-z0-9_-]+$/i.test(label)) throw Error('Invalid performance label');
+        await mkdir('.tools/performance', { recursive: true });
+        await writeFile(`.tools/performance/${label}.json`, JSON.stringify({ capturedAt: new Date().toISOString(), dimensions, ...result }, null, 2));
+      }
       if (!result.ok) throw Error(result.error);
     } finally {
       const target = resolve(profile);
