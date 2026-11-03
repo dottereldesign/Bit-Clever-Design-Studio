@@ -109,7 +109,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 27px;
+  font-size: 25px;
   line-height: 1;
   white-space: nowrap;
 }
