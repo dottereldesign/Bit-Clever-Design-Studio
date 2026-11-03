@@ -1254,6 +1254,7 @@ export default function App() {
       </main>
       {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>}
       {activeItem && (
+        <div className={dockedPreview ? "preview-shell preview-shell-docked" : "preview-shell"}>
         <Viewer
           key={activeItem.id}
           docked={dockedPreview}
@@ -1286,6 +1287,7 @@ export default function App() {
               : undefined
           }
         />
+        </div>
       )}
       {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{await refresh();setModal(null);setNotice("Thumbnail updated");}}/>}
       {modal?.kind==="category"&&<CategoryPicker categories={categories} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}

@@ -69,6 +69,12 @@ try {
   assert(!main.inert && !sidebar.inert, 'Library remains interactive');
   assert(viewer().getAttribute('role') === 'region' && !viewer().hasAttribute('aria-modal'), 'Nonmodal preview semantics');
   await until(() => document.querySelector('.card.previewed'), 'active thumbnail highlighted');
+  const shell = document.querySelector('.preview-shell-docked');
+  const entrance = shell.getAnimations()[0];
+  assert(entrance?.animationName === 'preview-slide-in', 'Drawer has slide entrance');
+  await entrance.finished;
+  window.__screenshotReady = true;
+  await pause(200);
   const rect = viewer().getBoundingClientRect(), grid = main.getBoundingClientRect();
   assert(rect.left >= grid.right - 1 && rect.right <= innerWidth && grid.width > 1000, 'Preview sits beside grid');
   assert(viewer().scrollWidth <= rect.width, 'Preview toolbar fits');
@@ -77,6 +83,9 @@ try {
   const otherId = other.closest('.card').dataset.itemId;
   other.click();
   await until(() => viewer()?.dataset.itemId === otherId, 'switch preview by clicking grid');
+  assert(document.querySelector('.preview-shell-docked') === shell, 'Switch keeps the same drawer');
+  assert(shell.getAnimations()[0] === entrance && entrance.playState === 'finished', 'Switch does not replay entrance');
+  checks.push('Right slide opens once; choosing another thumbnail preserves the settled glass drawer');
   checks.push('Ultrawide layout, interactive library, active thumbnail and click-to-switch');
   const content = document.querySelector('.content');
   content.scrollTop = 1800;
