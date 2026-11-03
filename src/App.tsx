@@ -1214,6 +1214,7 @@ export default function App() {
             <>
               {images.length > 0 && (
                 <MediaGrid
+                  masonry={/^posters?$/i.test(category?.trim() ?? "")}
                   copy={copyImage}
                   copying={copying}
                   previewId={dockedPreview ? viewer : null}
@@ -1367,6 +1368,7 @@ export default function App() {
 }
 
 function MediaGrid({
+  masonry,
   previewId,
   copy,
   copying,
@@ -1384,6 +1386,7 @@ function MediaGrid({
   hoverId,
   setHoverId,
 }: {
+  masonry: boolean;
   previewId: number | null;
   copy: (id: number) => Promise<void>;
   copying: number | null;
@@ -1424,13 +1427,15 @@ function MediaGrid({
     tileWidth = (width - (columns - 1) * 14) / columns,
     rowHeight = tileWidth * 0.75 + 14;
   const virtual = useVirtualizer({
-    count: Math.ceil(items.length / columns),
+    count: masonry ? items.length : Math.ceil(items.length / columns),
+    lanes: masonry ? columns : 1,
+    getItemKey: (index) => masonry ? items[index].id : index,
     getScrollElement: () => parent.current,
-    estimateSize: () => rowHeight,
-    overscan: 2,
+    estimateSize: () => masonry ? tileWidth * 1.4 + 14 : rowHeight,
+    overscan: masonry ? columns * 2 : 2,
     scrollMargin: offset,
   });
-  useEffect(() => virtual.measure(), [rowHeight, virtual]);
+  useEffect(() => virtual.measure(), [rowHeight, masonry, columns, virtual]);
   const rows = virtual.getVirtualItems();
   useEffect(() => {
     if (!returnTo) return;
@@ -1438,11 +1443,11 @@ function MediaGrid({
     if (index < 0) { onReturned(); return; }
     // Let closing the viewer remove inert before scrolling the virtual grid.
     const frame = requestAnimationFrame(() => {
-      virtual.scrollToIndex(Math.floor(index / columns), { align: "center", behavior: "auto" });
+      virtual.scrollToIndex(masonry ? index : Math.floor(index / columns), { align: "center", behavior: "auto" });
       setPositioned(returnTo);
     });
     return () => cancelAnimationFrame(frame);
-  }, [returnTo, items, columns, rowHeight, offset, virtual, onReturned]);
+  }, [returnTo, items, columns, rowHeight, offset, virtual, onReturned, masonry]);
   useLayoutEffect(() => {
     if (!returnTo || positioned !== returnTo) return;
     // A distant thumbnail only exists after the virtualizer renders its row.
@@ -1460,21 +1465,25 @@ function MediaGrid({
   return (
     <div
       ref={ref}
-      className="media-grid"
+      className={`media-grid ${masonry ? "poster-masonry" : ""}`}
       style={{ height: virtual.getTotalSize() }}
     >
       {rows.map((row) => (
         <div
-          className="grid-row"
-          key={row.index}
+          className={masonry ? "masonry-tile" : "grid-row"}
+          key={row.key}
+          data-index={row.index}
+          ref={masonry ? virtual.measureElement : undefined}
           style={{
             transform: `translateY(${row.start - offset}px)`,
-            gridTemplateColumns: `repeat(${columns}, minmax(0,1fr))`,
-            height: rowHeight - 14,
+            gridTemplateColumns: masonry ? undefined : `repeat(${columns}, minmax(0,1fr))`,
+            height: masonry ? undefined : rowHeight - 14,
+            width: masonry ? tileWidth : undefined,
+            left: masonry ? row.lane * (tileWidth + 14) : undefined,
           }}
         >
           {items
-            .slice(row.index * columns, (row.index + 1) * columns)
+            .slice(masonry ? row.index : row.index * columns, masonry ? row.index + 1 : (row.index + 1) * columns)
             .map((item) => (
               <Card
                 copy={() => void copy(item.id)}

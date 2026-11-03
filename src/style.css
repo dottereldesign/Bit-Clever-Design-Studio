@@ -1666,3 +1666,8 @@ main {
 .viewer-docked .viewer-next { right: 7px; }
 .viewer-docked footer { flex-wrap: wrap; gap: 10px; padding: 16px 20px; }
 .card.previewed { box-shadow: 0 0 0 3px #879c76; }
+
+/* Poster-only trial: measured, virtualized columns preserve image proportions. */
+.poster-masonry .masonry-tile { position: absolute; top: 0; padding-bottom: 14px; }
+.poster-masonry .card-open { height: auto; min-height: 80px; }
+.poster-masonry .card img:not(.hover-preview) { height: auto; }
