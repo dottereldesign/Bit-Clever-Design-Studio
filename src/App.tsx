@@ -1930,7 +1930,7 @@ function Viewer({
             key={url}
             src={url}
             autoPlay
-            muted
+            muted={false}
             controls
             loop
             playsInline
