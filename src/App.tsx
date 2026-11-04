@@ -975,14 +975,14 @@ export default function App() {
           )}
         </div>
         </SidebarSection>
-        <SidebarSection name="Categories" action={
+        <SidebarSection name="Categories" label="Design Inspo" action={
           <IconButton
             title="New category"
             onClick={() => setModal({kind:"category",ids:[]})}
           >
             <Plus size={15} />
           </IconButton>}>
-        <nav className="source-list" aria-label="Categories">
+        <nav className="source-list" aria-label="Design Inspo">
           <button
             className={`nav-item ${category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
             onClick={() => navigate(null)}
@@ -995,8 +995,8 @@ export default function App() {
           {[...categories, ""].map(folderRow)}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Components">
-          <nav aria-label="Components">
+        <SidebarSection name="Components" label="App Components">
+          <nav aria-label="App Components">
             {folderRow(allComponents)}
             {folderRow(componentInbox)}
             {Object.entries(componentGroups).map(([group, folders]) =>

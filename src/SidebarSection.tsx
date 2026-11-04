@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-export default function SidebarSection({name, action, children, nested = false}: {
-  name: string; action?: ReactNode; children: ReactNode; nested?: boolean;
+export default function SidebarSection({name, label = name, action, children, nested = false}: {
+  name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean;
 }) {
   const key = "sidebar-open:" + name;
   const [open, setOpen] = useState(() => {
@@ -15,7 +15,7 @@ export default function SidebarSection({name, action, children, nested = false}:
         localStorage.setItem(key, String(!open));
         setOpen(!open);
       }}>
-        {open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>} {name}
+        {open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>} {label}
       </button>
       {action}
     </div>

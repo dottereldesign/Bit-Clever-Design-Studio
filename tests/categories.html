@@ -21,13 +21,13 @@ const choose=name=>[...document.querySelectorAll('.category-choices button')].fi
 const checks=[];
 try{
  await until(()=>category('3d')&&cards().length===5,'initial media');
- assert(category('Photography')&&!document.querySelector('nav[aria-label=Categories]').textContent.includes('Videos'),'Photography category missing or Videos leaked into categories');
+ assert(category('Photography')&&!document.querySelector('nav[aria-label="Design Inspo"]').textContent.includes('Videos'),'Photography category missing or Videos leaked into categories');
  assert(![...document.querySelectorAll('nav[aria-label=Library] button span')].some(s=>s.textContent==='Photography'),'Photography still in main navigation');
  assert(!category('Web Design')&&!category('web_design'),'Web Design still listed in Categories');
  category('All Components').click();await until(()=>cards().length===2,'All Components includes legacy Web Design');
  category('Components / Uncategorised').click();await until(()=>cards().length===2,'Uncategorised components');
  for(const name of ['General','Projects','Categories','Components']){
-   const toggle=button(name);toggle.click();await until(()=>toggle.getAttribute('aria-expanded')==='false','Collapse '+name);
+   const toggle=button(name==="Categories"?"Design Inspo":name==="Components"?"App Components":name);toggle.click();await until(()=>toggle.getAttribute('aria-expanded')==='false','Collapse '+name);
    assert(localStorage.getItem('sidebar-open:'+name)==='false','Remember '+name);
    toggle.click();await until(()=>toggle.getAttribute('aria-expanded')==='true','Expand '+name);
  }
