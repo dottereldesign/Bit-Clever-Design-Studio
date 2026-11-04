@@ -1768,3 +1768,5 @@ main {
 }
 .folder-heading { margin-left: 16px; display: flex; font-size: 12px; color: #72756d; }
 .folder-group .nav-item { padding-left: 38px; }
+
+.sidebar-heading.drop-target { background:#e3ecdc; outline:2px solid #738669; border-radius:5px; }

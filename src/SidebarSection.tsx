@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type HTMLAttributes } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-export default function SidebarSection({name, label = name, action, children, nested = false}: {
-  name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean;
+export default function SidebarSection({name, label = name, action, children, nested = false, dropProps}: {
+  name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean; dropProps?: HTMLAttributes<HTMLDivElement> & {"data-category"?:string; "data-section-label"?:string};
 }) {
   const key = "sidebar-open:" + name;
   const [open, setOpen] = useState(() => {
@@ -10,7 +10,7 @@ export default function SidebarSection({name, label = name, action, children, ne
     return saved === null ? !nested : saved === "true";
   });
   return <section className={nested ? "folder-group" : "sidebar-section"}>
-    <div className={nested ? "folder-heading" : "sidebar-heading"}>
+    <div {...dropProps} className={`${nested ? "folder-heading" : "sidebar-heading"} ${dropProps?.className??""}`}>
       <button className="section-toggle" aria-expanded={open} onClick={() => {
         localStorage.setItem(key, String(!open));
         setOpen(!open);

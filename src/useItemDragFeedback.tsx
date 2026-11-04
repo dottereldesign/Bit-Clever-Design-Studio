@@ -21,14 +21,14 @@ export default function useItemDragFeedback(options:Options) {
       if(session?.host.hasPointerCapture(session.id))session.host.releasePointerCapture(session.id);
       document.body.classList.remove('dragging-items');
       count.current=0;setFeedback(null);ghost.current?.remove();ghost.current=null;
-      document.querySelectorAll('.project-row.drop-target,.source-item.drop-target').forEach(row=>row.classList.remove('drop-target'));
+      document.querySelectorAll('.project-row.drop-target,.source-item.drop-target,.sidebar-heading.drop-target').forEach(row=>row.classList.remove('drop-target'));
     };
     const show=(element:Element|null,x:number,y:number)=>{
       if(!count.current)return;
       const sidebar=element?.closest('.sidebar');
       const target=element?.closest<HTMLElement>('[data-category],[data-project-id]');
       const category=target?.dataset.category;
-      const action=category!==undefined?`${isComponent(category)&&category!==componentInbox?"Add to":"Move to"} ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
+      const action=target?.dataset.sectionLabel?`Send to ${target.dataset.sectionLabel} · Uncategorised`:category!==undefined?`${isComponent(category)&&category!==componentInbox?"Add to":"Move to"} ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
       // Keep the badge outside the sidebar so every destination stays readable.
       const left=sidebar?sidebar.getBoundingClientRect().right+12:x+18;
       setFeedback({count:count.current,x:Math.max(8,Math.min(left,window.innerWidth-272)),y:Math.max(8,Math.min(y+18,window.innerHeight-48)),action});
@@ -39,12 +39,12 @@ export default function useItemDragFeedback(options:Options) {
     const highlight=(session:PointerDrag)=>{
       const element=document.elementFromPoint(session.x,session.y);
       const target=element?.closest('[data-category],[data-project-id]');
-      document.querySelectorAll('.source-item.drop-target,.project-row.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
+      document.querySelectorAll('.source-item.drop-target,.sidebar-heading.drop-target,.project-row.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
       target?.classList.add('drop-target');show(element,session.x,session.y);
     };
     const scroll=()=>{
       const session=pointer.current;if(!session?.active)return;
-      const list=document.querySelector<HTMLElement>('.source-list');
+      const list=document.querySelector<HTMLElement>('.sidebar-scroll');
       if(list){const rect=list.getBoundingClientRect();if(session.x>=rect.left&&session.x<=rect.right&&session.y>=rect.top&&session.y<=rect.bottom){
         const speed=session.y<rect.top+28?-Math.ceil((rect.top+28-session.y)/3):session.y>rect.bottom-28?Math.ceil((session.y-rect.bottom+28)/3):0;
         if(speed){list.scrollTop+=speed;highlight(session);}

@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ClipboardCopy, ExternalLink, Tag, Trash2 } from "lucide-react";
-import { canCopyImage, isResource, isTableLink, orderedProjects, type Item, type Library } from "./model";
+import { categoryOf, canCopyImage, isResource, isTableLink, orderedProjects, type Item, type Library } from "./model";
+
+import { isComponent } from "./componentsLibrary";
 
 export type ItemMenuTarget = { x: number; y: number; ids: number[] };
-export default function ItemMenu({ target, lib, close, add, tags, reveal, remove, copy, copying, moveLink, editLink, editThumbnail, category }: {
+export default function ItemMenu({ target, lib, close, add, tags, reveal, remove, copy, copying, moveLink, editLink, editThumbnail, category, sendToSection }: {
   target: ItemMenuTarget; lib: Library; close: () => void;
   add: (project: number) => void; tags: () => void;
   reveal: (item: Item) => void; remove: () => void;
@@ -13,10 +15,13 @@ export default function ItemMenu({ target, lib, close, add, tags, reveal, remove
   editLink: (item: Item) => void;
   editThumbnail: (item: Item) => void;
   category: () => void;
+  sendToSection: (ids:number[],components:boolean)=>void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: target.x, top: target.y });
   const items = lib.items.filter((item) => target.ids.includes(item.id));
+  const designIds=items.filter(i=>i.kind!=="link"&&!isComponent(categoryOf(i))).map(i=>i.id);
+  const componentIds=items.filter(i=>i.kind!=="link"&&isComponent(categoryOf(i))).map(i=>i.id);
   const projects = orderedProjects(lib.projects, lib.recent_projects);
   useLayoutEffect(() => {
     const rect = ref.current!.getBoundingClientRect();
@@ -63,6 +68,8 @@ export default function ItemMenu({ target, lib, close, add, tags, reveal, remove
     }) : <div className="context-section">No projects yet</div>}
     <hr />
     {items.some(i=>i.kind!=="link")&&<button role="menuitem" onClick={()=>{close();category();}}>Organise folders…</button>}
+    {designIds.length>0&&<button role="menuitem" onClick={()=>{close();sendToSection(designIds,true);}}>Send to App Components</button>}
+    {componentIds.length>0&&<button role="menuitem" onClick={()=>{close();sendToSection(componentIds,false);}}>Send to Design Inspo</button>}
     <button role="menuitem" onClick={() => { close(); tags(); }}><Tag size={13} /> Tags</button>
     {items.length === 1 && items[0].kind === "link" && <button role="menuitem" onClick={() => { close(); editLink(items[0]); }}>Edit link</button>}
     {items.length === 1 && items[0].kind === "link" && !isTableLink(items[0]) && <button role="menuitem" onClick={() => { close(); editThumbnail(items[0]); }}>Edit thumbnail</button>}

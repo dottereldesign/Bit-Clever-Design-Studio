@@ -458,7 +458,7 @@ export default function App() {
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
     await mutate({action:"set_category",ids:items.map(i=>i.id),value:name});
     setUndoIds([]);setCategoryUndo(previous);setSelected(new Set());
-    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${isComponent(name) && name!==componentInbox ? "added to" : "moved to"} ${categoryLabel(name)}`;
+    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${isComponent(name) && name!==componentInbox ? "added to" : "moved to"} ${name===componentInbox?"App Components / Uncategorised":name===""?"Design Inspo / Uncategorised":categoryLabel(name)}`;
     setNotice(categoryUndoNotice.current);
   };
   const removeFromComponentFolder = async (item:Item) => {
@@ -975,7 +975,7 @@ export default function App() {
           )}
         </div>
         </SidebarSection>
-        <SidebarSection name="Categories" label="Design Inspo" action={
+        <SidebarSection name="Categories" label="Design Inspo" dropProps={{...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
           <IconButton
             title="New category"
             onClick={() => setModal({kind:"category",ids:[]})}
@@ -995,7 +995,7 @@ export default function App() {
           {[...categories, ""].map(folderRow)}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Components" label="App Components">
+        <SidebarSection name="Components" label="App Components" dropProps={{...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
           <nav aria-label="App Components">
             {folderRow(allComponents)}
             {folderRow(componentInbox)}
@@ -1435,6 +1435,7 @@ export default function App() {
       {removedOpen && <RemovedDialog close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
+        sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}
         copy={(id) => void copyImage(id)} copying={copying !== null}
         editLink={(item) => setModal({ kind: "editLink", id: item.id })}
         editThumbnail={(item) => setModal({ kind: "thumbnail", id: item.id })}

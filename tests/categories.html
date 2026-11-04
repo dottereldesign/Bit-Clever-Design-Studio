@@ -14,7 +14,7 @@ const history=[];const calls=[];let callback=0;window.isTauri=true;window.__TAUR
 createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
 const pause=ms=>new Promise(r=>setTimeout(r,ms));const assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(25);}}
-const category=name=>document.querySelector(`[data-category="${name}"]`);const cards=()=>[...document.querySelectorAll('.card')];
+const category=name=>document.querySelector(`.source-item[data-category="${name}"]`);const cards=()=>[...document.querySelectorAll('.card')];
 const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')].find(b=>b.querySelector('span')?.textContent===name).click();
 const choose=name=>[...document.querySelectorAll('.category-choices button')].find(b=>b.textContent.trim().toLowerCase()===name.toLowerCase()).click();
@@ -55,7 +55,7 @@ try{
  assert(category('Components / Mega menus'),'Mega menus folder missing');
  const remove=document.querySelector('[data-item-id="6"] .card-remove-folder');assert(remove&&remove.title==='Remove from Headers','Quick remove missing or wrong folder');
  remove.focus();await pause(100);assert(getComputedStyle(remove.closest('.card-bottom')).opacity==='1','Quick remove inaccessible on focus');
- window.__screenshotReady=true;await pause(700);remove.click();await until(()=>cards().length===0,'Quick remove updates current folder');
+ await pause(100);remove.click();await until(()=>cards().length===0,'Quick remove updates current folder');
  assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Heroes'),'Quick remove lost another membership');
  assert(library.items.some(i=>i.id===6),'Quick remove deleted reference');
  button('Undo').click();await until(()=>cards().length===1,'Undo quick remove');
@@ -103,6 +103,30 @@ try{
  category('Photography').click();await until(()=>cards().length===1&&document.querySelector('[data-item-id="4"]'),'Photography navigation');
  nav('Facebook Videos');await until(()=>cards().length===1&&document.querySelector('[data-item-id="5"]'),'Facebook Videos navigation');
  checks.push('C opens category changes; uncategorised moves can be undone; Photography and Facebook Videos show their original media');
+
+ category('Photography').click();await until(()=>cards().length===1,'Prepare section transfer');
+ const context=id=>document.querySelector(`[data-item-id="${id}"]`).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:350,clientY:300}));
+ context(4);await until(()=>button('Send to App Components'),'Send menu');
+ assert(!button('Send to Design Inspo'),'Wrong destination offered for design reference');
+ window.__screenshotReady=true;await pause(700);
+ button('Send to App Components').click();await until(()=>cards().length===0,'Send out of Design Inspo');
+ category('Components / Uncategorised').click();await until(()=>document.querySelector('[data-item-id="4"]'),'Arrives in component inbox');
+ context(4);await until(()=>button('Send to Design Inspo'),'Reverse send menu');button('Send to Design Inspo').click();
+ await until(()=>library.items.find(i=>i.id===4).category==='','Arrives in Design Inspo inbox');
+ assert(library.items.find(i=>i.id===4).projects.includes(7)&&library.items.find(i=>i.id===4).tags.includes(1),'Section transfer lost curation');
+ button('Undo').click();await until(()=>library.items.find(i=>i.id===4).category==='Components / Uncategorised','Undo section transfer');
+ const heading=name=>document.querySelector(`[data-section-label="${name}"]`);
+ button('Design Inspo').click();await until(()=>button('Design Inspo').getAttribute('aria-expanded')==='false','Collapse destination');
+ const sectionDrag=new DataTransfer();sectionDrag.setData('application/design-items','[6]');
+ heading('Design Inspo').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));
+ await until(()=>library.items.find(i=>i.id===6).category==='','Drop on collapsed Design Inspo');
+ assert(!library.items.find(i=>i.id===6).component_folders.length,'Transfer retained old component memberships');
+ await until(()=>button('Undo'),'Transfer Undo available');button('Undo').click();await until(()=>library.items.find(i=>i.id===6).component_folders?.includes('Components / Headers'),'Undo restores multiple component memberships');
+ button('App Components').click();await until(()=>button('App Components').getAttribute('aria-expanded')==='false','Collapse components');
+ sectionDrag.setData('application/design-items','[1,2]');heading('App Components').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));
+ await until(()=>[1,2].every(id=>library.items.find(i=>i.id===id).category==='Components / Uncategorised'),'Bulk drop on collapsed App Components');
+ assert(library.items.filter(i=>[1,2].includes(i.id)).every(i=>!i.component_folders.length),'Dropped references not uncategorised');
+ checks.push('Right-click transfers in both directions use destination inboxes; collapsed section headings accept bulk drops; Undo restores original memberships');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks,calls:calls.slice(-6)});}
 </script></body></html>
