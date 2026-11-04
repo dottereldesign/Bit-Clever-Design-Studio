@@ -252,6 +252,10 @@ fn resource_capture_seeding_move_restore_and_backup_preserve_destination() {
     assert_eq!(item.source, "Resources");
     assert_eq!(item.projects, vec![project]);
     assert_eq!(item.tags, vec![tag]);
+    assert_eq!(resource.moved_from.as_deref(), Some("Links"));
+    db::change(&path, change("undo_organisation", vec![], None, None, None)).unwrap();
+    assert_eq!(db::load(&path, false).unwrap().items.iter().find(|i| i.id == id).unwrap().source, "");
+    db::change(&path, change("redo_organisation", vec![], None, None, None)).unwrap();
     let backup = temp.path().join("metadata.json");
     db::export(&path, backup.clone()).unwrap();
     db::change(
@@ -1122,4 +1126,19 @@ fn pattern_texture_resources_upgrade_once_and_preserve_user_changes() {
     db::change(&path, change("remove_items", vec![promoted.id], None, None, None)).unwrap();
     crate::resources::seed(&conn).unwrap();
     assert!(!db::load(&path, false).unwrap().items.iter().any(|i| i.id == promoted.id));
+}
+
+#[test]
+fn contact_sheet_saves_a_decodable_png_and_preserves_other_destinations() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("Sheet.png");
+    std::fs::write(&path, b"previous sheet").unwrap();
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(20, 10).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    crate::write_contact_sheet(&path, png.get_ref()).unwrap();
+    assert_eq!(image::open(&path).unwrap().width(), 20);
+    let other = temp.path().join("notes.txt");
+    std::fs::write(&other, b"original").unwrap();
+    assert!(crate::write_contact_sheet(&other, png.get_ref()).is_err());
+    assert_eq!(std::fs::read(&other).unwrap(), b"original");
 }

@@ -6,7 +6,7 @@ import { RatioSelect, ThumbnailCrop } from "./ThumbnailEditor";
 
 export type CaptureFile = { path: string; name: string };
 export type CaptureDraft = { files: CaptureFile[]; url: string; thumbnail?: CaptureFile; destination?: LinkDestination };
-export type CaptureResult = { ids: number[]; added: number; reused: number; destination?: LinkDestination | null };
+export type CaptureResult = { move_label?: string; moved_from?: string | null; ids: number[]; added: number; reused: number; destination?: LinkDestination | null };
 export async function stageFiles(files: File[]): Promise<CaptureDraft> {
   const staged: CaptureFile[] = [];
   try {

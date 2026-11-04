@@ -41,6 +41,8 @@ Hover or focus a reference and press Space to peek. Space/Escape closes the prev
 
 - The sidebar can be resized. Thumbnail size and sidebar width are remembered.
 
+**Recently added** groups references from every collection by their local date of entry into the library. **Recently viewed** remembers the last 60 distinct references you opened or previewed on this device. Use **Customise shortcuts** in the sidebar footer to pin, reorder or hide collections and favourite websites, or add a website.
+
 ## Organise a project
 
 Design, Photography and Videos are watched storage folders. Photography and Videos sit beside the chosen Design folder. Categories organise media in the library. Projects group references across folders and collections.
@@ -50,7 +52,7 @@ Design, Photography and Videos are watched storage folders. Photography and Vide
 
 Photography imports default to the Photography category. Later category assignments survive rescans.
 
-- Tags apply across projects and file types. Multiple selected tags match any selected tag. Search `/` matches filenames, names and URLs.
+- Tags apply across projects and file types. Choose **Any tag** to match at least one selected tag, or **All tags** to require every selected tag. Search `/` matches filenames, names and URLs.
 
 - In a project, use the pin on a card, the viewer's Pin button, or a link's menu. Pins belong to that project and stay ahead of the selected sort order.
 
@@ -60,6 +62,8 @@ Photography imports default to the Photography category. Later category assignme
 Thumbnail moves use direct pointer dragging inside the app, independent of browser drag permissions. A six-pixel movement starts dragging; plain clicks still open the viewer. Selection IDs remain valid if scrolling removes the source thumbnail from the virtual grid. Categories move references; projects add assignments. The compact badge stays outside the sidebar, hovering near the category list edges scrolls it, and Escape cancels.
 
 Ctrl+Z or the header Undo button reverses the latest organisation change. Ctrl+Shift+Z, Ctrl+Y or the adjacent Redo button reapplies it. Both stacks survive restarts; a new organisation change clears Redo. Text fields keep their native editing shortcuts. The last 100 changes are stored locally across restarts, independently of notification expiry. Bulk category/project/tag changes, pins, removals, link edits and project/tag management are supported. Imports clear both history stacks because imported metadata may replace identities. Undo does not delete captured files.
+
+In a project, open **Contact sheet**. Selected project references are preselected up to the 24-reference limit. Choose references, drag them into order or use the arrows, then switch names and source URLs on or off. **Export PNG** saves the preview as one image. Link cards without an image show their domain.
 
 ## Capture files and links
 
@@ -71,6 +75,8 @@ Pasting image or file references into a selected category (including Uncategoris
 
 - Duplicate captures reuse an existing reference within the selected source and merge project/tag memberships. The same image can be saved separately under Photography and Design. File bytes are compared with SHA-256, and still images also compare exact decoded pixels across supported formats. Renamed files are recognised. Resized, edited or differently compressed images and re-encoded videos are not treated as exact duplicates; animations are compared as whole files, never just their first frame.
 - Settings → Find duplicates scans the existing library. Choose the retained copy in each group. Removed duplicates move into local app data's `removed-duplicates` folder, with their projects, tags and pins merged into the retained item. Restore them from the same screen's Recovery list. Nothing is permanently deleted by this feature. Recovery files are outside OneDrive and are not included in metadata exports.
+
+A capture receipt shows where a save went. Use **View** or **View existing** to preview the saved references, using the arrow keys for a batch. Moving an existing URL to another collection shows both locations and offers **Undo move**.
 
 ## Browse websites and download videos
 

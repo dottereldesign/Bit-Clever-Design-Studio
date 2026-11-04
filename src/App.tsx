@@ -48,6 +48,9 @@ import {
 import { changeLibrary, loadLibrary, media, forgetMedia, type Change } from "./api";
 import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
+import ContactSheet from "./ContactSheet";
+import RecentReferences from "./RecentReferences";
+import { collections, sites, ordered, useLocalList, StudioDialog, ShortcutEditor } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
@@ -212,7 +215,19 @@ export default function App() {
   const [lib, setLib] = useState<Library>(empty),
     [ready, setReady] = useState(false),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNoticeText] = useState("");
+  const [receipt,setReceipt]=useState<{ids:number[];existing:boolean;undo?:string} | null>(null);
+  const setNotice=useCallback((text:string)=>{setReceipt(null);setNoticeText(text);},[]);
+  const [tagMode,setTagMode]=useState<"any"|"all">("any");
+  const [recent,setRecent]=useState<"added"|"viewed"|null>(null);
+  const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
+  const [collectionPrefs,setCollectionPrefs]=useLocalList("collection-shortcuts",collections);
+  const [sitePrefs,setSitePrefs]=useLocalList("site-shortcuts",sites);
+  const [extraDialog,setExtraDialog]=useState<"sheet"|"shortcuts"|null>(null);
+  const [viewedOrder,setViewedOrder]=useState<number[]>([]);
+  const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
+  const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
+    [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
   const [project, setProject] = useState<number | null>(null),
     [linksOnly, setLinksOnly] = useState(false);
   const [search, setSearch] = useState(""),
@@ -322,19 +337,24 @@ export default function App() {
   useEffect(() => {
     if (!notice) return;
     if(categoryUndo && notice!==categoryUndoNotice.current) setCategoryUndo(null);
-    const timer = setTimeout(() => { setNotice(""); setUndoIds([]); setCategoryUndo(null); }, undoIds.length || categoryUndo ? 9000 : 3000);
+    const timer = setTimeout(() => { setNotice(""); setUndoIds([]); setCategoryUndo(null); }, undoIds.length || categoryUndo || receipt ? 9000 : 3000);
     return () => clearTimeout(timer);
-  }, [notice, undoIds, categoryUndo]);
+  }, [notice, undoIds, categoryUndo,receipt]);
   useEffect(() => {
     localStorage.setItem("tile-size", String(size));
   }, [size]);
   useEffect(() => {
     localStorage.setItem("sidebar-width", String(sidebarWidth));
   }, [sidebarWidth]);
+  useEffect(()=>{const id=quickPreview??viewer;
+    const item=id===null?null:lib.items.find(i=>i.id===id);if(item)track(item);
+  },[lib.items,quickPreview,viewer,track]);
+  const sheetItems=useMemo(()=>lib.items.filter(i=>project!==null&&i.projects.includes(project)),[lib.items,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
   const filtered = useMemo(
-    () =>
-      filterItems(lib.items, {
+    () => {
+      const matches=filterItems(lib.items, {
+        tagMode, includeCollections:!!recent,
         category,
         collection: boardView ? boardNames[boardView] : undefined,
         search,
@@ -343,11 +363,15 @@ export default function App() {
         source: videoView ? "Videos" : source,
         project,
         linksOnly,
-        sort,
-        seed,
-      }),
-    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category],
+        sort:recent?"recent":sort, seed,
+      });
+      if(recent!=="viewed")return matches;
+      const byId=new Map(matches.map(i=>[i.id,i]));
+      return viewedOrder.flatMap(id=>byId.get(id)??[]);
+    },
+    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder],
   );
+  useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
   const tableBoard = isTableCollection(boardView);
   const images = useMemo(
@@ -363,7 +387,7 @@ export default function App() {
   useEffect(() => {
     if (viewer !== null && !filtered.some(item => item.id === viewer)) setViewer(null);
   }, [filtered, viewer]);
-  const title = videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
+  const title = recent==="added"?"Recently added":recent==="viewed"?"Recently viewed":videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
     ? "Resources"
     : project
       ? lib.projects.find((p) => p.id === project)?.name || "Project"
@@ -380,6 +404,7 @@ export default function App() {
   const navigate = (id: number | null, onlyLinks = false) => {
     setQuickPreview(null);
     setGridReturn(null);
+    setRecent(null);
     setResourcesView(false);
     setBoardView(null);
     setVideoView(false);
@@ -398,10 +423,10 @@ export default function App() {
     },
     [refresh],
   );
-  const undoLast=useCallback(async()=>{
+  const undoLast=useCallback(async(expected?:string)=>{
     if(undoBusy.current||!lib.undo_label)return;
     undoBusy.current=true;setUndoing(true);
-    try {await mutate({action:"undo_organisation"});setUndoIds([]);setCategoryUndo(null);setNotice(`Undid: ${lib.undo_label}`);}
+    try {await mutate({action:"undo_organisation",value:expected});setUndoIds([]);setCategoryUndo(null);setNotice(`Undid: ${lib.undo_label}`);}
     catch(e){report(e);}finally{undoBusy.current=false;setUndoing(false);}
   },[lib.undo_label,mutate,report]);
   const redoLast=useCallback(async()=>{
@@ -457,7 +482,7 @@ export default function App() {
       return;
     }
     if (item.kind === "link") {
-      void openUrl(item.path).catch(report);
+      void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
       setGridReturn(null);
       setViewer(item.id);
@@ -497,10 +522,10 @@ export default function App() {
       const typing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable=true]",
       );
-      if(libraryExportOpen)return;
+      if(libraryExportOpen||extraDialog)return;
       if(quickPreview!==null){
         if(e.key==="Escape"||(e.key===" "&&!typing&&!(e.target as HTMLElement).closest("button,video"))){e.preventDefault();if(!e.repeat)setQuickPreview(null);}
-        if(!typing&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();const n=filtered.findIndex(i=>i.id===quickPreview);setQuickPreview(filtered[(n+(e.key==="ArrowRight"?1:-1)+filtered.length)%filtered.length]?.id??null);}
+        if(!typing&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();const ids=receiptBrowse.length?receiptBrowse:filtered.map(i=>i.id);const n=ids.indexOf(quickPreview);setQuickPreview(ids[(n+(e.key==="ArrowRight"?1:-1)+ids.length)%ids.length]??null);}
         return;
       }
       if (e.key === "Escape") {
@@ -555,7 +580,25 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen]);
+  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse]);
+  const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
+    const saved=next.items.filter(i=>result.ids.includes(i.id));
+    if(!saved.length)return;
+    const item=saved[0];
+    const destination=result.destination==="links"?"Links":result.destination==="resources"?"Resources":
+      result.destination&&isBoardDestination(result.destination)?boardNames[result.destination]:
+      targetCategory!==null?categoryLabel(targetCategory):item.source;
+    const prior=new Map(lib.items.map(i=>[i.id,i]));
+    const already=result.reused>0&&!result.added&&saved.every(i=>{
+      const previous=prior.get(i.id);
+      return targetCategory===null||!!previous&&categoryOf(previous)===targetCategory;
+    });
+    const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
+      result.added&&result.reused?`${result.added} added · ${result.reused} reused in ${destination}`:
+      already?`Already in ${destination}`:`${saved.length===1?"Added":saved.length+" added"} to ${destination}`;
+    setUndoIds([]);setCategoryUndo(null);setNoticeText(message);
+    setReceipt({ids:saved.map(i=>i.id),existing:already&&!result.moved_from,undo:result.move_label});
+  },[lib.items]);
   const pasteCapture = useCallback(async () => {
     if(pasteBusy.current)return;
     pasteBusy.current=true;
@@ -570,8 +613,7 @@ export default function App() {
             source:category==="Photography"?"Photography":"Design",projects:[],tags:[],source_url:"",resource:false,
           }});
           if(result.ids.length)await changeLibrary({action:"set_category",ids:result.ids,value:category});
-          await refresh();setUndoIds([]);setCategoryUndo(null);
-          setNotice(`${result.added?`${result.added} added to ${categoryLabel(category)}`:""}${result.added&&result.reused?" · ":""}${result.reused?`${result.reused} already in library — reused`:""}`);
+          showCaptureReceipt(result,await refresh(),category);
         } finally {await invoke("discard_capture",{paths:draft.files.map(file=>file.path)}).catch(report);}
         return;
       }
@@ -582,7 +624,7 @@ export default function App() {
       pasteBusy.current=false;
       setReadingCapture(false);
     }
-  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh]);
+  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt]);
   const chooseCaptureFiles = async () => {
     try {
       const paths = await open({
@@ -631,7 +673,7 @@ export default function App() {
         !(e.target as HTMLElement).closest(
           "input,textarea,select,[contenteditable=true]",
         ) &&
-        quickPreview === null && !libraryExportOpen && !capture &&
+        quickPreview === null && !libraryExportOpen && !extraDialog && !capture &&
         !videoDialog &&
         !duplicatesOpen &&
         !removedOpen &&
@@ -642,7 +684,7 @@ export default function App() {
       }
     };
     const over = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes("Files")) {
+      if (!extraDialog && e.dataTransfer?.types.includes("Files")) {
         e.preventDefault();
         setDropActive(true);
       }
@@ -652,6 +694,7 @@ export default function App() {
     };
     const drop = (e: DragEvent) => {
       setDropActive(false);
+      if(extraDialog)return;
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length) {
         e.preventDefault();
@@ -679,10 +722,10 @@ export default function App() {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen]);
+  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog]);
   const captured = async (result: CaptureResult) => {
     if(category!==null && capture?.files.length && result.ids.length) await changeLibrary({action:"set_category",ids:result.ids,value:category});
-    await refresh();
+    const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
         paths: capture.files.map((f) => f.path),
@@ -694,10 +737,7 @@ export default function App() {
       if (result.destination && isBoardDestination(result.destination)) setBoardView(result.destination);
       if (result.destination === "resources") setResourceVersion(version => version + 1);
     }
-    setUndoIds([]);
-    setNotice(
-      `${result.added ? `${result.added} added` : ""}${result.added && result.reused ? " · " : ""}${result.reused ? `${result.reused} already in library — reused` : ""}`,
-    );
+    showCaptureReceipt(result,next,result.destination?null:category);
   };
   useEffect(() => {
     setSelected((prev) => {
@@ -706,7 +746,7 @@ export default function App() {
     });
     scrollRef.current?.scrollTo(0, 0);
     setHoverId(null);
-  }, [search, type, tags, source, project, linksOnly, sort, seed]);
+  }, [search, type, tags, tagMode, source, project, linksOnly, sort, seed]);
   const chooseRoot = async () => {
     try {
       const path = await open({
@@ -811,28 +851,21 @@ export default function App() {
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </div>
         <nav aria-label="Library">
-          <button
-            className={`nav-item ${linksOnly ? "active" : ""}`}
-            onClick={() => navigate(null, true)}
-          >
-            <Link2 size={15} />
-            <span>Links</span>
-            <small>
-              {lib.items.filter((i) => i.kind === "link" && !isCollectionLink(i)).length || ""}
-            </small>
-          </button>
-          <button
-            className={`nav-item ${resourcesView ? "active" : ""}`}
-            onClick={() => {
-              navigate(null);
-              setResourcesView(true);
-            }}
-          >
-            <SidebarIcon name="resources" />
-            <span>Resources</span>
-          </button>
-          {(Object.entries(boardNames) as [BoardKey, string][]).map(([key, name]) => <button key={key} className={`nav-item ${boardView === key ? "active" : ""}`} onClick={() => { navigate(null);setBoardView(key); }}><SidebarIcon name={key}/><span>{name}</span><small>{lib.items.filter(item=>item.kind==="link"&&item.source===name).length || ""}</small></button>)}
-          <button className={`nav-item ${videoView ? "active" : ""}`} onClick={()=>{navigate(null);setVideoView(true);setSource("Videos");}}><SidebarIcon name="facebook"/><span>Facebook Videos</span><small>{lib.items.filter(item=>item.kind==="video"&&(item.source==="Videos"||item.source.startsWith("Videos/"))).length||""}</small></button>
+          {ordered(collectionPrefs).filter(s=>!s.hidden).map(({key,name,pinned})=>{
+            const board=isBoardDestination(key);
+            const active=key==="links"?linksOnly:key==="resources"?resourcesView:key==="facebook"?videoView:board?boardView===key:recent===key;
+            const count=key==="links"?lib.items.filter(i=>i.kind==="link"&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[key]).length:key==="facebook"?lib.items.filter(i=>i.kind==="video"&&(i.source==="Videos"||i.source.startsWith("Videos/"))).length:0;
+            return <button className={`nav-item ${active?"active":""}`} key={key} onClick={()=>{
+              navigate(null,key==="links");
+              if(board)setBoardView(key);
+              if(key==="resources")setResourcesView(true);
+              if(key==="facebook"){setVideoView(true);setSource("Videos");}
+              if(key==="added"||key==="viewed"){
+                setRecent(key);
+                if(key==="viewed"){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}
+              }
+            }}>{board||key==="facebook"||key==="resources"?<SidebarIcon name={key}/>:key==="links"?<Link2 size={15}/>:<Grid2X2 size={15}/>}<span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||""}</small></button>;
+          })}
         </nav>
         <div className="sidebar-heading">
           <span>Projects</span>
@@ -910,7 +943,7 @@ export default function App() {
         </div>
         <nav className="source-list" aria-label="Categories">
           <button
-            className={`nav-item ${category===null&&!source ? "source-active" : ""}`}
+            className={`nav-item ${category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
             onClick={() => navigate(null)}
           >
             <Folder size={14} />
@@ -933,7 +966,7 @@ export default function App() {
               </button>
             ))}
         </nav>
-        <div className="sidebar-footer">
+        <div className="sidebar-footer"><IconButton title="Customise shortcuts" onClick={()=>setExtraDialog("shortcuts")}><SlidersHorizontal size={15}/></IconButton>
           <button onClick={() => setModal({ kind: "settings" })}>
             <Settings2 size={15} />
             <span>Settings</span>
@@ -968,6 +1001,7 @@ export default function App() {
           </div>
           <div className="header-actions">
             <ThumbnailProgress />
+            {project!==null&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
             <button className="icon-button" aria-label="Undo organisation change" disabled={!lib.undo_label||undoing} title={lib.undo_label?`Undo: ${lib.undo_label} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
             <button className="icon-button" aria-label="Redo organisation change" disabled={!lib.redo_label||undoing} title={lib.redo_label?`Redo: ${lib.redo_label} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
             <label className="search">
@@ -1046,6 +1080,7 @@ export default function App() {
                   <SlidersHorizontal size={13} /> Manage tags
                 </button>
               </Popover>
+              {lib.tags.length>0&&<select aria-label="Tag matching" value={tagMode} onChange={e=>setTagMode(e.target.value==="all"?"all":"any")}><option value="any">Any tag</option><option value="all">All tags</option></select>}
               {!boardView && !videoView && <select
                 aria-label="Filter by category"
                 value={category??"__all__"}
@@ -1064,7 +1099,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="display-controls">
+            {!recent&&<div className="display-controls">
               <ArrowDownUp size={13} />
               <select
                 aria-label="Sort items"
@@ -1097,7 +1132,7 @@ export default function App() {
                 value={size}
                 onChange={(e) => setSize(Number(e.target.value))}
               /></>}
-            </div>
+            </div>}
           </div>
         )}
         {readingCapture && (
@@ -1173,11 +1208,11 @@ export default function App() {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (
-            <Resources key={resourceVersion} search={search} items={lib.items} report={report}
+            <Resources favourites={ordered(sitePrefs).filter(s=>!s.hidden)} openItem={openItem} key={resourceVersion} search={search} items={lib.items} report={report}
               menu={(id, event) => { const rect = event.currentTarget.getBoundingClientRect(); setItemMenu({ ids: [id], x: rect.left, y: rect.bottom }); }} />
           ) : !ready && !error ? (
             <div className="empty-state">
@@ -1319,6 +1354,8 @@ export default function App() {
       {videoDialog && <VideoDownloadDialog initialUrl={videoDialog.url} lib={lib} project={project} close={()=>setVideoDialog(null)} add={(text,projects,tags)=>{
         const result=videoQueue.add(text,projects,tags);setVideoDialog(null);setQueueOpen(true);setNotice(result.added?`${result.added} queued`:"Already queued");
       }}/>}
+      {extraDialog==="shortcuts"&&<StudioDialog title="Customise shortcuts" close={()=>setExtraDialog(null)}><ShortcutEditor list={collectionPrefs} change={setCollectionPrefs}/><ShortcutEditor web list={sitePrefs} change={setSitePrefs}/></StudioDialog>}
+      {extraDialog==="sheet"&&<ContactSheet title={title} items={sheetItems} initial={selected} close={()=>setExtraDialog(null)}/>}
       {libraryExportOpen && <LibraryExport close={()=>setLibraryExportOpen(false)}/>}
       {capture && (
         <CaptureDialog
@@ -1357,12 +1394,14 @@ export default function App() {
         moveLink={(item) => void mutate({ action: "set_link_destination", target: item.id, value: isResource(item) ? "links" : "resources" }).then(() => { setUndoIds([]); setNotice(`Moved to ${isResource(item) ? "Links" : "Resources"}`); }).catch(report)}
         add={(target) => { void mutate({ action: "add_project", target, ids: itemMenu.ids }).then(() => { setUndoIds([]); setNotice(`Added to ${lib.projects.find((p) => p.id === target)?.name}`); }).catch(report); }}
         tags={() => setModal({ kind: "tags", ids: itemMenu.ids })}
-        reveal={(item) => void (item.kind === "link" ? openUrl(item.path) : revealItemInDir(item.path)).catch(report)}
+        reveal={item => item.kind === "link" ? openItem(item) : void revealItemInDir(item.path).catch(report)}
         remove={() => void removeItems(itemMenu.ids)} />}
       {notice && (
         <div className="toast" role="status">
           <Check size={14} />
           {notice}
+          {receipt&&<button onClick={()=>{const ids=receipt.ids.filter(id=>lib.items.some(i=>i.id===id));if(ids.length){setReceiptBrowse(ids);setQuickPreview(ids[0]);}setNotice("");}}>{receipt.existing?"View existing":"View"}</button>}
+          {receipt?.undo&&receipt.undo===lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast(receipt.undo)}>Undo move</button>}
           {(categoryUndo||undoIds.length>0)&&lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast()}>Undo</button>}
         </div>
       )}

@@ -7,6 +7,7 @@ let clipboard='image',captureFailure=false,clipboardReads=0;
 const redo=[],history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
  calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Organisation change':null,redo_label:redo.length?'Organisation change':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='open_external_url')return;
  if(command==='read_clipboard'){clipboardReads++;await new Promise(resolve=>setTimeout(resolve,70));return clipboard==='url'?{files:[],url:'https://example.com/pasted'}:{files:[{path:'C:/staged/paste.png',name:'Pasted image.png'}],url:''};}
+ if(command==='save_contact_sheet'){assert(args instanceof Uint8Array && args[0]===137 && args[1]===80 && args.length>500,'Expected PNG bytes');return 'Example sheet.png';}
  if(command==='discard_capture')return;
  if(command==='capture_items'){if(captureFailure)throw Error('Could not save pasted image');const input=args.input;let saved=library.items.find(i=>i.id===100);const reused=!!saved;if(!saved){saved={...item(100,'Pasted image'),source:input.source+'/Captures'};library.items.push(saved);}return {ids:[100],added:reused?0:1,reused:reused?1:0,destination:null};}
 
@@ -61,6 +62,8 @@ try{
  document.querySelector('[data-item-id="100"] .card-open').focus();key('v',{ctrlKey:true});
  await until(()=>calls.filter(c=>c.command==='capture_items').length===2&&!document.querySelector('.capture-status'),'Repeated paste');
  await pause(150);assert(library.items.filter(i=>i.id===100).length===1&&!document.querySelector('.capture-modal'),'Repeated paste duplicated or opened dialog');
+ assert(document.querySelector('.toast')?.textContent.includes('Already in 3D'),'Expected category reuse receipt');
+ document.querySelector('.toast button').click();await until(()=>document.querySelector('.quick-preview header')?.textContent.includes('Pasted image'),'Receipt opens saved reference');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close receipt preview');document.querySelector('[data-item-id="100"] .card-open').focus();
  checks.push('Image paste into a category saves immediately, suppresses overlapping pastes, cleans staged files and reuses duplicates');
  captureFailure=true;key('v',{ctrlKey:true});await until(()=>document.querySelector('.error-banner')?.textContent.includes('Could not save'),'Paste failure shown');
  assert(!document.querySelector('.capture-modal'),'Paste error opened modal');captureFailure=false;
@@ -68,6 +71,26 @@ try{
  document.querySelector('[aria-label="Close capture"]').click();await until(()=>!document.querySelector('.capture-modal'),'Close URL form');
  document.querySelector('nav[aria-label=Categories] button').click();await pause(60);document.querySelector('nav[aria-label=Library] button').focus();clipboard='image';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'Overview retains capture form');
  checks.push('Save errors stay inline; URLs and non-category views retain existing capture forms');
+ document.querySelector('[aria-label="Close capture"]').click();
+ nav('Recently added');await until(()=>document.querySelector('.recent-list h3'),'Added date group');
+ assert(document.querySelectorAll('.recent-reference').length===library.items.length,'Recent view omitted collection links');
+ nav('Recently viewed');await until(()=>document.querySelector('.recent-reference'),'Previously previewed references');
+ document.querySelector('[aria-label="Customise shortcuts"]').click();await until(()=>document.querySelector('dialog[open]'),'Shortcut editor');
+ const shortcut=[...document.querySelectorAll('.shortcut-row')].find(el=>el.textContent.startsWith('CodePen'));
+ shortcut.querySelector('input').click();document.querySelector('dialog header button').click();await until(()=>![...document.querySelectorAll('nav[aria-label=Library] button span')].some(el=>el.textContent==='CodePen'),'Hide sidebar shortcut');
+ document.querySelector('nav[aria-label=Projects] button.nav-item').click();
+ const byText=(selector,text)=>[...document.querySelectorAll(selector)].find(el=>el.textContent.trim()===text);
+ await until(()=>byText('button','Contact sheet'),'Project actions');byText('button','Contact sheet').click();await until(()=>document.querySelector('.sheet-picker input'),'Project sheet picker');
+ for(const box of document.querySelectorAll('.sheet-picker input'))box.click();
+ await until(()=>!byText('dialog button','Export PNG')?.disabled,'PNG preview ready');
+ const ordered=()=>[...document.querySelectorAll('section[aria-label="Sheet order"] .shortcut-row span')].map(el=>el.textContent);
+ const original=ordered();assert(original.length===2,'Expected two selected project items');
+ document.querySelector('section[aria-label="Sheet order"] .shortcut-row button:last-child').click();await until(()=>ordered()[0].slice(3)===original[1].slice(3),'Reorder sheet');
+ const flags=[...document.querySelectorAll('dialog fieldset>label input')];flags[0].click();flags[1].click();await pause(100);
+ await until(()=>!byText('dialog button','Export PNG').disabled,'Caption preview ready');
+ byText('dialog button','Export PNG').click();await until(()=>document.querySelector('dialog footer')?.textContent.includes('Saved to Example sheet.png'),'PNG delivered to save command');
+ window.__screenshotReady=true;await pause(350);
+ checks.push('Recent lists include board links and viewing history; hidden shortcuts disappear; project sheet renders and exports PNG bytes');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks,calls:calls.slice(-6)});}
 </script></body></html>

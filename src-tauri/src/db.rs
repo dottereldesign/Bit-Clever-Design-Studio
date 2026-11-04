@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
@@ -349,7 +349,15 @@ pub struct Change {
 pub fn change(path: &Path, c: Change) -> Result<()> {
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
-    if c.action=="undo_organisation" {crate::history::undo(&tx)?;tx.commit().map_err(err)?;return Ok(());}
+    if c.action == "undo_organisation" {
+        if let Some(expected) = &c.value {
+            let latest: Option<String> = tx.query_row("SELECT label FROM organisation_history ORDER BY id DESC LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?;
+            if latest.as_ref() != Some(expected) { return Err("A newer change took place. Review the header Undo action.".into()); }
+        }
+        crate::history::undo(&tx)?;
+        tx.commit().map_err(err)?;
+        return Ok(());
+    }
     if c.action=="redo_organisation" {crate::history::redo(&tx)?;tx.commit().map_err(err)?;return Ok(());}
     let undo=crate::history::snapshot(&tx,&c)?;
     let target = c.target.unwrap_or(0);

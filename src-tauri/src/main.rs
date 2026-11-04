@@ -272,6 +272,32 @@ fn stage_chunk(request: tauri::ipc::Request<'_>, state: tauri::State<'_, State>)
         _ => Err("Expected binary file data".into()),
     }
 }
+fn write_contact_sheet(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("png")) {
+        return Err("Choose a filename ending in .png.".into());
+    }
+    let mut temp = tempfile::NamedTempFile::new_in(path.parent().ok_or("Missing destination folder")?).map_err(err)?;
+    temp.write_all(bytes).map_err(err)?;
+    temp.persist(path).map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_contact_sheet(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) if bytes.starts_with(b"\x89PNG\r\n\x1a\n") => bytes.clone(),
+        _ => return Err("Expected a PNG image.".into()),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app.dialog().file().add_filter("PNG image", &["png"])
+            .set_file_name("Contact sheet.png").blocking_save_file() else { return Ok(None); };
+        let path = file.into_path().map_err(err)?;
+        write_contact_sheet(&path, &bytes)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }).await.map_err(err)?
+}
 #[tauri::command]
 fn discard_capture(paths: Vec<String>, state: tauri::State<'_, State>) -> Result<()> {
     let staging = state.db.parent().unwrap().join("staging");
@@ -460,6 +486,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_external_url,
             app_version,
+            save_contact_sheet,
             export_library,
             cancel_library_export,
             get_library,

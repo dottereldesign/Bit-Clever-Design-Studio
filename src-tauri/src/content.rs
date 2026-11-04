@@ -301,6 +301,8 @@ pub struct Capture {
 }
 #[derive(Serialize)]
 pub struct CaptureResult {
+    pub move_label: Option<String>,
+    pub moved_from: Option<String>,
     pub destination: Option<&'static str>,
     pub ids: Vec<i64>,
     pub added: usize,
@@ -363,6 +365,8 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         }
     }
     let mut result = CaptureResult {
+        move_label: None,
+        moved_from: None,
         destination: None,
         ids: vec![],
         added: 0,
@@ -433,6 +437,16 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         };
         tx.execute("UPDATE items SET archived=0 WHERE id=?", [id])
             .map_err(err)?;
+        if existing.is_some() {
+            let previous: String = tx.query_row("SELECT source FROM items WHERE id=?", [id], |r| r.get(0)).map_err(err)?;
+            if previous != collection && !(collection == "Resources" && previous.starts_with("Resources/")) {
+                let label = if previous.is_empty() { "Links" } else { &previous };
+                let move_label = format!("Move {} from {}", url, label);
+                crate::history::record(&tx, &move_label, vec![crate::history::Patch::Source(id,previous.clone())])?;
+                result.move_label = Some(move_label);
+                result.moved_from = Some(label.to_string());
+            }
+        }
         if collection == "Resources" {
             tx.execute(
                 "UPDATE items SET source='Resources' WHERE id=? AND source NOT LIKE 'Resources/%'",

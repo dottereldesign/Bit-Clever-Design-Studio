@@ -59,6 +59,12 @@ it("Captures is a storage folder; unassigned captures belong to Uncategorised",(
   equal(filterItems([capture],{...defaults,category:""}).length,1);
 });
 describe("combined library views", () => {
+  it("matches all selected tags across collections in the recent views", () => {
+    const board = {...items[2], source:"Fonts", tags:[1,2]};
+    const library = [items[0],board];
+    equal(filterItems(library,{...defaults,tags:[1,2],includeCollections:true}).length,2);
+    equal(filterItems(library,{...defaults,tags:[1,2],includeCollections:true,tagMode:"all"}),[board]);
+  });
   it("uses category overrides instead of disk folders, including explicit uncategorised",()=>{
     const original={...items[0],source:"Design/3d/components"};
     const moved={...original,category:"branding"};

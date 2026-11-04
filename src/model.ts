@@ -45,6 +45,8 @@ export function orderedProjects(projects: Label[], recent: number[] = []) {
   return [...projects].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.name.localeCompare(b.name));
 }
 export type Filters = {
+  includeCollections?: boolean;
+  tagMode?: "any" | "all";
   category?: string | null;
   collection?: string;
   search: string;
@@ -60,7 +62,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
   const query = f.search.toLocaleLowerCase().trim();
   const result = items.filter(
     (i) =>
-      (f.collection ? i.kind === "link" && i.source === f.collection : (!isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
+      (f.collection ? i.kind === "link" && i.source === f.collection : (f.includeCollections || !isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
       (!f.project || i.projects.includes(f.project)) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
@@ -68,7 +70,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&
-      (!f.tags.length || f.tags.some((t) => i.tags.includes(t))) &&
+      (!f.tags.length || (f.tagMode === "all" ? f.tags.every(t => i.tags.includes(t)) : f.tags.some(t => i.tags.includes(t)))) &&
       (!query ||
         `${i.name} ${i.path} ${i.source_url || ""}`
           .toLocaleLowerCase()

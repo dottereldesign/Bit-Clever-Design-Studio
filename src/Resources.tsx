@@ -1,16 +1,13 @@
+import type { Shortcut } from "./Shortcuts";
 import { useState } from "react";
 import { Dribbble, ExternalLink, MoreHorizontal } from "lucide-react";
 import { openUrl } from "./api";
 import { isResource, type Item } from "./model";
 
 const categoryOf = (item: Item) => item.source.startsWith("Resources/") ? item.source.slice(10) : "Saved";
-const favourites = [
-  { name: "Pinterest", url: "https://www.pinterest.com/", icon: "pinterest" },
-  { name: "Dribbble", url: "https://dribbble.com/", icon: "dribbble" },
-  { name: "Awwwards", url: "https://www.awwwards.com/", icon: "awwwards" },
-] as const;
+const hasIcon = (key: string) => key === "pinterest" || key === "dribbble" || key === "awwwards";
 
-function FavouriteIcon({ name }: { name: typeof favourites[number]["icon"] }) {
+function FavouriteIcon({ name }: { name: string }) {
   if (name === "dribbble") return <Dribbble size={21} color="#EA4C89" strokeWidth={1.7} aria-hidden="true" />;
   return <svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
     {name === "pinterest" ? <>
@@ -23,7 +20,8 @@ function FavouriteIcon({ name }: { name: typeof favourites[number]["icon"] }) {
     </>}
   </svg>;
 }
-export default function Resources({ search, items, report, menu }: {
+export default function Resources({ search, items, report, menu, favourites, openItem }: {
+  favourites: Shortcut[]; openItem:(item:Item)=>void;
   search: string; items: Item[]; report: (e: unknown) => void;
   menu: (id: number, event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
@@ -32,8 +30,8 @@ export default function Resources({ search, items, report, menu }: {
   const shown = resources.filter(item => (!category || categoryOf(item) === category) && `${item.name} ${categoryOf(item)} ${item.path}`.toLowerCase().includes(search.toLowerCase().trim()));
   return <div className="resources-view">
     <nav className="resource-favourites" aria-label="Favourite websites">
-      {favourites.map(site => <button key={site.icon} title={`Open ${site.name}`} onClick={() => void openUrl(site.url).catch(report)}>
-        <FavouriteIcon name={site.icon} /><span>{site.name}</span>
+      {favourites.map(site => <button key={site.key} title={`Open ${site.name}`} onClick={() => void openUrl(site.url!).catch(report)}>
+        {hasIcon(site.key)&&<FavouriteIcon name={site.key} />}<span>{site.name}</span>
       </button>)}
     </nav>
     <div className="resources-filter"><select aria-label="Resource category" value={category} onChange={e => setCategory(e.target.value)}>
@@ -43,9 +41,9 @@ export default function Resources({ search, items, report, menu }: {
     <table className="links-table resources-table">
       <thead><tr><th>Name</th><th>Type</th><th>Link</th><th className="actions-col" /></tr></thead>
       <tbody>{shown.map(item => <tr key={item.id} data-item-id={item.id}>
-        <td><button onClick={() => void openUrl(item.path).catch(report)}>{item.name}</button></td>
+        <td><button onClick={() => openItem(item)}>{item.name}</button></td>
         <td><small>{categoryOf(item)}</small></td>
-        <td><button className="link-url" onClick={() => void openUrl(item.path).catch(report)}>{item.path.replace(/^https?:\/\//, "").replace(/\/$/, "")}<ExternalLink size={11} /></button></td>
+        <td><button className="link-url" onClick={() => openItem(item)}>{item.path.replace(/^https?:\/\//, "").replace(/\/$/, "")}<ExternalLink size={11} /></button></td>
         <td><button className="icon-button" aria-label={`Actions for ${item.name}`} onClick={event => menu(item.id, event)}><MoreHorizontal size={15} /></button></td>
       </tr>)}</tbody>
     </table>
