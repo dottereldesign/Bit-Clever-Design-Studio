@@ -13,7 +13,7 @@ const redo=[],history=[],calls=[];let callback=0;window.isTauri=true;window.__TA
 
  if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){redo.push(structuredClone(library.items));library.items=history.pop();return;}if(c.action==='redo_organisation'){history.push(structuredClone(library.items));library.items=redo.pop();return;}if(c.action==='set_category'){history.push(structuredClone(library.items));redo.length=0;for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.category=c.value;return;}if(c.action==='add_project'){redo.length=0;history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id)))if(!i.projects.includes(c.target))i.projects.push(c.target);return;}throw Error(c.action);}throw Error(command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(25);}}
 const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')].find(b=>b.querySelector('span')?.textContent===name).click();

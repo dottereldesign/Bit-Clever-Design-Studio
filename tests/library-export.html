@@ -10,7 +10,7 @@ window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback
  if(command==='cancel_library_export'){active.resolve({path:'D:/Backups/partial',files:1,links:2,missing:[],cancelled:true});active=null;return;}
  throw Error('Unexpected command '+command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>5000)throw Error('Timed out: '+label);await pause(20);}}
 const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);

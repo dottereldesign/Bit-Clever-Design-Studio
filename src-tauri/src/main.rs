@@ -8,6 +8,7 @@ mod library;
 mod resources;
 mod sources;
 mod thumbnail;
+mod home_covers;
 mod history;
 mod library_export;
 use db::{err, Result};
@@ -36,6 +37,12 @@ struct State {
     index_progress: Arc<std::sync::Mutex<Option<content::DuplicateProgress>>>,
     exporting: Arc<AtomicBool>,
     export_cancel: Arc<AtomicBool>,
+}
+#[tauri::command]
+async fn save_home_cover(bytes:Vec<u8>,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<home_covers::Cover>{
+    let data=state.db.parent().ok_or("Library folder unavailable")?.to_path_buf();
+    let cover=tauri::async_runtime::spawn_blocking(move||home_covers::save(&data,&bytes)).await.map_err(err)??;
+    app.asset_protocol_scope().allow_file(&cover.path).map_err(err)?;Ok(cover)
 }
 #[tauri::command]
 fn app_version() -> &'static str { env!("CARGO_PKG_VERSION") }
@@ -407,6 +414,9 @@ fn main() {
                     let _ = app.asset_protocol_scope().allow_file(&item.path);
                 }
             }
+            let home_covers=data.join("home-covers");
+            std::fs::create_dir_all(&home_covers)?;
+            app.asset_protocol_scope().allow_directory(&home_covers,true)?;
             let thumbnails = data.join("link-thumbnails");
             std::fs::create_dir_all(&thumbnails)?;
             app.asset_protocol_scope().allow_directory(&thumbnails, true)?;
@@ -484,6 +494,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            save_home_cover,
             open_external_url,
             app_version,
             save_contact_sheet,

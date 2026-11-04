@@ -1,0 +1,86 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Category interaction checks</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
+const item=(id,name,source,kind='image')=>({id,name,source,kind,path:`C:/${source}/${name}.png`,modified:1,added:id,missing:false,tags:[1],projects:[7],favourites:[7]});
+const library={items:[item(1,'Logo','Design/3d'),item(2,'Scene','Design/3d'),item(3,'Brand','Design/branding'),{...item(4,'Photo','Photography'),category:'Photography'},item(5,'Movie','Videos','video'),item(6,'Landing','Design/web_design'),{...item(7,'Nav','Design/branding'),category:'Web Design'}],categories:['3d','branding','Photography'],projects:[{id:7,name:'Website',count:5}],tags:[{id:1,name:'Keep',count:5}],sources:['Design','Design/3d','Design/branding','Photography','Videos'],root:'C:/Design',scanning:false};
+const history=[];const calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:path=>path==="C:/mock-home-cover.png"?(window.__homeCoverUrl??image):image,invoke:async(command,args)=>{
+ if(command==='save_home_cover'){const blob=new Blob([new Uint8Array(args.bytes)],{type:'image/webp'});const bitmap=await createImageBitmap(blob);window.__homeCoverUrl=URL.createObjectURL(blob);const result={path:'C:/mock-home-cover.png',width:bitmap.width,height:bitmap.height};bitmap.close();return result;}
+ calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Change category':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';
+ if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){library.items=history.pop();return;}if(c.action==='set_category'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id))){
+ const folders=new Set(i.component_folders??[]);if(i.category?.startsWith('Components / ')&&i.category!=='Components / Uncategorised')folders.add(i.category);
+ if(c.value.startsWith('Components / ')&&c.value!=='Components / Uncategorised'){folders.add(c.value);i.component_folders=[...folders];i.category='Components / Uncategorised';}else{i.category=c.value;i.component_folders=[];}
+ }if(c.value&&!library.categories.includes(c.value))library.categories.push(c.value);}else if(c.action==='remove_component_folder'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.component_folders=i.component_folders.filter(n=>n!==c.value);}else if(c.action==='restore_categories'){for(const [id,name]of JSON.parse(c.value))library.items.find(i=>i.id===id).category=name;}else if(c.action==='create_category')library.categories.push(c.name);else throw Error('Unexpected change '+c.action);return;}
+ throw Error('Unexpected '+command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+let root=createRoot(document.getElementById('root'));root.render(React.createElement(React.StrictMode,null,React.createElement(App)));
+const pause=ms=>new Promise(r=>setTimeout(r,ms));const assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(25);}}
+const category=name=>document.querySelector(`.source-item[data-category="${name}"]`);const cards=()=>[...document.querySelectorAll('.card')];
+const button=text=>[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')===text||b.textContent.trim()===text));
+const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')].find(b=>b.querySelector('span')?.textContent===name).click();
+const choose=name=>[...document.querySelectorAll('.category-choices button')].find(b=>b.textContent.trim().toLowerCase()===name.toLowerCase()).click();
+const checks=[];const pointerEvents=[];for(const type of ["pointerdown","pointermove","pointerup","lostpointercapture"])document.addEventListener(type,e=>{pointerEvents.push({type,target:e.target.className,x:e.clientX,y:e.clientY});if(pointerEvents.length>20)pointerEvents.shift();},true);
+try {
+ await until(()=>document.querySelector('.home-dashboard')&&document.querySelector('[data-home-destination="category:3d"]'),'Home startup');
+ assert(!document.querySelector('[data-home-tile]'),'Home should start empty');
+ assert(getComputedStyle(document.querySelector('.sidebar-scroll')).scrollbarWidth==='none','Outer sidebar scrollbar visible');
+ for(const nav of document.querySelectorAll('.section-reveal-inner > nav'))assert(getComputedStyle(nav).overflowY==='auto','Folder list must scroll internally');
+ const sidebar=(id)=>document.querySelector(`[data-home-destination="${id}"]`);
+ const tile=(id)=>document.querySelector(`[data-home-tile="${id}"]`);
+ const drop=id=>{const data=new DataTransfer();sidebar(id).dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));document.querySelector('.home-dashboard').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));};
+ for(const id of ['design','category:All Components','project:7']){drop(id);await until(()=>tile(id),'Add '+id);}
+ assert(JSON.parse(localStorage.getItem('home-tiles')).length===3,'Tiles not saved');
+ drop('design');await pause(100);assert(document.querySelectorAll('[data-home-tile]').length===3,'Duplicate tile added');
+ const widthBefore=tile('design').getBoundingClientRect().width;
+ const from=sidebar('collection:links').getBoundingClientRect(),target=document.querySelector('.home-canvas').getBoundingClientRect();
+ window.__pointerAction={id:1,from:{x:from.left+45,y:from.top+from.height/2},to:{x:target.left+target.width/2,y:target.top+100}};
+ await until(()=>window.__pointerActionDone===1,'Mouse drag from sidebar');await until(()=>tile('collection:links'),'Fourth tile');await pause(450);assert(tile('design').getBoundingClientRect().width>=widthBefore,'Fourth tile layout did not adapt');
+ const resize=tile('design').querySelector('.home-resize');const corner=resize.getBoundingClientRect();
+ window.__pointerAction={id:2,from:{x:corner.left+12,y:corner.top+12},to:{x:corner.left+70,y:corner.top+76}};
+ await until(()=>window.__pointerActionDone===2,'Mouse resize');await pause(450);const resizedHeight=JSON.parse(localStorage.getItem('home-tiles'))[0].height;assert(resizedHeight>224,'Pointer resizing did not change height '+JSON.stringify({resizedHeight,action:window.__pointerAction,events:pointerEvents}));
+ resize.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));await pause(450);
+ assert(JSON.parse(localStorage.getItem('home-tiles'))[0].height===resizedHeight+32,'Keyboard resize failed');
+ tile('design').querySelector('[aria-label^="Shape and size"]').click();await until(()=>document.querySelector('.home-tile-options'),'Tile options');
+ [...document.querySelectorAll('.home-tile-options button')].find(b=>b.textContent==='Round').click();await pause(40);assert(JSON.parse(localStorage.getItem('home-tiles'))[0].radius===48,'Shape not saved');
+ [...document.querySelectorAll('.home-tile-options button')].find(b=>b.textContent==='Done').click();
+ await pause(450);const grip=tile('design').querySelector('[aria-label^="Rearrange"]').getBoundingClientRect(),reorderTarget=tile('project:7').getBoundingClientRect();
+ window.__pointerAction={id:3,from:{x:grip.left+12,y:grip.top+12},to:{x:reorderTarget.left+reorderTarget.width/2,y:reorderTarget.top+80}};
+ await until(()=>window.__pointerActionDone===3,'Mouse rearrange');await pause(450);assert(JSON.parse(localStorage.getItem('home-tiles'))[2].id==='design','Pointer reorder failed');
+ document.querySelector('[aria-label="Undo Home layout change"]').click();await pause(450);
+ const signature=()=>JSON.parse(localStorage.getItem('home-tiles')).map(t=>[t.id,t.span,t.height,t.radius]).toString();const saved=signature();tile('project:7').querySelector('.home-tile-open').click();await until(()=>!document.querySelector('.home-dashboard'),'Tile opens destination');
+ document.querySelector('.home-nav').click();await until(()=>tile('project:7'),'Home restores tiles');assert(signature()===saved,'Navigation lost layout');
+ tile('design').querySelector('[aria-label^="Rearrange"]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));await pause(80);assert(JSON.parse(localStorage.getItem('home-tiles'))[1].id==='design','Reorder failed');
+ tile('design').querySelector('[aria-label^="Remove"]').click();await until(()=>!tile('design'),'Remove tile');document.querySelector('[aria-label="Undo Home layout change"]').click();await until(()=>tile('design'),'Undo tile removal');
+ await pause(450);for(const id of ['design','category:All Components','project:7','collection:links']){const a=tile(id).getBoundingClientRect();const canvas=document.querySelector('.home-canvas').getBoundingClientRect();assert(a.left>=canvas.left-1&&a.right<=canvas.right+1,'Tile outside canvas '+JSON.stringify({id,a:{left:a.left,right:a.right,width:a.width},canvas:{left:canvas.left,right:canvas.right,width:canvas.width},style:tile(id).getAttribute('style')}));for(const other of ['design','category:All Components','project:7','collection:links'].filter(x=>x!==id)){const b=tile(other).getBoundingClientRect();assert(a.right<=b.left+1||b.right<=a.left+1||a.bottom<=b.top+1||b.bottom<=a.top+1,'Tiles overlap');}}
+ const coverCanvas=document.createElement('canvas');coverCanvas.width=1200;coverCanvas.height=600;const ctx=coverCanvas.getContext('2d');const gradient=ctx.createLinearGradient(0,0,1200,600);gradient.addColorStop(0,'#d78f57');gradient.addColorStop(.5,'#c9a1b8');gradient.addColorStop(1,'#485e99');ctx.fillStyle=gradient;ctx.fillRect(0,0,1200,600);ctx.fillStyle='#fff3';ctx.beginPath();ctx.arc(860,280,210,0,Math.PI*2);ctx.fill();
+ const blob=await new Promise(resolve=>coverCanvas.toBlob(resolve,'image/png'));const data=new DataTransfer();data.items.add(new File([blob],'home-cover.png',{type:'image/png'}));
+ tile('project:7').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));
+ await until(()=>tile('project:7').querySelector('.home-tile-cover'),'Dropped file becomes a cover');await pause(500);
+ const coverTile=JSON.parse(localStorage.getItem('home-tiles')).find(t=>t.id==='project:7');assert(coverTile.cover.width/coverTile.cover.height===2&&coverTile.autoImageSize,'Cover ratio not retained');
+ const imageRect=tile('project:7').getBoundingClientRect();assert(Math.abs(imageRect.width/imageRect.height-2)<.05,'Cover size does not follow image proportions');assert(!tile('project:7').querySelector('.home-tile-title'),'Cover should display only the image');
+ assert(library.items.length===7&&!document.querySelector('.capture-dialog'),'Cover imported into reference library');
+ document.querySelector('[aria-label="Undo Home layout change"]').click();await until(()=>!tile('project:7').querySelector('.home-tile-cover'),'Undo image cover');
+ tile('project:7').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));await until(()=>tile('project:7').querySelector('.home-tile-cover'),'Restore image cover');
+ const invalid=new DataTransfer();invalid.items.add(new File(['not an image'],'invalid.txt',{type:'text/plain'}));tile('project:7').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:invalid}));await until(()=>document.querySelector('.home-status').textContent.includes('Could not use'),'Invalid image handled');assert(tile('project:7').querySelector('.home-tile-cover'),'Invalid image replaced existing cover');
+ checks.push('PC image drops replace only the tile cover, preserve destination, use image aspect ratio, reflow masonry, support Undo and reject invalid images');
+ checks.push('Home starts empty; sidebar destinations add without duplicates; adaptive layout, sizing, shapes, rearranging, removal, Undo and navigation persistence work');
+ document.querySelector('[title="Section styles · 10 variations"]').click();await until(()=>document.querySelectorAll('.style-study').length===10,'Ten sidebar styles');
+ const sample=document.querySelector('.style-study .section-toggle');sample.click();await pause(300);assert(sample.getAttribute('aria-expanded')==='true','Style sample does not expand');sample.click();await pause(300);
+ // Capture every style together at the large test viewport.
+ window.__captureName="sidebar";window.__screenshotReady=true;await pause(700);
+ for(let i=1;i<=10;i++){if(!document.querySelector('.section-style-dialog')){document.querySelector('[title="Section styles · 10 variations"]').click();await until(()=>document.querySelector('.section-style-dialog'),'Reopen style chooser');}
+ document.querySelector(`[data-style-study="${i}"] .use-section-style`).click();await until(()=>document.querySelector(`.sidebar .section-design.section-style-${i}`),'Apply sidebar style');
+ assert(localStorage.getItem('sidebar-section-style')===String(i),'Style not persisted');
+ const app=document.querySelector('.app');app.style.setProperty('--sidebar-width','168px');await pause(30);for(const heading of document.querySelectorAll('.sidebar .section-feature > .sidebar-heading'))assert(heading.querySelector('.section-title').scrollWidth<=heading.querySelector('.section-title').clientWidth+2,'Title overflows narrow sidebar: '+i);app.style.setProperty('--sidebar-width','208px');assert(!document.querySelector('.sidebar .folder-group.section-feature'),'Subfolders restyled');assert(parseFloat(getComputedStyle(document.querySelector('.sidebar .folder-group .section-toggle')).minHeight)<=27,'Subfolder toggle enlarged');
+ }
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches)assert(getComputedStyle(document.querySelector('.sidebar .section-reveal')).transitionDuration==='0s','Reduced motion ignored');
+ checks.push('All ten sidebar styles apply and persist; previews expand; subfolders stay minimal; scrolling belongs to folder lists');
+ for(let i=1;i<=10;i++){document.querySelector('[title="Home styles · 10 variations"]').click();await until(()=>document.querySelectorAll('.home-style-choice').length===10,'Ten Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');}
+ checks.push('All ten Home styles apply independently of sidebar styles');
+ window.__captureName='canvas';await pause(700);
+ const beforeRestart=signature();root.unmount();root=createRoot(document.getElementById('root'));root.render(React.createElement(App));await until(()=>document.querySelector('.home-dashboard')&&tile('design'),'Home startup after remount');assert(signature()===beforeRestart,'Restart lost tile layout');
+ assert(document.querySelector('.home-dashboard.home-style-10'),'Restart lost Home style');assert(tile('project:7').querySelector('.home-tile-cover'),'Restart lost image cover');
+ checks.push('Restart returns to Home and restores its layout and selected style');
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks,calls:calls.slice(-3)});}
+</script></body></html>

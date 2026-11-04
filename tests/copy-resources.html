@@ -36,7 +36,7 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App,{startOnHome:false})));
 function assert(value, label) { if (!value) throw Error(label); }
 async function until(test, label) { const start = performance.now(); while (!test()) { if (performance.now() - start > 5000) throw Error(`Timed out: ${label}`); await pause(20); } }
 const countCopies = () => calls.filter(call => call.command === 'copy_image').length;

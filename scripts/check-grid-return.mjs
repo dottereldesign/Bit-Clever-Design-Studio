@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+if (!['home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
 const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
@@ -22,7 +22,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!started) throw Error('Test server did not start');
-  for (const dimensions of (fixture === 'performance' ? ['1920,1080'] : fixture === 'wide-preview' ? ['3440,1440', '1920,1080', '1600,940', '1599,940'] : ['1440,940', '960,700'])) {
+  for (const dimensions of (fixture === 'home-styles' ? ['1440,2000', '960,700'] : fixture === 'performance' ? ['1920,1080'] : fixture === 'wide-preview' ? ['3440,1440', '1920,1080', '1600,940', '1599,940'] : ['1440,940', '960,700'])) {
     const profile = await mkdtemp(join(tmpdir(), 'design-grid-check-'));
     try {
       // An isolated headless process uses real browser frames and keyboard events.
@@ -56,19 +56,23 @@ try {
         const { sessionId } = await call('Target.attachToTarget', { targetId, flatten: true });
         const [width, height] = dimensions.split(',').map(Number);
         await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
+        if(fixture==='home-styles'&&width===960) await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]},sessionId);
         await call('Page.bringToFront', {}, sessionId);
         await call('Page.navigate', { url: testUrl }, sessionId);
         let sentEnter = false;
         let lastPointerAction=0;
         let lastResizeAction=0;
         let captured = false;
+        let lastCaptureName="";
         const deadline = Date.now() + 60000;
         while (Date.now() < deadline) {
-          const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady })', returnByValue: true }, sessionId);
-          if (['thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && !captured) {
+          const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady, captureName: window.__captureName })', returnByValue: true }, sessionId);
+          if (['home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (fixture==='home-styles'&&state.value.captureName!==lastCaptureName))) {
             await mkdir('.tools/checks', { recursive: true });
             const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
-            await writeFile(`.tools/checks/${fixture}-${dimensions}.png`, Buffer.from(shot.data, 'base64'));
+            const captureName=fixture==='home-styles'&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";
+            await writeFile(`.tools/checks/${fixture}${captureName}-${dimensions}.png`, Buffer.from(shot.data, 'base64'));
+            lastCaptureName=state.value.captureName;
             captured = true;
           }
           if (state.value?.resize?.id > lastResizeAction) {

@@ -22,7 +22,7 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App,{startOnHome:false})));
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(test, label) {
   const start = performance.now();

@@ -24,6 +24,8 @@ import {
   Folder,
   FolderPlus,
   FolderMinus,
+  House,
+  Palette,
   Grid2X2,
   ImageOff,
   Link2,
@@ -73,6 +75,9 @@ import DuplicatesDialog from "./DuplicatesDialog";
 import ItemMenu, { type ItemMenuTarget } from "./ItemMenu";
 import RemovedDialog from "./RemovedDialog";
 import SidebarSection from "./SidebarSection";
+import useHomeShortcutDrag from "./useHomeShortcutDrag";
+import HomeDashboard, { homeMime, type HomeDestination } from "./HomeDashboard";
+import SectionStylePicker, { readSectionStyle } from "./SectionStylePicker";
 import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
 import {componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
@@ -214,7 +219,9 @@ function Popover({
   );
 }
 
-export default function App() {
+export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
+  const [homeView,setHomeView]=useState(startOnHome);
+  const [homeDrop,setHomeDrop]=useState<string|null>(null);
   const [lib, setLib] = useState<Library>(empty),
     [ready, setReady] = useState(false),
     [error, setError] = useState(""),
@@ -243,6 +250,8 @@ export default function App() {
     [sidebarWidth, setSidebarWidth] = useState(() =>
       storedNumber("sidebar-width", 208),
     );
+  const [sectionStyle,setSectionStyle]=useState(readSectionStyle);
+  const [sectionStylesOpen,setSectionStylesOpen]=useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set()),
     [viewer, setViewer] = useState<number | null>(null),
     [modal, setModal] = useState<Modal | null>(null),
@@ -407,6 +416,7 @@ export default function App() {
     setSource("");
   };
   const navigate = (id: number | null, onlyLinks = false) => {
+    setHomeView(false);
     setQuickPreview(null);
     setGridReturn(null);
     setRecent(null);
@@ -451,6 +461,26 @@ export default function App() {
     }
     return counts;
   }, [lib.items]);
+  const homeDestinations:HomeDestination[]=[
+    {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&!isComponent(categoryOf(i))).length},
+    {id:"group:general",label:"General",kind:"group",value:"general",group:"general"},
+    {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
+    ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
+    ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?name.slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
+  ];
+  const openHomeDestination=(destination:HomeDestination)=>{
+    if(destination.kind==="project"){navigate(Number(destination.value));return;}
+    navigate(null,destination.value==="links");
+    if(destination.kind==="category"){if(destination.value!=="__all__")setCategory(destination.value);return;}
+    const key=destination.value;
+    if(isBoardDestination(key))setBoardView(key);
+    if(key==="resources")setResourcesView(true);
+    if(key==="facebook"){setVideoView(true);setSource("Videos");}
+    if(key==="added"||key==="viewed"){setRecent(key);if(key==="viewed"){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}}
+  };
+  const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop);
+  const homeDrag=(id:string)=>homeShortcutDrag.props(id,homeDestinations.find(d=>d.id===id)?.label??"Destination");
   const changeCategory = async (ids:number[],name:string) => {
     const items=lib.items.filter(i=>ids.includes(i.id)&&i.kind!=="link");
     if(!items.length)throw Error("Select images or videos to change category.");
@@ -479,7 +509,8 @@ export default function App() {
   });
   const folderRow = (s: string) => (
     <button
-      className={`nav-item source-item ${category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
+      className={`nav-item source-item ${!homeView && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
+      {...homeDrag(`category:${s}`)}
       data-category={s}
       {...categoryDropProps(s)}
       key={s}
@@ -563,7 +594,7 @@ export default function App() {
       const typing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable=true]",
       );
-      if(libraryExportOpen||extraDialog)return;
+      if(libraryExportOpen||extraDialog||sectionStylesOpen||(homeView&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen))return;
       if(quickPreview!==null){
         if(e.key==="Escape"||(e.key===" "&&!typing&&!(e.target as HTMLElement).closest("button,video"))){e.preventDefault();if(!e.repeat)setQuickPreview(null);}
         if(!typing&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();const ids=receiptBrowse.length?receiptBrowse:filtered.map(i=>i.id);const n=ids.indexOf(quickPreview);setQuickPreview(ids[(n+(e.key==="ArrowRight"?1:-1)+ids.length)%ids.length]??null);}
@@ -621,7 +652,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse]);
+  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse,homeView,sectionStylesOpen]);
   const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
@@ -725,6 +756,7 @@ export default function App() {
       }
     };
     const over = (e: DragEvent) => {
+      if((e.target as HTMLElement)?.closest(".home-dashboard")){setDropActive(false);return;}
       if (!extraDialog && e.dataTransfer?.types.includes("Files")) {
         e.preventDefault();
         setDropActive(true);
@@ -735,6 +767,7 @@ export default function App() {
     };
     const drop = (e: DragEvent) => {
       setDropActive(false);
+      if((e.target as HTMLElement)?.closest(".home-dashboard"))return;
       if(extraDialog)return;
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length) {
@@ -868,6 +901,7 @@ export default function App() {
   return (
     <div
       className="app"
+      onClickCapture={homeShortcutDrag.captureClick}
       onDragStart={itemDrag.start}
       onPointerDown={itemDrag.pointerDown}
       onPointerOver={e=>{const target=(e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");previewCandidate.current=target?Number(target.dataset.itemId):null;}}
@@ -892,13 +926,14 @@ export default function App() {
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </div>
         <div className="sidebar-scroll">
-        <SidebarSection name="General">
+        <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><House size={16}/><span>Home</span></button>
+        <SidebarSection name="General" dropProps={homeDrag("group:general")}>
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(({key,name,pinned})=>{
             const board=isBoardDestination(key);
-            const active=key==="links"?linksOnly:key==="resources"?resourcesView:key==="facebook"?videoView:board?boardView===key:recent===key;
+            const active=!homeView&&(key==="links"?linksOnly:key==="resources"?resourcesView:key==="facebook"?videoView:board?boardView===key:recent===key);
             const count=key==="links"?lib.items.filter(i=>i.kind==="link"&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[key]).length:key==="facebook"?lib.items.filter(i=>i.kind==="video"&&(i.source==="Videos"||i.source.startsWith("Videos/"))).length:0;
-            return <button className={`nav-item ${active?"active":""}`} key={key} onClick={()=>{
+            return <button className={`nav-item ${active?"active":""}`} key={key} {...homeDrag(`collection:${key}`)} onClick={()=>{
               navigate(null,key==="links");
               if(board)setBoardView(key);
               if(key==="resources")setResourcesView(true);
@@ -911,7 +946,7 @@ export default function App() {
           })}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Projects" action={
+        <SidebarSection name="Projects" dropProps={homeDrag("group:projects")} action={
           <IconButton
             title="New project"
             onClick={() => setModal({ kind: "project" })}
@@ -922,7 +957,7 @@ export default function App() {
           <nav aria-label="Projects">
             {lib.projects.map((p) => (
               <div
-                className={`project-row ${project === p.id ? "active" : ""}`}
+                className={`project-row ${!homeView && project === p.id ? "active" : ""}`}
                 data-project-id={p.id}
                 data-project-name={p.name}
                 key={p.id}
@@ -940,7 +975,7 @@ export default function App() {
                 }}
                 onDrop={(e) => drop(e, p.id)}
               >
-                <button className="nav-item" onClick={() => navigate(p.id)}>
+                <button className="nav-item" {...homeDrag(`project:${p.id}`)} onClick={() => navigate(p.id)}>
                   <Folder size={15} />
                   <span>{p.name}</span>
                   <small>{p.count || ""}</small>
@@ -975,7 +1010,7 @@ export default function App() {
           )}
         </div>
         </SidebarSection>
-        <SidebarSection name="Categories" label="Design Inspo" dropProps={{...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
+        <SidebarSection name="Categories" label="Design Inspo" identity="design" styleId={sectionStyle} dropProps={{...homeDrag("design"),...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
           <IconButton
             title="New category"
             onClick={() => setModal({kind:"category",ids:[]})}
@@ -984,7 +1019,8 @@ export default function App() {
           </IconButton>}>
         <nav className="source-list" aria-label="Design Inspo">
           <button
-            className={`nav-item ${category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
+            className={`nav-item ${!homeView&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
+            {...homeDrag("design")}
             onClick={() => navigate(null)}
           >
             <Folder size={14} />
@@ -995,7 +1031,7 @@ export default function App() {
           {[...categories, ""].map(folderRow)}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Components" label="App Components" dropProps={{...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
+        <SidebarSection name="Components" label="App Components" identity="components" styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
           <nav aria-label="App Components">
             {folderRow(allComponents)}
             {folderRow(componentInbox)}
@@ -1007,7 +1043,7 @@ export default function App() {
           </nav>
         </SidebarSection>
         </div>
-        <div className="sidebar-footer"><IconButton title="Customise shortcuts" onClick={()=>setExtraDialog("shortcuts")}><SlidersHorizontal size={15}/></IconButton>
+        <div className="sidebar-footer"><IconButton title="Section styles · 10 variations" onClick={()=>setSectionStylesOpen(true)}><Palette size={15}/></IconButton><IconButton title="Customise shortcuts" onClick={()=>setExtraDialog("shortcuts")}><SlidersHorizontal size={15}/></IconButton>
           <button onClick={() => setModal({ kind: "settings" })}>
             <Settings2 size={15} />
             <span>Settings</span>
@@ -1028,6 +1064,7 @@ export default function App() {
         />
       </aside>
       <main inert={quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
+        {homeView?<HomeDashboard destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
         <header className="topbar">
           <div className="view-title">
             <h1>{title}</h1>
@@ -1329,6 +1366,7 @@ export default function App() {
             </>
           )}
         </div>
+        </>}
       </main>
       {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>}
       {activeItem && (
@@ -1433,6 +1471,8 @@ export default function App() {
         </div>
       )}
       {removedOpen && <RemovedDialog close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
+      {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Drop on Home</small></div>}
+      {sectionStylesOpen&&<SectionStylePicker selected={sectionStyle} close={()=>setSectionStylesOpen(false)} choose={id=>{setSectionStyle(id);localStorage.setItem("sidebar-section-style",String(id));setSectionStylesOpen(false);}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
         sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}

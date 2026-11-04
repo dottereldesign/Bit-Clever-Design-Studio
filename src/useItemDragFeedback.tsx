@@ -44,7 +44,8 @@ export default function useItemDragFeedback(options:Options) {
     };
     const scroll=()=>{
       const session=pointer.current;if(!session?.active)return;
-      const list=document.querySelector<HTMLElement>('.sidebar-scroll');
+      const inner=document.elementFromPoint(session.x,session.y)?.closest<HTMLElement>('.section-reveal-inner > nav');
+      const list=inner&&inner.scrollHeight>inner.clientHeight?inner:document.querySelector<HTMLElement>('.sidebar-scroll');
       if(list){const rect=list.getBoundingClientRect();if(session.x>=rect.left&&session.x<=rect.right&&session.y>=rect.top&&session.y<=rect.bottom){
         const speed=session.y<rect.top+28?-Math.ceil((rect.top+28-session.y)/3):session.y>rect.bottom-28?Math.ceil((session.y-rect.bottom+28)/3):0;
         if(speed){list.scrollTop+=speed;highlight(session);}

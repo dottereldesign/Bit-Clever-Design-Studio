@@ -25,7 +25,7 @@ window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()
   throw Error(`Unexpected ${command}`);
 }};
 window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){let start=performance.now();while(!test()){if(performance.now()-start>5000)throw Error(`Timed out: ${label}`);await pause(20);}}

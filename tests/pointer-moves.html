@@ -6,16 +6,16 @@ const history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTE
  calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Change category':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';
  if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){library.items=history.pop();return;}history.push(structuredClone(library.items));if(c.action==='set_category')for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.category=c.value;else if(c.action==='add_project')for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.projects.push(c.target);else throw Error(c.action);return;}throw Error(command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>10000)throw Error('Timed out: '+label);await pause(20);}}
 const category=name=>document.querySelector(`[data-category="${name}"]`),checks=[];
 const events=[];for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture','dragstart'])document.addEventListener(type,e=>{events.push({type,target:e.target.className,x:e.clientX,y:e.clientY,primary:e.isPrimary,buttons:e.buttons});if(events.length>30)events.shift();},true);
 let actionId=0;
 async function drag(target,{during,escape=false,ctrl=false,pause:delay=0,scrollTarget=true}={}){
- document.querySelector('.content').scrollTop=0;if(scrollTarget)target.scrollIntoView({block:'center'});await pause(100);
+ document.querySelector('.content').scrollTop=0;if(scrollTarget)target.scrollIntoView({block:'center'});await pause(350);
  const content=document.querySelector('.content').getBoundingClientRect();const card=[...document.querySelectorAll('.card .card-open')].find(el=>{const r=el.getBoundingClientRect();return r.top>=content.top&&r.bottom<=innerHeight;});assert(card,'Visible drag source missing');const from=card.getBoundingClientRect(),to=target.getBoundingClientRect();window.__duringPointerDrag=during;
- window.__checkPointerDrag=()=>{window.__dragSnapshot={badge:document.querySelector('.item-drag-badge')?.textContent,highlight:target.classList.contains('drop-target'),scroll:document.querySelector('.sidebar-scroll')?.scrollTop??0};};
+ window.__checkPointerDrag=()=>{window.__dragSnapshot={badge:document.querySelector('.item-drag-badge')?.textContent,highlight:target.classList.contains('drop-target'),scroll:document.querySelector('.source-list')?.scrollTop??0};};
  window.__pointerAction={id:++actionId,from:{x:from.left+from.width/2,y:from.top+from.height/2},to:{x:to.left+to.width/2,y:to.top+Math.min(to.height/2,12)},escape,ctrl,pause:delay};
  await until(()=>window.__pointerActionDone===actionId,'Native mouse action');await pause(300);assert(!document.querySelector('.viewer'),'Drag opened full viewer');assert(!document.querySelector('.item-drag-badge'),'Badge stuck after release');
 }
@@ -28,7 +28,7 @@ try{
  await drag(category('3D'));await until(()=>library.items.filter(i=>i.category==='3D').length===1,'Repeated move');
  const changes=calls.filter(c=>c.command==='update').length;await drag(category('Branding'),{escape:true});assert(calls.filter(c=>c.command==='update').length===changes,'Escape still dropped');await drag(category('Logo'));checks.push('Further drags work after bulk changes and after Escape cancellation, without opening the viewer');
  const project=document.querySelector('[data-project-id="8"]');await drag(project);await until(()=>library.items.some(i=>i.projects.includes(8)),'Project drop');checks.push('The same direct drag adds references to projects');
- const list=document.querySelector('.sidebar-scroll');list.scrollTop=0;await pause(30);const rect=list.getBoundingClientRect();const fake={scrollIntoView(){},classList:{contains(){return true;}},getBoundingClientRect:()=>({left:rect.left,top:rect.bottom-8,width:rect.width,height:8})};
+ const list=document.querySelector('.source-list');list.scrollIntoView({block:'center'});list.scrollTop=0;await pause(30);const rect=list.getBoundingClientRect();const fake={scrollIntoView(){},classList:{contains(){return true;}},getBoundingClientRect:()=>({left:rect.left,top:rect.bottom-8,width:rect.width,height:8})};
  await drag(fake,{pause:600,scrollTarget:false,escape:true});assert(window.__dragSnapshot.scroll>0,'Category list did not auto-scroll');checks.push('Hovering near the category list edge auto-scrolls to further destinations');
 
  const section=name=>document.querySelector(`[data-section-label="${name}"]`);
