@@ -62,7 +62,7 @@ export default function ItemMenu({ target, lib, close, add, tags, reveal, remove
       </div>;
     }) : <div className="context-section">No projects yet</div>}
     <hr />
-    {items.some(i=>i.kind!=="link")&&<button role="menuitem" onClick={()=>{close();category();}}>Change category…</button>}
+    {items.some(i=>i.kind!=="link")&&<button role="menuitem" onClick={()=>{close();category();}}>Organise folders…</button>}
     <button role="menuitem" onClick={() => { close(); tags(); }}><Tag size={13} /> Tags</button>
     {items.length === 1 && items[0].kind === "link" && <button role="menuitem" onClick={() => { close(); editLink(items[0]); }}>Edit link</button>}
     {items.length === 1 && items[0].kind === "link" && !isTableLink(items[0]) && <button role="menuitem" onClick={() => { close(); editThumbnail(items[0]); }}>Edit thumbnail</button>}

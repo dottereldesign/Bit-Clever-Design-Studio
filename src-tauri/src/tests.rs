@@ -1142,3 +1142,34 @@ fn contact_sheet_saves_a_decodable_png_and_preserves_other_destinations() {
     assert!(crate::write_contact_sheet(&other, png.get_ref()).is_err());
     assert_eq!(std::fs::read(&other).unwrap(), b"original");
 }
+
+
+#[test]
+fn component_folders_add_remove_undo_and_category_moves_are_atomic() {
+    let temp=tempfile::tempdir().unwrap();let path=temp.path().join("components.sqlite");db::init(&path).unwrap();
+    let conn=db::connect(&path).unwrap();
+    conn.execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES (1,'one.png','One','image','Design/web_design',1),(2,'two.png','Two','image','Design/branding',2),(3,'https://example.com','Link','link','',3); INSERT INTO item_categories VALUES(1,'Components / Navbars');").unwrap();
+    let apply=|action,ids,value|db::change(&path,change(action,ids,None,None,value));
+    let folders=||db::load(&path,false).unwrap().items[0].component_folders.clone();
+    apply("set_category",vec![1],Some("Components / Headers")).unwrap();
+    assert_eq!(folders(),vec!["Components / Headers","Components / Navbars"]);
+    db::init(&path).unwrap();assert_eq!(folders().len(),2);
+    apply("set_category",vec![1],Some("Components / Headers")).unwrap();assert_eq!(folders().len(),2);
+    apply("remove_component_folder",vec![1],Some("Components / Headers")).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    apply("undo_organisation",vec![],None).unwrap();assert_eq!(folders().len(),2);
+    apply("redo_organisation",vec![],None).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    apply("remove_component_folder",vec![1],Some("Components / Navbars")).unwrap();assert!(folders().is_empty());
+    assert_eq!(db::load(&path,false).unwrap().items[0].category.as_deref(),Some("Components / Uncategorised"));
+    apply("undo_organisation",vec![],None).unwrap();
+    apply("set_category",vec![1],Some("branding")).unwrap();assert!(folders().is_empty());
+    apply("set_category",vec![1],Some("photography")).unwrap();
+    assert_eq!(db::load(&path,false).unwrap().items[0].category.as_deref(),Some("photography"));
+    apply("undo_organisation",vec![],None).unwrap();
+    apply("undo_organisation",vec![],None).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    assert!(apply("set_category",vec![1,999999],Some("Components / Footers")).is_err());assert_eq!(folders(),vec!["Components / Navbars"]);
+    assert!(apply("set_category",vec![3],Some("Components / Headers")).is_err());
+    assert!(apply("remove_component_folder",vec![1],Some("branding")).is_err());
+    // Adding across a mixed selection preserves each item's existing memberships.
+    apply("set_category",vec![1,2],Some("Components / Headers")).unwrap();assert_eq!(folders().len(),2);
+    assert_eq!(db::load(&path,false).unwrap().items[1].component_folders,vec!["Components / Headers"]);
+}

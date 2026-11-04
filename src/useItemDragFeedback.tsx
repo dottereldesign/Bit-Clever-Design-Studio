@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { isComponent, componentInbox } from "./componentsLibrary";
 import { categoryLabel } from "./model";
 
 type Feedback = { count: number; x: number; y: number; action: string };
@@ -27,7 +28,7 @@ export default function useItemDragFeedback(options:Options) {
       const sidebar=element?.closest('.sidebar');
       const target=element?.closest<HTMLElement>('[data-category],[data-project-id]');
       const category=target?.dataset.category;
-      const action=category!==undefined?`Move to ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
+      const action=category!==undefined?`${isComponent(category)&&category!==componentInbox?"Add to":"Move to"} ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
       // Keep the badge outside the sidebar so every destination stays readable.
       const left=sidebar?sidebar.getBoundingClientRect().right+12:x+18;
       setFeedback({count:count.current,x:Math.max(8,Math.min(left,window.innerWidth-272)),y:Math.max(8,Math.min(y+18,window.innerHeight-48)),action});

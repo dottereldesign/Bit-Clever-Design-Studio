@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub enum Patch {
     Category(i64, Option<String>),
+    ComponentFolders(i64, Vec<String>),
     Member(bool, i64, i64, Option<i64>),
     Archived(i64, bool),
     Link(i64, String, String),
@@ -23,16 +24,20 @@ pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch
     let value = c.value.as_deref().unwrap_or("").trim();
     let target = c.target.unwrap_or(0);
     let label = match c.action.as_str() {
-        "set_category" => {
+        "set_category" | "remove_component_folder" => {
             let mut ids=c.ids.clone();ids.sort();ids.dedup();
             for id in ids {
                 let source: Option<String> = db.query_row("SELECT source FROM items WHERE id=? AND kind!='link'",[id],|r|r.get(0)).optional().map_err(err)?;
                 if let Some(source)=source {
                     let previous: Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
-                    if previous.clone().unwrap_or_else(||db::default_category(&source))!=value {patches.push(Patch::Category(id,previous));}
+                    let folders=db::component_memberships(db,id)?;
+                    if previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") {
+                        patches.push(Patch::Category(id,previous));
+                        patches.push(Patch::ComponentFolders(id,folders));
+                    }
                 }
             }
-            "Change category"
+            if value.starts_with("Components / ") {"Change component folders"} else {"Change category"}
         }
         "add_project"|"remove_project"|"add_tag"|"remove_tag"|"pin_project"|"unpin_project" => {
             let project=c.action.ends_with("project");
@@ -111,6 +116,7 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 // travel back to the other stack without replaying commands or changing IDs.
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
+        Patch::ComponentFolders(id,_) => Patch::ComponentFolders(*id,db::component_memberships(db,*id)?),
         Patch::Category(id,_) => Patch::Category(*id,db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?),
         Patch::Member(project,id,label,_) => {
             let query=if *project {"SELECT favourite FROM item_projects WHERE item_id=? AND label_id=?"} else {"SELECT 0 FROM item_tags WHERE item_id=? AND label_id=?"};
@@ -154,6 +160,10 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
     for patch in serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)? {
         inverses.push(inverse(db,&patch)?);
         match patch {
+            Patch::ComponentFolders(id,names)=>{
+                db.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;
+                for name in names {db.execute("INSERT INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,name]).map_err(err)?;}
+            },
             Patch::Category(id,name)=>{if let Some(name)=name {db.execute("INSERT INTO item_categories(item_id,name) SELECT id,? FROM items WHERE id=? ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![name,id]).map_err(err)?;}else{db.execute("DELETE FROM item_categories WHERE item_id=?",[id]).map_err(err)?;}},
             Patch::Member(project,id,label,previous)=>{
                 let table=if project{"item_projects"}else{"item_tags"};

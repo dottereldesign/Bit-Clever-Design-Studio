@@ -169,3 +169,20 @@ it("Photography is a category, with explicit moves taking precedence",()=>{
   equal(categoryOf({...photo,category:"branding"}),"branding");
   equal(filterItems([photo],{...defaults,category:"Photography"}).map(i=>i.id),[1]);
 });
+
+
+describe("component folder memberships",()=>{
+  it("shows one component in both folders, once in All Components, and not in the inbox",()=>{
+    const item={...items[0],category:"Components / Uncategorised",component_folders:["Components / Navbars","Components / Headers"]};
+    for(const category of ["Components / Navbars","Components / Headers","All Components"])
+      equal(filterItems([item],{...defaults,category}).map(i=>i.id),[item.id]);
+    equal(filterItems([item],{...defaults,category:"Components / Uncategorised"}),[]);
+    equal(filterItems([{...item,component_folders:[]}],{...defaults,category:"Components / Uncategorised"}).length,1);
+  });
+  it("keeps legacy component folders visible and ordinary categories single-valued",()=>{
+    equal(filterItems([{...items[0],category:"Components / Navbars"}],{...defaults,category:"Components / Navbars"}).length,1);
+    const regular={...items[0],category:"branding",component_folders:["Components / Navbars"]};
+    equal(filterItems([regular],{...defaults,category:"Components / Navbars"}),[]);
+    equal(filterItems([regular],{...defaults,category:"branding"}).length,1);
+  });
+});

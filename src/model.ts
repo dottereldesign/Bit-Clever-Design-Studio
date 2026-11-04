@@ -1,4 +1,4 @@
-import { allComponents, filingCategory, isComponent, isWebDesign } from "./componentsLibrary";
+import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox } from "./componentsLibrary";
 export type Item = {
   id: number;
   path: string;
@@ -14,6 +14,7 @@ export type Item = {
   source_url?: string;
   thumbnail?: string;
   category?: string | null;
+  component_folders?: string[];
 };
 export type Label = { id: number; name: string; count: number };
 export const isResource = (item: Item) => item.kind === "link" && (item.source === "Resources" || item.source.startsWith("Resources/"));
@@ -67,7 +68,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
       (!f.project || i.projects.includes(f.project)) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
-      (f.category == null || (i.kind !== "link" && (f.category === allComponents ? isComponent(categoryOf(i)) : categoryOf(i) === f.category))) &&
+      (f.category == null || (i.kind !== "link" && (f.category === allComponents ? isComponent(categoryOf(i)) : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : categoryOf(i) === f.category)))) &&
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&
@@ -104,3 +105,12 @@ export const categoryLabel = (name: string): string => name.replace(/_/g," ").tr
   /^(2d|3d|ui|ux|ai|ar|vr|css|html)$/i.test(word)?word.toUpperCase():word===word.toLocaleLowerCase()?word.charAt(0).toLocaleUpperCase()+word.slice(1):word
 ) || "Uncategorised";
 export const libraryCategories = (lib: Library): string[] => [...new Set([...(lib.categories ?? []), ...lib.sources.filter(s=>s.startsWith("Design/")).map(s=>s.slice(7).split('/')[0]), ...lib.items.filter(i=>i.kind!=="link").map(categoryOf)].filter(name=>!!name&&!isWebDesign(name)&&!isComponent(name)&&name!==allComponents&&name.toLowerCase()!=="captures"))].sort((a,b)=>a.localeCompare(b));
+
+
+// Legacy single-folder components remain visible until their first membership edit.
+export const componentFoldersOf = (item: Item): string[] => {
+  const category=categoryOf(item);
+  if (!isComponent(category)) return [];
+  const folders=[...new Set([...(item.component_folders ?? []), ...(category!==componentInbox?[category]:[])])].filter(n=>isComponent(n)&&n!==componentInbox);
+  return folders.length?folders:[componentInbox];
+};

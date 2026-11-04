@@ -1631,7 +1631,9 @@ main {
 .thumbnail-crop-box { position:absolute; border:2px solid white; box-shadow:0 0 0 2000px #0008; cursor:move; touch-action:none; }
 .thumbnail-edit-preview { display:block; max-height:48vh; max-width:100%; margin:16px auto; }
 .source-item.drop-target { background:#e4eddb; outline:2px solid #728967; outline-offset:-2px; }
-.category-picker { width:min(420px,calc(100vw - 36px)); }
+.category-picker { width:min(460px,calc(100vw - 36px)); max-height:calc(100vh - 40px); overflow-y:auto; }
+.category-choices [aria-checked="true"] { background:#edf0e8; font-weight:600; }
+.category-choices small { margin-left:auto; }
 .category-picker form>input { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; margin:4px 0 12px; }
 .category-choices { display:flex; flex-direction:column; gap:3px; max-height:42vh; overflow-y:auto; margin-bottom:10px; }
 .category-choices button { display:flex; align-items:center; gap:9px; padding:9px 10px; text-align:left; border:0; background:transparent; border-radius:5px; }

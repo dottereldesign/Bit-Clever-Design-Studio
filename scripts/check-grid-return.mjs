@@ -65,7 +65,7 @@ try {
         const deadline = Date.now() + 60000;
         while (Date.now() < deadline) {
           const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady })', returnByValue: true }, sessionId);
-          if (['thumbnail-loading', 'wide-preview', 'workflow-tools'].includes(fixture) && state.value?.capture && !captured) {
+          if (['thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && !captured) {
             await mkdir('.tools/checks', { recursive: true });
             const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
             await writeFile(`.tools/checks/${fixture}-${dimensions}.png`, Buffer.from(shot.data, 'base64'));

@@ -29,6 +29,8 @@ pub struct Item {
     pub thumbnail: String,
     #[serde(default)]
     pub category: Option<String>,
+    #[serde(default)]
+    pub component_folders: Vec<String>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Label {
@@ -104,6 +106,7 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE INDEX IF NOT EXISTS idx_file_hash ON fingerprints(file_hash);
       CREATE INDEX IF NOT EXISTS idx_pixel_hash ON fingerprints(pixel_hash);
       CREATE TABLE IF NOT EXISTS duplicate_recovery(item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,original_path TEXT NOT NULL,recovery_path TEXT NOT NULL,keeper_id INTEGER NOT NULL,removed_at INTEGER NOT NULL);").map_err(err)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS item_component_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -176,6 +179,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
                 source_url: r.get(8)?,
                 thumbnail: r.get(9)?,
                 category: None,
+                component_folders: vec![],
             })
         })
         .map_err(err)?
@@ -213,6 +217,13 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
             if let Some(n) = lookup.get(&id) {
                 items[*n].favourites.push(project);
             }
+        }
+    }
+    {
+        let mut stmt=db.prepare("SELECT item_id,name FROM item_component_folders ORDER BY name").map_err(err)?;
+        for row in stmt.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)? {
+            let (id,name)=row.map_err(err)?;
+            if let Some(n)=lookup.get(&id) {items[*n].component_folders.push(name);}
         }
     }
     let overrides = {
@@ -311,8 +322,27 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     if !name.is_empty() { valid_name(name)?; }
     let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND kind!='link' AND archived=0)",[id],|r|r.get(0)).map_err(err)?;
     if !exists { return Err("Only references still in your library can change category.".into()); }
+    if name.starts_with("Components / ") && name != "Components / Uncategorised" {
+        materialize_component_folder(db,id)?;
+        db.execute("INSERT OR IGNORE INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,name]).map_err(err)?;
+    } else {
+        db.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;
+    }
+    let name=if name.starts_with("Components / ") {"Components / Uncategorised"} else {name};
     if !name.is_empty() { db.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[name]).map_err(err)?; }
     db.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,name]).map_err(err)?;
+    Ok(())
+}
+pub fn component_memberships(db:&Connection,id:i64)->Result<Vec<String>> {
+    let mut stmt=db.prepare("SELECT name FROM item_component_folders WHERE item_id=? ORDER BY name").map_err(err)?;
+    let rows=stmt.query_map([id],|r|r.get(0)).map_err(err)?;
+    rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)
+}
+fn materialize_component_folder(db:&Connection,id:i64)->Result<()> {
+    let previous:Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
+    if let Some(name)=previous.filter(|n|n.starts_with("Components / ")&&n!="Components / Uncategorised") {
+        db.execute("INSERT OR IGNORE INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,name]).map_err(err)?;
+    }
     Ok(())
 }
 fn valid_name(name: &str) -> Result<&str> {
@@ -370,6 +400,16 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         "set_category" => {
             if c.ids.is_empty() { return Err("Select at least one reference.".into()); }
             for id in c.ids { assign_category(&tx,id,value.trim())?; }
+        }
+        "remove_component_folder" => {
+            if !value.starts_with("Components / ") || value=="Components / Uncategorised" {return Err("Choose a component folder.".into());}
+            for id in c.ids {
+                let category:Option<String>=tx.query_row("SELECT c.name FROM item_categories c JOIN items i ON i.id=c.item_id WHERE i.id=? AND i.kind!='link' AND i.archived=0",[id],|r|r.get(0)).optional().map_err(err)?;
+                if !category.is_some_and(|n|n.starts_with("Components / ")) {return Err("Select a component still in your library.".into());}
+                materialize_component_folder(&tx,id)?;
+                tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;
+                tx.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=?",[id]).map_err(err)?;
+            }
         }
         "restore_categories" => {
             let previous: Vec<(i64,String)> = serde_json::from_str(value).map_err(err)?;

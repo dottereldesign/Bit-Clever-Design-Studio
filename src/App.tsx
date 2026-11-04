@@ -74,7 +74,7 @@ import RemovedDialog from "./RemovedDialog";
 import SidebarSection from "./SidebarSection";
 import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
-import {categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
+import {componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
 
 const empty: Library = {
   items: [],
@@ -445,7 +445,7 @@ export default function App() {
     for (const item of lib.items) {
       if (item.kind === "link") continue;
       const name = categoryOf(item);
-      counts.set(name, (counts.get(name) ?? 0) + 1);
+      for (const folder of isComponent(name)?componentFoldersOf(item):[name]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
       if (isComponent(name)) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
     }
     return counts;
@@ -457,7 +457,7 @@ export default function App() {
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
     await mutate({action:"set_category",ids:items.map(i=>i.id),value:name});
     setUndoIds([]);setCategoryUndo(previous);setSelected(new Set());
-    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} moved to ${categoryLabel(name)}`;
+    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${isComponent(name) && name!==componentInbox ? "added to" : "moved to"} ${categoryLabel(name)}`;
     setNotice(categoryUndoNotice.current);
   };
   const categoryDropProps = (name:string) => ({
@@ -471,7 +471,7 @@ export default function App() {
       data-category={s}
       {...categoryDropProps(s)}
       key={s}
-      title={`Open ${categoryLabel(s)}; drop references here to change category`}
+      title={`Open ${categoryLabel(s)}; drop references here to ${isComponent(s)&&s!==componentInbox?"add to this folder":"change category"}`}
       onClick={() => { navigate(null); setCategory(s); }}
     >
       <Folder size={14} />
@@ -620,7 +620,7 @@ export default function App() {
     const prior=new Map(lib.items.map(i=>[i.id,i]));
     const already=result.reused>0&&!result.added&&saved.every(i=>{
       const previous=prior.get(i.id);
-      return targetCategory===null||!!previous&&categoryOf(previous)===filingCategory(targetCategory);
+      return targetCategory===null||!!previous&&(isComponent(filingCategory(targetCategory))?componentFoldersOf(previous).includes(filingCategory(targetCategory)):categoryOf(previous)===filingCategory(targetCategory));
     });
     const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
       result.added&&result.reused?`${result.added} added · ${result.reused} reused in ${destination}`:
@@ -1178,7 +1178,7 @@ export default function App() {
               <X size={14} />
             </IconButton>
             <span>{selected.size} selected</span>
-            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Change category (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Change category</button>}
+            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Organise folders (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Organise folders</button>}
             <button
               onClick={() => setModal({ kind: "projects", ids: [...selected] })}
             >
@@ -1354,7 +1354,11 @@ export default function App() {
         </div>
       )}
       {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{await refresh();setModal(null);setNotice("Thumbnail updated");}}/>}
-      {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
+      {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
+        const ids=modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))??[];
+        await mutate({action:remove?"remove_component_folder":"set_category",ids,value:name});
+        setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from component folder":"Added to component folder");
+      }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
       {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
         <Dialog
           modal={modal}
