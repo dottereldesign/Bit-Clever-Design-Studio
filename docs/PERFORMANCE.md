@@ -30,7 +30,7 @@ The original masonry virtualizer multiplied overscan by the number of lanes afte
 
 The media grid now calculates non-overlapping positions from cached image proportions, batches image-size updates once per animation frame, and mounts only thumbnails near the visible viewport. Resizing recalculates positions without remounting the grid. Still-image hover uses CSS; motion previews retain hover state. Image dimensions are cached in memory with a bounded entry count, without storing user paths or image bytes. All media categories and project galleries use this layout; thumbnail link boards use responsive CSS columns.
 
-Observed synthetic workload results (not a universal speed guarantee):
+The two retained reports each record one run on 3 November 2026 UTC at 1920 × 1080, using headless Chrome and the Vite development server. The gallery change landed in `d4e7673` (parent `86546f4`). The reports did not record the tested checkout SHAs, machine specifications or Chrome version. For future comparisons, record those details and the number of repetitions alongside each result.
 
 | Measurement | Before | After |
 | --- | ---: | ---: |

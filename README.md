@@ -1,12 +1,14 @@
-# Design
+# BitClever Design Studio
 
 A personal Windows library for images, videos and inspiration links.
 
 [Download Windows setup](https://github.com/dottereldesign/design-viewer/releases/latest/download/Design-Setup.exe)
 
 1. Download **Design-Setup.exe** and run it.
-2. Open **Design** from the Start menu.
+2. Launch the installed app from the Start menu.
 3. Go to **Settings → Change Design folder** and choose your media folder.
+
+To collect your first reference, create a **Typography** category with the **+** beside Categories. Select it and paste an image. Later, open Typography, press **/** to search by filename, and press **Space** on the focused thumbnail to preview it. Saved websites open in your Windows default browser.
 
 Windows 10/11, 64-bit. Setup includes the video tools and installs WebView2 if needed.
 

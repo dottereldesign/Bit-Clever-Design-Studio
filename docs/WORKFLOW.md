@@ -1,6 +1,6 @@
 # Solo workflow
 
-Default: edit -> live update in Design Dev -> focused check -> tell the user it is visible -> commit and push a feature branch.
+For a source change, use a short-lived `feat/`, `fix/` or `docs/` branch from current main, or continue the applicable unfinished branch. Check the live update in Design Dev, report what you verified, then commit and push the requested changes.
 
 Local use and GitHub backup are the priority. A pushed branch backs up the work; CI and PR integration must not delay delivery of a working local change. Open a PR when useful, and merge only after required checks pass. Main remains protected. Do not bypass checks or force-push main.
 
@@ -23,7 +23,7 @@ Verify the build metadata's commit and executable checksum, then close and reope
 
 ## When a release is requested
 
-Integrate intended changes through passing PRs, bump matching package/Rust/Tauri versions once, run version and secret checks, and release from clean main with `npm run release:tag`. Wait for publication and verify the installer manifest and SHA-256. Use `npm run package` only when a full local installer is needed.
+Integrate intended changes through passing PRs, bump matching package/Rust/Tauri versions once with `npm run version:bump -- patch` (or minor for a substantial release), run version and secret checks, and release from clean main with `npm run release:tag`. Wait for publication and verify the installer manifest and SHA-256. Use `npm run package` only when a full local installer is needed.
 
 ## Keep personal data out
 

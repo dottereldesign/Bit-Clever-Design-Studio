@@ -1,6 +1,8 @@
 # Development workflow
 
-Prioritize immediate visual feedback in a persistent development session, then GitHub backups. A normal task is complete when the requested change works locally and its source is committed and pushed. Updating the standalone executable and publishing an installer are separate checkpoints, only when the user explicitly requests them.
+Prioritize immediate visual feedback in a persistent development session, then GitHub backups. A source change is complete when the requested change works locally and its source is committed and pushed. Updating the standalone executable and publishing an installer are separate checkpoints, only when the user explicitly requests them.
+
+Read-only audits, advice, and copies requested outside the repository are complete on delivery. The commit-and-push workflow applies when repository files change.
 
 ## Default: local change and GitHub backup
 
@@ -11,11 +13,7 @@ Prioritize immediate visual feedback in a persistent development session, then G
 5. Open a concise PR when useful to integrate the branch. GitHub checks may run asynchronously: do not make the user wait for CI, a merge, or a release before reporting a verified local update and successful push. A pushed branch is a valid backup. Report any pending integration honestly. Merge only after required checks pass; never bypass branch protections or require the sole owner to approve their own work. Do not force-push main.
 6. Do not bump versions, create release tags, publish GitHub releases, or build installers for routine local changes. Multiple local changes can share the current version. Use the Git commit and build metadata to identify local builds.
 
-## Standalone builds and explicit releases
-
-When the user asks to refresh the standalone app, run `npm run package -- --no-bundle` once to update `app/Design.exe` and `app/build.json`. Verify the recorded commit and executable hash, then tell the user to reopen from the normal **Design** shortcut. This optimized build can take minutes; it is not part of routine UI iteration. Do not bump the version for a local standalone refresh.
-
-When the user asks to publish a release, collect the intended changes, merge passing PRs, update clean local main, bump all versions once with `npm run version:bump -- patch` (or minor for a substantial release), and commit/push through the normal PR checks. Run `npm run check:version` and `npm run scan:secrets`. From clean, synchronized main, run `npm run release:tag`. Wait for the Windows release workflow, then verify its version, commit and SHA-256 manifest before claiming publication. Run `npm run package` if a matching local installer is needed. Never rewrite published tags.
+For standalone builds and releases, follow the commands and verification steps in [the solo workflow](docs/WORKFLOW.md). Only package or publish on explicit request. Never rewrite published tags.
 
 ## Local app and data
 
