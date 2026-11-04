@@ -48,15 +48,26 @@ try{
  await until(()=>folder('Navbars')?.getAttribute('aria-checked')==='true','Checked membership');
  folder('Headers').click();await until(()=>folder('Headers')?.getAttribute('aria-checked')==='true','Add Headers in picker');
  assert(folder('Navbars').getAttribute('aria-checked')==='true','Adding Headers removed Navbars');
- window.__screenshotReady=true;await pause(700);
+ await pause(100);
  folder('Navbars').click();await until(()=>folder('Navbars')?.getAttribute('aria-checked')==='false'&&cards().length===0,'Remove only Navbar membership');
  button('Done').click();category('Components / Headers').click();await until(()=>cards().length===1,'Headers preserved after removal');
  assert(category('Components / Headers').querySelector('small').textContent==='1','Membership count incorrect');
+ assert(category('Components / Mega menus'),'Mega menus folder missing');
+ const remove=document.querySelector('[data-item-id="6"] .card-remove-folder');assert(remove&&remove.title==='Remove from Headers','Quick remove missing or wrong folder');
+ remove.focus();await pause(100);assert(getComputedStyle(remove.closest('.card-bottom')).opacity==='1','Quick remove inaccessible on focus');
+ window.__screenshotReady=true;await pause(700);remove.click();await until(()=>cards().length===0,'Quick remove updates current folder');
+ assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Heroes'),'Quick remove lost another membership');
+ assert(library.items.some(i=>i.id===6),'Quick remove deleted reference');
+ button('Undo').click();await until(()=>cards().length===1,'Undo quick remove');
  category('All Components').click();await until(()=>cards().length===2,'Aggregate deduplicated');
+ assert(!document.querySelector('.card-remove-folder'),'Quick remove must not appear in All Components');
+ category('Components / Uncategorised').click();await until(()=>cards().length===1,'Inbox after quick remove');
+ assert(!document.querySelector('.card-remove-folder'),'Quick remove must not appear in component inbox');
+ checks.push('Hover/focus removal affects only the current component folder, preserves the reference and supports Undo; Mega menus is available');
  checks.push('Component drag adds memberships; checkboxes add and remove individual folders; counts and All Components stay correct');
  checks.push('Source and assigned Web Design references move into Components, folder moves preserve aggregate membership, and all four sidebar sections collapse independently');
  checks.push('Categories replace Sources; Photography lives in Categories; Facebook Videos stays in main navigation');
- category('3d').click();await until(()=>cards().length===2,'3d category');
+ category('3d').click();await until(()=>cards().length===2,'3d category');assert(!document.querySelector('.card-remove-folder'),'Component removal leaked into categories');
  for(const id of [1,2]){document.querySelector(`[data-item-id="${id}"] .card-select`).click();await pause(30);}
  assert(document.querySelector('.selection-bar').textContent.includes('2 selected'),'Multi-selection failed');
  const data=new DataTransfer();let nativeGhost;const setDragImage=data.setDragImage.bind(data);data.setDragImage=(element,x,y)=>{nativeGhost=element;setDragImage(element,x,y);};document.querySelector('[data-item-id="1"]').dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));

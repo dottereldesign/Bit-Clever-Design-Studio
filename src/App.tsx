@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Folder,
   FolderPlus,
+  FolderMinus,
   Grid2X2,
   ImageOff,
   Link2,
@@ -459,6 +460,17 @@ export default function App() {
     setUndoIds([]);setCategoryUndo(previous);setSelected(new Set());
     categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${isComponent(name) && name!==componentInbox ? "added to" : "moved to"} ${categoryLabel(name)}`;
     setNotice(categoryUndoNotice.current);
+  };
+  const removeFromComponentFolder = async (item:Item) => {
+    if(!category||!isComponent(category)||category===componentInbox)return;
+    const folder=category;
+    try {
+      await mutate({action:"remove_component_folder",ids:[item.id],value:folder});
+      setSelected(previous=>{const next=new Set(previous);next.delete(item.id);return next;});
+      setUndoIds([]);setCategoryUndo([[item.id,folder]]);
+      categoryUndoNotice.current=`Removed from ${categoryLabel(folder)}`;
+      setNotice(categoryUndoNotice.current);
+    } catch(error){report(error);}
   };
   const categoryDropProps = (name:string) => ({
     onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes("application/design-items")){e.preventDefault();e.dataTransfer.dropEffect="move";setCategoryDrop(name);}},
@@ -1280,6 +1292,8 @@ export default function App() {
             <>
               {images.length > 0 && (
                 <MediaGrid
+                  removeFolder={category&&isComponent(category)&&category!==componentInbox?category.slice("Components / ".length):undefined}
+                  onRemoveFolder={removeFromComponentFolder}
                   masonry={true}
                   copy={copyImage}
                   copying={copying}
@@ -1446,6 +1460,8 @@ export default function App() {
 // Cache only dimensions, never image bytes or user paths. Reuse across category switches.
 const thumbnailRatios = new Map<string, number>();
 function MediaGrid({
+  removeFolder,
+  onRemoveFolder,
   masonry,
   previewId,
   copy,
@@ -1464,6 +1480,8 @@ function MediaGrid({
   hoverId,
   setHoverId,
 }: {
+  removeFolder?: string;
+  onRemoveFolder: (item:Item)=>Promise<void>;
   masonry: boolean;
   previewId: number | null;
   copy: (id: number) => Promise<void>;
@@ -1544,6 +1562,8 @@ function MediaGrid({
       return <div className="masonry-tile" key={`${item.id}:${item.modified}`} data-media-key={`${item.id}:${item.modified}`}
         style={{ transform: `translate(${row.left}px, ${row.top}px)`, width: row.width, height: row.height }}>
               <Card
+                removeFolder={removeFolder}
+                onRemoveFolder={()=>onRemoveFolder(item)}
                 copy={() => void copy(item.id)}
                 copying={copying !== null}
                 previewed={previewId === item.id}
@@ -1573,6 +1593,8 @@ function MediaGrid({
   </div>;
 }
 function Card({
+  removeFolder,
+  onRemoveFolder,
   previewed,
   copy,
   copying,
@@ -1589,6 +1611,8 @@ function Card({
   hover,
   drag,
 }: {
+  removeFolder?: string;
+  onRemoveFolder: ()=>Promise<void>;
   copy: () => void;
   copying: boolean;
   previewed: boolean;
@@ -1605,6 +1629,7 @@ function Card({
   hover: (value: boolean) => void;
   drag: (e: React.DragEvent) => void;
 }) {
+  const [removing,setRemoving]=useState(false);
   const [thumb, setThumb] = useState(""),
     [preview, setPreview] = useState(""),
     [failed, setFailed] = useState(false),
@@ -1738,6 +1763,7 @@ function Card({
         </span>
       )}
       <div className="card-bottom">
+        {removeFolder&&<button className="card-remove-folder" aria-label={`Remove ${item.name} from ${removeFolder}`} title={`Remove from ${removeFolder}`} disabled={removing} onClick={async e=>{e.stopPropagation();if(removing)return;setRemoving(true);try{await onRemoveFolder();}finally{setRemoving(false);}}}><FolderMinus size={15}/></button>}
         <span title={item.name}>{item.name}</span>
         {canCopyImage(item) && <button aria-label={`Copy ${item.name} to clipboard`} title={item.kind === "animation" ? "Copy image (first frame)" : "Copy image"} disabled={copying} onClick={copy}><ClipboardCopy size={15} /></button>}
         <button
