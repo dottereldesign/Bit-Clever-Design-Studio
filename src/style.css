@@ -1744,3 +1744,25 @@ main {
 .recent-reference:hover { background:#dbe5dd; }
 .recent-reference img,.recent-reference>small { width:66px; height:50px; object-fit:contain; }
 .recent-reference span small { display:block; opacity:.65; }
+
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.sidebar-scroll .sidebar-heading { margin: 12px 4px 3px; }
+.sidebar-scroll .projects { max-height: none; overflow: visible; }
+.sidebar-scroll .source-list { padding-bottom: 0; }
+.section-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.folder-heading { margin-left: 16px; display: flex; font-size: 12px; color: #72756d; }
+.folder-group .nav-item { padding-left: 38px; }

@@ -1,3 +1,4 @@
+import { allComponents, filingCategory, isComponent, isWebDesign } from "./componentsLibrary";
 export type Item = {
   id: number;
   path: string;
@@ -66,7 +67,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
       (!f.project || i.projects.includes(f.project)) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
-      (f.category == null || (i.kind !== "link" && categoryOf(i) === f.category)) &&
+      (f.category == null || (i.kind !== "link" && (f.category === allComponents ? isComponent(categoryOf(i)) : categoryOf(i) === f.category))) &&
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&
@@ -97,9 +98,9 @@ export function filterItems(items: Item[], f: Filters): Item[] {
 }
 export const categoryOf = (item: Item): string => {
   const name=item.category ?? (item.source === "Photography" || item.source.startsWith("Photography/") ? "Photography" : item.source.startsWith("Design/") ? item.source.slice(7).split('/')[0] : "");
-  return name.toLowerCase()==="captures"?"":name;
+  return name.toLowerCase()==="captures"?"":filingCategory(name);
 };
 export const categoryLabel = (name: string): string => name.replace(/_/g," ").trim().replace(/[\p{L}\p{N}]+/gu,word=>
   /^(2d|3d|ui|ux|ai|ar|vr|css|html)$/i.test(word)?word.toUpperCase():word===word.toLocaleLowerCase()?word.charAt(0).toLocaleUpperCase()+word.slice(1):word
 ) || "Uncategorised";
-export const libraryCategories = (lib: Library): string[] => [...new Set([...(lib.categories ?? []), ...lib.sources.filter(s=>s.startsWith("Design/")).map(s=>s.slice(7).split('/')[0]), ...lib.items.filter(i=>i.kind!=="link").map(categoryOf)].filter(name=>!!name&&name.toLowerCase()!=="captures"))].sort((a,b)=>a.localeCompare(b));
+export const libraryCategories = (lib: Library): string[] => [...new Set([...(lib.categories ?? []), ...lib.sources.filter(s=>s.startsWith("Design/")).map(s=>s.slice(7).split('/')[0]), ...lib.items.filter(i=>i.kind!=="link").map(categoryOf)].filter(name=>!!name&&!isWebDesign(name)&&!isComponent(name)&&name!==allComponents&&name.toLowerCase()!=="captures"))].sort((a,b)=>a.localeCompare(b));

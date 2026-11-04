@@ -71,6 +71,8 @@ import CaptureDialog, {
 import DuplicatesDialog from "./DuplicatesDialog";
 import ItemMenu, { type ItemMenuTarget } from "./ItemMenu";
 import RemovedDialog from "./RemovedDialog";
+import SidebarSection from "./SidebarSection";
+import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
 import {categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
 
@@ -351,6 +353,7 @@ export default function App() {
   },[lib.items,quickPreview,viewer,track]);
   const sheetItems=useMemo(()=>lib.items.filter(i=>project!==null&&i.projects.includes(project)),[lib.items,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
+  const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
   const filtered = useMemo(
     () => {
       const matches=filterItems(lib.items, {
@@ -365,11 +368,12 @@ export default function App() {
         linksOnly,
         sort:recent?"recent":sort, seed,
       });
+      if(allCategoriesView)return matches.filter(i=>i.kind==="link" || !isComponent(categoryOf(i)));
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
     },
-    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder],
+    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView],
   );
   useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
@@ -436,9 +440,20 @@ export default function App() {
     catch(e){report(e);}finally{undoBusy.current=false;setUndoing(false);}
   },[lib.redo_label,mutate,report]);
   const categories = useMemo(()=>libraryCategories(lib),[lib]);
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of lib.items) {
+      if (item.kind === "link") continue;
+      const name = categoryOf(item);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+      if (isComponent(name)) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
+    }
+    return counts;
+  }, [lib.items]);
   const changeCategory = async (ids:number[],name:string) => {
     const items=lib.items.filter(i=>ids.includes(i.id)&&i.kind!=="link");
     if(!items.length)throw Error("Select images or videos to change category.");
+    name = filingCategory(name);
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
     await mutate({action:"set_category",ids:items.map(i=>i.id),value:name});
     setUndoIds([]);setCategoryUndo(previous);setSelected(new Set());
@@ -450,6 +465,20 @@ export default function App() {
     onDragLeave:(e:React.DragEvent)=>{if(!(e.relatedTarget instanceof Node)||!e.currentTarget.contains(e.relatedTarget))setCategoryDrop(null);},
     onDrop:(e:React.DragEvent)=>{e.preventDefault();e.stopPropagation();setCategoryDrop(null);try{const ids=JSON.parse(e.dataTransfer.getData("application/design-items"));if(Array.isArray(ids)&&ids.every(Number.isInteger))void changeCategory(ids,name).catch(report);}catch{/* Unrelated drag. */}}
   });
+  const folderRow = (s: string) => (
+    <button
+      className={`nav-item source-item ${category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
+      data-category={s}
+      {...categoryDropProps(s)}
+      key={s}
+      title={`Open ${categoryLabel(s)}; drop references here to change category`}
+      onClick={() => { navigate(null); setCategory(s); }}
+    >
+      <Folder size={14} />
+      <span>{isComponent(s) ? s.split(" / ").pop() : categoryLabel(s)}</span>
+      <small>{categoryCounts.get(s)||""}</small>
+    </button>
+  );
   const perform = useCallback(
     async (c: Change) => {
       try {
@@ -591,7 +620,7 @@ export default function App() {
     const prior=new Map(lib.items.map(i=>[i.id,i]));
     const already=result.reused>0&&!result.added&&saved.every(i=>{
       const previous=prior.get(i.id);
-      return targetCategory===null||!!previous&&categoryOf(previous)===targetCategory;
+      return targetCategory===null||!!previous&&categoryOf(previous)===filingCategory(targetCategory);
     });
     const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
       result.added&&result.reused?`${result.added} added · ${result.reused} reused in ${destination}`:
@@ -612,7 +641,7 @@ export default function App() {
             files:draft.files,url:"",name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/, ""):"",
             source:category==="Photography"?"Photography":"Design",projects:[],tags:[],source_url:"",resource:false,
           }});
-          if(result.ids.length)await changeLibrary({action:"set_category",ids:result.ids,value:category});
+          if(result.ids.length)await changeLibrary({action:"set_category",ids:result.ids,value:filingCategory(category)});
           showCaptureReceipt(result,await refresh(),category);
         } finally {await invoke("discard_capture",{paths:draft.files.map(file=>file.path)}).catch(report);}
         return;
@@ -724,7 +753,7 @@ export default function App() {
     };
   }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog]);
   const captured = async (result: CaptureResult) => {
-    if(category!==null && capture?.files.length && result.ids.length) await changeLibrary({action:"set_category",ids:result.ids,value:category});
+    if(category!==null && capture?.files.length && result.ids.length) await changeLibrary({action:"set_category",ids:result.ids,value:filingCategory(category)});
     const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
@@ -850,6 +879,8 @@ export default function App() {
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </div>
+        <div className="sidebar-scroll">
+        <SidebarSection name="General">
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(({key,name,pinned})=>{
             const board=isBoardDestination(key);
@@ -867,15 +898,14 @@ export default function App() {
             }}>{board||key==="facebook"||key==="resources"?<SidebarIcon name={key}/>:key==="links"?<Link2 size={15}/>:<Grid2X2 size={15}/>}<span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||""}</small></button>;
           })}
         </nav>
-        <div className="sidebar-heading">
-          <span>Projects</span>
+        </SidebarSection>
+        <SidebarSection name="Projects" action={
           <IconButton
             title="New project"
             onClick={() => setModal({ kind: "project" })}
           >
             <Plus size={15} />
-          </IconButton>
-        </div>
+          </IconButton>}>
         <div className="projects">
           <nav aria-label="Projects">
             {lib.projects.map((p) => (
@@ -932,15 +962,14 @@ export default function App() {
             </button>
           )}
         </div>
-        <div className="sidebar-heading">
-          <span>Categories</span>
+        </SidebarSection>
+        <SidebarSection name="Categories" action={
           <IconButton
             title="New category"
             onClick={() => setModal({kind:"category",ids:[]})}
           >
             <Plus size={15} />
-          </IconButton>
-        </div>
+          </IconButton>}>
         <nav className="source-list" aria-label="Categories">
           <button
             className={`nav-item ${category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
@@ -951,21 +980,21 @@ export default function App() {
               All categories
             </span>
           </button>
-          {[...categories, ""].map((s) => (
-              <button
-                className={`nav-item source-item ${category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
-                data-category={s}
-                {...categoryDropProps(s)}
-                key={s}
-                title={`Open ${categoryLabel(s)}; drop references here to change category`}
-                onClick={() => { navigate(null); setCategory(s); }}
-              >
-                <Folder size={14} />
-                <span>{categoryLabel(s)}</span>
-                <small>{lib.items.filter(i=>i.kind!=="link"&&categoryOf(i)===s).length||""}</small>
-              </button>
-            ))}
+          {[...categories, ""].map(folderRow)}
         </nav>
+        </SidebarSection>
+        <SidebarSection name="Components">
+          <nav aria-label="Components">
+            {folderRow(allComponents)}
+            {folderRow(componentInbox)}
+            {Object.entries(componentGroups).map(([group, folders]) =>
+              <SidebarSection key={group} name={group} nested>
+                {folders.map(folder => folderRow(componentKey(folder)))}
+              </SidebarSection>
+            )}
+          </nav>
+        </SidebarSection>
+        </div>
         <div className="sidebar-footer"><IconButton title="Customise shortcuts" onClick={()=>setExtraDialog("shortcuts")}><SlidersHorizontal size={15}/></IconButton>
           <button onClick={() => setModal({ kind: "settings" })}>
             <Settings2 size={15} />
@@ -1087,7 +1116,7 @@ export default function App() {
                 onChange={(e) => setCategory(e.target.value==="__all__"?null:e.target.value)}
               >
                 <option value="__all__">All categories</option><option value="">Uncategorised</option>
-                {categories.map((s) => (
+                {[...categories, allComponents, ...componentFolders].map((s) => (
                   <option value={s} key={s}>
                     {s.replace(/_/g, " ")}
                   </option>
@@ -1325,7 +1354,7 @@ export default function App() {
         </div>
       )}
       {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{await refresh();setModal(null);setNotice("Thumbnail updated");}}/>}
-      {modal?.kind==="category"&&<CategoryPicker categories={categories} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
+      {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
       {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
         <Dialog
           modal={modal}
