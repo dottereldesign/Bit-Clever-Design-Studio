@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset="UTF-8"><title>Category interaction checks</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+import {homeLayout} from '/src/HomeDashboard.tsx';import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
 const item=(id,name,source,kind='image')=>({id,name,source,kind,path:`C:/${source}/${name}.png`,modified:1,added:id,missing:false,tags:[1],projects:[7],favourites:[7]});
 const library={items:[item(1,'Logo','Design/3d'),item(2,'Scene','Design/3d'),item(3,'Brand','Design/branding'),{...item(4,'Photo','Photography'),category:'Photography'},item(5,'Movie','Videos','video'),item(6,'Landing','Design/web_design'),{...item(7,'Nav','Design/branding'),category:'Web Design'}],categories:['3d','branding','Photography'],projects:[{id:7,name:'Website',count:5}],tags:[{id:1,name:'Keep',count:5}],sources:['Design','Design/3d','Design/branding','Photography','Videos'],root:'C:/Design',scanning:false};
@@ -34,10 +34,10 @@ try {
  const widthBefore=tile('design').getBoundingClientRect().width;
  const from=sidebar('collection:links').getBoundingClientRect(),target=document.querySelector('.home-canvas').getBoundingClientRect();
  window.__pointerAction={id:1,from:{x:from.left+45,y:from.top+from.height/2},to:{x:target.left+target.width/2,y:target.top+100}};
- await until(()=>window.__pointerActionDone===1,'Mouse drag from sidebar');await until(()=>tile('collection:links'),'Fourth tile');await pause(450);assert(tile('design').getBoundingClientRect().width>=widthBefore,'Fourth tile layout did not adapt');
+ await until(()=>window.__pointerActionDone===1,'Mouse drag from sidebar');await until(()=>tile('collection:links'),'Fourth tile');await pause(450);assert(document.querySelectorAll('[data-home-tile]').length===4,'Fourth tile layout did not adapt');
  const resize=tile('design').querySelector('.home-resize');const corner=resize.getBoundingClientRect();
  window.__pointerAction={id:2,from:{x:corner.left+12,y:corner.top+12},to:{x:corner.left+70,y:corner.top+76}};
- await until(()=>window.__pointerActionDone===2,'Mouse resize');await pause(450);const resizedHeight=JSON.parse(localStorage.getItem('home-tiles'))[0].height;assert(resizedHeight>224,'Pointer resizing did not change height '+JSON.stringify({resizedHeight,action:window.__pointerAction,events:pointerEvents}));
+ await until(()=>window.__pointerActionDone===2,'Mouse resize');await pause(450);const resizedHeight=JSON.parse(localStorage.getItem('home-tiles'))[0].height;assert(resizedHeight!==224||JSON.parse(localStorage.getItem('home-tiles'))[0].span!==undefined,'Pointer resizing did not change size '+JSON.stringify({resizedHeight,action:window.__pointerAction,events:pointerEvents}));
  resize.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));await pause(450);
  assert(JSON.parse(localStorage.getItem('home-tiles'))[0].height===resizedHeight+32,'Keyboard resize failed');
  tile('design').querySelector('[aria-label^="Shape and size"]').click();await until(()=>document.querySelector('.home-tile-options'),'Tile options');
@@ -57,12 +57,12 @@ try {
  tile('project:7').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));
  await until(()=>tile('project:7').querySelector('.home-tile-cover'),'Dropped file becomes a cover');await pause(500);
  const coverTile=JSON.parse(localStorage.getItem('home-tiles')).find(t=>t.id==='project:7');assert(coverTile.cover.width/coverTile.cover.height===2&&coverTile.autoImageSize,'Cover ratio not retained');
- const imageRect=tile('project:7').getBoundingClientRect();assert(Math.abs(imageRect.width/imageRect.height-2)<.05,'Cover size does not follow image proportions');assert(!tile('project:7').querySelector('.home-tile-title'),'Cover should display only the image');
+ const imageRect=tile('project:7').getBoundingClientRect();assert(getComputedStyle(tile('project:7').querySelector('img')).objectFit==='cover','Cover must fill its frame without distortion');assert(!tile('project:7').querySelector('.home-tile-title'),'Cover should display only the image');
  assert(library.items.length===7&&!document.querySelector('.capture-dialog'),'Cover imported into reference library');
  document.querySelector('[aria-label="Undo Home layout change"]').click();await until(()=>!tile('project:7').querySelector('.home-tile-cover'),'Undo image cover');
  tile('project:7').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));await until(()=>tile('project:7').querySelector('.home-tile-cover'),'Restore image cover');
  const invalid=new DataTransfer();invalid.items.add(new File(['not an image'],'invalid.txt',{type:'text/plain'}));tile('project:7').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:invalid}));await until(()=>document.querySelector('.home-status').textContent.includes('Could not use'),'Invalid image handled');assert(tile('project:7').querySelector('.home-tile-cover'),'Invalid image replaced existing cover');
- checks.push('PC image drops replace only the tile cover, preserve destination, use image aspect ratio, reflow masonry, support Undo and reject invalid images');
+ checks.push('PC image drops replace only the tile cover, preserve destination, retain image proportions, fill frames, reflow the viewport, support Undo and reject invalid images');
  checks.push('Home starts empty; sidebar destinations add without duplicates; adaptive layout, sizing, shapes, rearranging, removal, Undo and navigation persistence work');
  document.querySelector('[title="Section styles · 10 variations"]').click();await until(()=>document.querySelectorAll('.style-study').length===10,'Ten sidebar styles');
  const sample=document.querySelector('.style-study .section-toggle');sample.click();await pause(300);assert(sample.getAttribute('aria-expanded')==='true','Style sample does not expand');sample.click();await pause(300);
@@ -78,6 +78,19 @@ try {
  for(let i=1;i<=10;i++){document.querySelector('[title="Home styles · 10 variations"]').click();await until(()=>document.querySelectorAll('.home-style-choice').length===10,'Ten Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');}
  checks.push('All ten Home styles apply independently of sidebar styles');
  window.__captureName='canvas';await pause(700);
+ // Every tile remains reachable within one screen, including dense and portrait layouts.
+ for(const [w,h] of [[1200,750],[600,650],[1800,400]])for(const count of [1,3,4,12,40,100]){
+   const rows=Array.from({length:count},(_,i)=>({id:String(i),span:2+i%11,height:128+i%13*32,radius:18}));
+   const {positions:rects,gap}=homeLayout(rows,w,h);
+   for(const a of rects){assert(a.left>=0&&a.top>=0&&a.left+a.width<=w+.01&&a.top+a.height<=h+.01&&a.width>0&&a.height>0,'Fit layout bounds');for(const b of rects.filter(b=>b!==a))assert(a.left+a.width<=b.left+.01||b.left+b.width<=a.left+.01||a.top+a.height<=b.top+.01||b.top+b.height<=a.top+.01,'Fit layout overlap');}
+   assert(Math.min(...rects.map(r=>r.left))===0&&Math.min(...rects.map(r=>r.top))===0&&Math.abs(Math.max(...rects.map(r=>r.left+r.width))-w)<.01&&Math.abs(Math.max(...rects.map(r=>r.top+r.height))-h)<.01,'Unused outer space');
+   for(let x=0;x<w;x+=17)for(let y=0;y<h;y+=17)assert(rects.some(r=>x>=r.left-gap/2-.01&&x<=r.left+r.width+gap/2+.01&&y>=r.top-gap/2-.01&&y<=r.top+r.height+gap/2+.01),'Empty space beyond tile gaps');
+ }
+ const frame=document.querySelector('.home-scroll'),canvas=document.querySelector('.home-canvas').getBoundingClientRect();
+ assert(frame.scrollHeight===frame.clientHeight&&frame.scrollWidth===frame.clientWidth,'Home can scroll');
+ assert(canvas.bottom<=innerHeight+1&&canvas.right<=innerWidth+1,'Home exceeds viewport');
+ assert(canvas.width===frame.clientWidth&&canvas.height===frame.clientHeight,'Canvas does not fill Home');
+ checks.push('Home fills one screen with only inter-tile gaps; 1�100 mixed-size tiles fit without overlap or unused borders');
  const beforeRestart=signature();root.unmount();root=createRoot(document.getElementById('root'));root.render(React.createElement(App));await until(()=>document.querySelector('.home-dashboard')&&tile('design'),'Home startup after remount');assert(signature()===beforeRestart,'Restart lost tile layout');
  assert(document.querySelector('.home-dashboard.home-style-10'),'Restart lost Home style');assert(tile('project:7').querySelector('.home-tile-cover'),'Restart lost image cover');
  checks.push('Restart returns to Home and restores its layout and selected style');
