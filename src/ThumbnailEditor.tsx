@@ -1,3 +1,4 @@
+import { readClipboard } from "./clipboard";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { CaptureDraft, CaptureFile } from "./CaptureDialog";
@@ -73,7 +74,7 @@ export default function ThumbnailEditor({item,close,complete}: {item:Item;close:
   };
   const paste = async () => {
     if(busy)return;setBusy(true);setError("");
-    try {const incoming=await invoke<CaptureDraft>('read_clipboard');staged.current.push(...incoming.files.map(f=>f.path));if(!incoming.files[0])throw Error('Copy an image first.');setFile(incoming.files[0]);}
+    try {const incoming=await readClipboard<CaptureDraft>();staged.current.push(...incoming.files.map(f=>f.path));if(!incoming.files[0])throw Error('Copy an image first.');setFile(incoming.files[0]);}
     catch(e){setError(String(e));}finally{setBusy(false);}
   };
   if (file) return <ThumbnailCrop key={file.path} file={file} ratio={ratio} onRatio={setRatio} save={save} close={close} externalBusy={busy} externalError={error} actions={<><button className="subtle-button" disabled={busy} onClick={()=>void capture()}>Capture & save</button><button className="subtle-button" disabled={busy} onClick={()=>void paste()}>Paste replacement</button></>}/>;

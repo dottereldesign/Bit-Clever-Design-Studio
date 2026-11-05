@@ -1,4 +1,5 @@
 import { readViewSession, useViewSession, type ViewState } from "./viewSession";
+import { copyImageToClipboard, readClipboard } from "./clipboard";
 import StorageBar from './StorageBar';
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
@@ -653,7 +654,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     copyBusy.current = true;
     setCopying(id);
     try {
-      await invoke("copy_image", { id });
+      await copyImageToClipboard(id);
       setUndoIds([]);
       setNotice("Image copied");
     } catch (e) { report(e); }
@@ -764,7 +765,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     pasteBusy.current=true;
     try {
       setReadingCapture(true);
-      const draft = await invoke<CaptureDraft>("read_clipboard");
+      const draft = await readClipboard<CaptureDraft>();
       if(category!==null && (isComponent(category)||category===allComponents) && draft.url && !draft.files.length){
         const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{files:[],url:draft.url,name:'',source:'Design',projects:[],tags:[],source_url:'',resource:false}}));
         recordCapture(result);

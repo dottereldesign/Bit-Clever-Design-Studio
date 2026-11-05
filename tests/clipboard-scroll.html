@@ -4,10 +4,13 @@ const phase=Number(sessionStorage.getItem('phase')??0),checks=JSON.parse(session
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="#c9dac0"/></svg>');
 const library={items:Array.from({length:150},(_,n)=>({id:n+1,name:`Reference ${n+1}`,source:'Design/Poster',category:'Poster',kind:'image',path:`C:/mock/${n+1}.png`,modified:1,added:n+1,missing:false,tags:[],projects:[]})),categories:['Poster'],projects:[],tags:[],sources:['Design/Poster'],root:'C:/mock',scanning:false};
 if(!phase)localStorage.setItem('last-workspace-view',JSON.stringify({version:1,view:{homeView:false,generalKey:null,project:null,category:'Poster',linksOnly:false,resourcesView:false,boardView:null,videoView:false,recent:null,search:'',type:'all',tags:[],tagMode:'any',source:'',sort:'recent',seed:1,viewer:null},scroll:{top:0}}));
-let callback=0;const calls=[];let releaseThumbnail;
+let callback=0;const calls=[];let releaseThumbnail;let clipboardMode='unavailable',finishCopy,failCopy;
 window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
  calls.push(command);if(command==='get_library')return structuredClone(library);if(command.startsWith('plugin:event|'))return ++callback;
  if(command==='get_media'){if(phase&&args.id===150)await new Promise(resolve=>{releaseThumbnail=resolve;});return 'mock.png';}
+ if(command==='copy_image'&&clipboardMode==='overlap'){await new Promise((resolve,reject)=>{finishCopy=resolve;failCopy=reject;});return;}
+ if(command==='read_clipboard'&&clipboardMode==='overlap')return {files:[{path:'C:/mock/clipboard.png',name:'Reference.png'}],url:''};
+ if(command==='capture_items')return {ids:[150],added:0,reused:1};if(command==='update'||command==='discard_capture')return;
  if(command==='read_clipboard'||command==='copy_image'){await new Promise(r=>setTimeout(r,40));throw 'The clipboard is currently unavailable.';}
  throw Error(command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
@@ -33,6 +36,15 @@ try{
  }else{
   checks.push('A failed paste clears its busy state and leaves normal wheel scrolling usable');
   document.querySelector('.card button[aria-label^="Copy"]').click();await pause(100);const copied=scroll();await wheel(200);assert(scroll()>copied+50,'Failed copy blocks scrolling');checks.push('A failed image copy also leaves the page scrollable');
+  clipboardMode='overlap';const reads=()=>calls.filter(c=>c==='read_clipboard').length;
+  let beforeRead=reads();document.querySelector('.card button[aria-label^="Copy"]').click();await until(()=>finishCopy,'Pending copy');paste();paste();await pause(100);
+  assert(reads()===beforeRead,'Paste reads the clipboard before the thumbnail copy has finished');
+  finishCopy();await until(()=>!document.querySelector('.capture-reading')&&reads()===beforeRead+1,'Queued paste completed');assert(!document.querySelector('.capture-modal'),'Copy-paste unexpectedly opened a modal');
+  checks.push('Immediate paste waits for thumbnail copying and repeated paste keys enqueue only one read');
+  finishCopy=null;beforeRead=reads();document.querySelector('.card button[aria-label^="Copy"]').click();await until(()=>failCopy&&finishCopy,'Failing pending copy');paste();await pause(50);failCopy('The clipboard is currently unavailable.');await until(()=>!document.querySelector('.capture-reading'),'Failed copy releases pending paste');
+  assert(reads()===beforeRead,'A failed copy allowed the queued paste to import old clipboard contents');checks.push('A failed copy cancels its queued paste without reading stale clipboard data');
+  finishCopy=null;document.querySelector('.card button[aria-label^="Copy"]').click();await until(()=>finishCopy,'Copy can retry');paste();finishCopy();await until(()=>!document.querySelector('.capture-reading')&&reads()===beforeRead+1,'Queue recovers after copy failure');
+  clipboardMode='unavailable';checks.push('Copy and paste work again after a failed overlapping operation');
   const content=document.querySelector('.content').getBoundingClientRect();const image=[...document.querySelectorAll('.card img')].find(img=>{const r=img.getBoundingClientRect();return r.top>=content.top&&r.bottom<innerHeight&&img.naturalWidth;});assert(image,'Visible image missing');const r=image.getBoundingClientRect(),point={x:r.left+r.width/2,y:r.top+r.height/2};
   await wheel(-1,true,point);assert(document.querySelector('.thumbnail-enlargement'),'Small Ctrl-wheel did not reproduce enlargement');
   const enlargedAt=scroll();await wheel(200,false,point);

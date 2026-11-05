@@ -1,3 +1,4 @@
+import { readClipboard } from "./clipboard";
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Check, FileImage, LoaderCircle, X } from "lucide-react";
@@ -89,7 +90,7 @@ export default function CaptureDialog({
   const paste = async () => {
     if (pending.current || busy) return;
     pending.current = true; setReading(true); setError("");
-    try { receive(await invoke<CaptureDraft>("read_clipboard")); }
+    try { receive(await readClipboard<CaptureDraft>()); }
     catch (error) { saveAfterPaste.current = false; setError(String(error)); }
     finally { pending.current = false; setReading(false); }
   };
