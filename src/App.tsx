@@ -921,10 +921,10 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         className="sidebar"
         inert={quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
       >
-        <div className="brand">
+        <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
-        </div>
+        </button>
         <div className="sidebar-scroll">
         <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><House size={16}/><span>Home</span></button>
         <SidebarSection name="General" dropProps={homeDrag("group:general")}>

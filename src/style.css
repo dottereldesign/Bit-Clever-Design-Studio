@@ -96,6 +96,7 @@ kbd {
   user-select: none;
 }
 .brand {
+  text-align: left;
   height: 79px;
   display: flex;
   align-items: center;

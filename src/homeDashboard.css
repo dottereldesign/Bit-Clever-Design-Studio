@@ -143,3 +143,9 @@
 .home-cover-input input { width:100%;font-size:10px; }
 
 @container(max-height:120px) { .home-tile-top,.home-tile-count,.home-tile-index { display:none!important; }.home-tile-title { font-size:14px!important;margin:auto 0; }.home-tile-open { padding:10px; } }
+
+/* Only corners on the outside of the canvas are squared; internal corners keep their chosen shape. */
+.home-tile[data-home-edges~="top"],.home-tile[data-home-edges~="left"] { border-top-left-radius:0; }
+.home-tile[data-home-edges~="top"],.home-tile[data-home-edges~="right"] { border-top-right-radius:0; }
+.home-tile[data-home-edges~="bottom"],.home-tile[data-home-edges~="left"] { border-bottom-left-radius:0; }
+.home-tile[data-home-edges~="bottom"],.home-tile[data-home-edges~="right"] { border-bottom-right-radius:0; }
