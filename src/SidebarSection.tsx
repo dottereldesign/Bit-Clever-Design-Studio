@@ -24,6 +24,6 @@ export default function SidebarSection({name, label = name, action, children, ne
       </button>
       {action}
     </div>
-    {identity?<div className="section-reveal" aria-hidden={!open} inert={!open}><div className="section-reveal-inner">{children}</div></div>:open&&children}
+    {identity?<div className="section-reveal" aria-hidden={!open} inert={!open}><div className="section-reveal-inner">{children}</div></div>:open&&(nested?children:<div className="sidebar-section-body">{children}</div>)}
   </section>;
 }

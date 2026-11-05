@@ -1771,3 +1771,8 @@ main {
 .folder-group .nav-item { padding-left: 38px; }
 
 .sidebar-heading.drop-target { background:#e3ecdc; outline:2px solid #738669; border-radius:5px; }
+
+.sidebar-footer > button { display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap; }
+.sidebar-footer { padding:13px 0;gap:5px; }
+
+.app[data-sidebar-compact="true"] .sidebar-footer > button:nth-child(2) > span { display:none; }

@@ -117,7 +117,7 @@
 /* Visible scrollbars belong to the folders, not the entire sidebar. */
 .sidebar .sidebar-scroll { scrollbar-width:none; }
 .sidebar .sidebar-scroll::-webkit-scrollbar { display:none; }
-.section-reveal-inner > nav { max-height:clamp(150px,32vh,340px); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+.section-reveal-inner > nav { overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:transparent transparent; }
 .section-reveal-inner > nav:hover,.section-reveal-inner > nav:focus-within { scrollbar-color:#939b8b70 transparent; }
 .section-reveal-inner > nav::-webkit-scrollbar { width:4px; }
 .section-reveal-inner > nav::-webkit-scrollbar-thumb { background:transparent; border-radius:4px; }
@@ -126,3 +126,9 @@
 @container(max-width:165px) { .section-style-7 .section-number { font-size:8px;letter-spacing:0; }.section-style-7 .section-title,.section-style-9 .section-title { font-size:10.5px;letter-spacing:0; }.section-style-9 .section-number { font-size:20px;margin-right:0; } }
 
 @container(max-width:165px) { .section-style-7 .section-number,.section-style-9 .section-number { display:none; } }
+
+.sidebar .sidebar-scroll { display:flex;flex-direction:column; }
+.sidebar-scroll > .sidebar-section { display:flow-root;flex-shrink:0; }
+.sidebar-scroll > .home-nav { flex-shrink:0; }
+.sidebar-section-body { overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:transparent transparent; }
+.sidebar-section-body:hover,.sidebar-section-body:focus-within { scrollbar-color:#939b8b70 transparent; }

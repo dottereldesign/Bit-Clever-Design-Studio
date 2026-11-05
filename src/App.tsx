@@ -25,7 +25,6 @@ import {
   FolderPlus,
   FolderMinus,
   House,
-  Palette,
   Grid2X2,
   ImageOff,
   Link2,
@@ -53,7 +52,7 @@ import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
 import RecentReferences from "./RecentReferences";
-import { collections, sites, ordered, useLocalList, StudioDialog, ShortcutEditor } from "./Shortcuts";
+import { collections, sites, ordered, useLocalList } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
@@ -77,7 +76,9 @@ import RemovedDialog from "./RemovedDialog";
 import SidebarSection from "./SidebarSection";
 import useHomeShortcutDrag from "./useHomeShortcutDrag";
 import HomeDashboard, { homeMime, type HomeDestination } from "./HomeDashboard";
-import SectionStylePicker, { readSectionStyle } from "./SectionStylePicker";
+import { readSectionStyle } from "./SectionStylePicker";
+import Customization, { readHomeAppearance, type CustomTab } from "./Customization";
+import useSidebarSpace from "./useSidebarSpace";
 import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
 import {componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
@@ -233,7 +234,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
   const [collectionPrefs,setCollectionPrefs]=useLocalList("collection-shortcuts",collections);
   const [sitePrefs,setSitePrefs]=useLocalList("site-shortcuts",sites);
-  const [extraDialog,setExtraDialog]=useState<"sheet"|"shortcuts"|null>(null);
+  const [extraDialog,setExtraDialog]=useState<"sheet"|null>(null);
   const [viewedOrder,setViewedOrder]=useState<number[]>([]);
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
@@ -251,7 +252,14 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       storedNumber("sidebar-width", 208),
     );
   const [sectionStyle,setSectionStyle]=useState(readSectionStyle);
-  const [sectionStylesOpen,setSectionStylesOpen]=useState(false);
+  const [customTab,setCustomTab]=useState<CustomTab|null>(null);
+  const [homeStyle,setHomeStyle]=useState(()=>Math.max(1,Math.min(10,storedNumber('home-style',1))));
+  const [homeAppearance,setHomeAppearance]=useState(readHomeAppearance);
+  const [reducedMotion,setReducedMotion]=useState(()=>localStorage.getItem('reduce-motion')==='true');
+  useSidebarSpace();
+  useEffect(()=>{localStorage.setItem('home-style',String(homeStyle));},[homeStyle]);
+  useEffect(()=>{localStorage.setItem('home-appearance',JSON.stringify(homeAppearance));},[homeAppearance]);
+  useEffect(()=>{localStorage.setItem('reduce-motion',String(reducedMotion));document.documentElement.dataset.motion=reducedMotion?'reduce':'';if(reducedMotion)document.getAnimations().forEach(a=>a.cancel());},[reducedMotion]);
   const [selected, setSelected] = useState<Set<number>>(new Set()),
     [viewer, setViewer] = useState<number | null>(null),
     [modal, setModal] = useState<Modal | null>(null),
@@ -594,7 +602,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       const typing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable=true]",
       );
-      if(libraryExportOpen||extraDialog||sectionStylesOpen||(homeView&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen))return;
+      if(libraryExportOpen||extraDialog||customTab||(homeView&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen))return;
       if(quickPreview!==null){
         if(e.key==="Escape"||(e.key===" "&&!typing&&!(e.target as HTMLElement).closest("button,video"))){e.preventDefault();if(!e.repeat)setQuickPreview(null);}
         if(!typing&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();const ids=receiptBrowse.length?receiptBrowse:filtered.map(i=>i.id);const n=ids.indexOf(quickPreview);setQuickPreview(ids[(n+(e.key==="ArrowRight"?1:-1)+ids.length)%ids.length]??null);}
@@ -652,7 +660,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse,homeView,sectionStylesOpen]);
+  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse,homeView,customTab]);
   const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
@@ -756,7 +764,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       }
     };
     const over = (e: DragEvent) => {
-      if((e.target as HTMLElement)?.closest(".home-dashboard")){setDropActive(false);return;}
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop")){setDropActive(false);return;}
       if (!extraDialog && e.dataTransfer?.types.includes("Files")) {
         e.preventDefault();
         setDropActive(true);
@@ -767,7 +775,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     };
     const drop = (e: DragEvent) => {
       setDropActive(false);
-      if((e.target as HTMLElement)?.closest(".home-dashboard"))return;
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop"))return;
       if(extraDialog)return;
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length) {
@@ -900,7 +908,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   });
   return (
     <div
-      className="app"
+      className="app" data-sidebar-compact={sidebarWidth<200}
       onClickCapture={homeShortcutDrag.captureClick}
       onDragStart={itemDrag.start}
       onPointerDown={itemDrag.pointerDown}
@@ -919,7 +927,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     >
       <aside
         className="sidebar"
-        inert={quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+        inert={!!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
@@ -1043,8 +1051,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           </nav>
         </SidebarSection>
         </div>
-        <div className="sidebar-footer"><IconButton title="Section styles · 10 variations" onClick={()=>setSectionStylesOpen(true)}><Palette size={15}/></IconButton><IconButton title="Customise shortcuts" onClick={()=>setExtraDialog("shortcuts")}><SlidersHorizontal size={15}/></IconButton>
-          <button onClick={() => setModal({ kind: "settings" })}>
+        <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('sidebar')}><SlidersHorizontal size={15}/><span>Customise</span></button>
+          <button title="Settings" aria-label="Settings" onClick={() => setModal({ kind: "settings" })}>
             <Settings2 size={15} />
             <span>Settings</span>
           </button>
@@ -1063,8 +1071,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           aria-orientation="vertical"
         />
       </aside>
-      <main inert={quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
-        {homeView?<HomeDashboard destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
+      <main inert={!!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
+        {homeView?<HomeDashboard style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
         <header className="topbar">
           <div className="view-title">
             <h1>{title}</h1>
@@ -1439,7 +1447,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       {videoDialog && <VideoDownloadDialog initialUrl={videoDialog.url} lib={lib} project={project} close={()=>setVideoDialog(null)} add={(text,projects,tags)=>{
         const result=videoQueue.add(text,projects,tags);setVideoDialog(null);setQueueOpen(true);setNotice(result.added?`${result.added} queued`:"Already queued");
       }}/>}
-      {extraDialog==="shortcuts"&&<StudioDialog title="Customise shortcuts" close={()=>setExtraDialog(null)}><ShortcutEditor list={collectionPrefs} change={setCollectionPrefs}/><ShortcutEditor web list={sitePrefs} change={setSitePrefs}/></StudioDialog>}
+
       {extraDialog==="sheet"&&<ContactSheet title={title} items={sheetItems} initial={selected} close={()=>setExtraDialog(null)}/>}
       {libraryExportOpen && <LibraryExport close={()=>setLibraryExportOpen(false)}/>}
       {capture && (
@@ -1472,7 +1480,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       )}
       {removedOpen && <RemovedDialog close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Drop on Home</small></div>}
-      {sectionStylesOpen&&<SectionStylePicker selected={sectionStyle} close={()=>setSectionStylesOpen(false)} choose={id=>{setSectionStyle(id);localStorage.setItem("sidebar-section-style",String(id));setSectionStylesOpen(false);}}/>}
+      {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={id=>{setSectionStyle(id);localStorage.setItem('sidebar-section-style',String(id));}} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
         sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}

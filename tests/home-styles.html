@@ -86,22 +86,24 @@ try {
  checks.push('PC image drops replace only the tile cover, preserve destination, retain image proportions, fill frames, reflow the viewport, support Undo and reject invalid images');
  checks.push('Shared dividers track the pointer without animation lag or orientation flips; keyboard resize and Escape restore work');
  checks.push('Home starts empty; sidebar destinations add without duplicates; adaptive layout, sizing, shapes, rearranging, removal, Undo and navigation persistence work');
- document.querySelector('[title="Section styles · 10 variations"]').click();await until(()=>document.querySelectorAll('.style-study').length===10,'Ten sidebar styles');
+ document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelectorAll('.style-study').length===10,'Ten sidebar styles');
  const sample=document.querySelector('.style-study .section-toggle');sample.click();await pause(300);assert(sample.getAttribute('aria-expanded')==='true','Style sample does not expand');sample.click();await pause(300);
  // Capture every style together at the large test viewport.
  window.__captureName="sidebar";window.__screenshotReady=true;await pause(700);
- for(let i=1;i<=10;i++){if(!document.querySelector('.section-style-dialog')){document.querySelector('[title="Section styles · 10 variations"]').click();await until(()=>document.querySelector('.section-style-dialog'),'Reopen style chooser');}
+ for(let i=1;i<=10;i++){if(!document.querySelector('.customise-panel')){document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Reopen style chooser');}
  document.querySelector(`[data-style-study="${i}"] .use-section-style`).click();await until(()=>document.querySelector(`.sidebar .section-design.section-style-${i}`),'Apply sidebar style');
  assert(localStorage.getItem('sidebar-section-style')===String(i),'Style not persisted');
  const app=document.querySelector('.app');app.style.setProperty('--sidebar-width','168px');await pause(30);for(const heading of document.querySelectorAll('.sidebar .section-feature > .sidebar-heading'))assert(heading.querySelector('.section-title').scrollWidth<=heading.querySelector('.section-title').clientWidth+2,'Title overflows narrow sidebar: '+i);app.style.setProperty('--sidebar-width','208px');assert(!document.querySelector('.sidebar .folder-group.section-feature'),'Subfolders restyled');assert(parseFloat(getComputedStyle(document.querySelector('.sidebar .folder-group .section-toggle')).minHeight)<=27,'Subfolder toggle enlarged');
  }
  if(matchMedia('(prefers-reduced-motion: reduce)').matches)assert(getComputedStyle(document.querySelector('.sidebar .section-reveal')).transitionDuration==='0s','Reduced motion ignored');
  checks.push('All ten sidebar styles apply and persist; previews expand; subfolders stay minimal; scrolling belongs to folder lists');
- for(let i=1;i<=10;i++){document.querySelector('[title="Home styles · 10 variations"]').click();await until(()=>document.querySelectorAll('.home-style-choice').length===10,'Ten Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');
+ document.querySelector('.customise-layout > nav button:nth-child(2)').click();
+ for(let i=1;i<=10;i++){await until(()=>document.querySelectorAll('.home-style-choice').length===10,'Ten Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');
  await pause(450);const bounds=document.querySelector('.home-canvas').getBoundingClientRect();
  for(const tileNode of document.querySelectorAll('[data-home-tile]')){const r=tileNode.getBoundingClientRect(),css=getComputedStyle(tileNode),top=r.top<=bounds.top+1,left=r.left<=bounds.left+1,right=r.right>=bounds.right-1,bottom=r.bottom>=bounds.bottom-1;
  for(const [property,edge] of [['borderTopLeftRadius',top||left],['borderTopRightRadius',top||right],['borderBottomLeftRadius',bottom||left],['borderBottomRightRadius',bottom||right]])assert(edge?parseFloat(css[property])===0:parseFloat(css[property])>0,'Incorrect edge rounding: style '+i+' '+property);
  }}
+ document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close customisation');
  checks.push('All ten Home styles preserve interior rounding and square corners touching each canvas edge; logo navigation restores Home');
  window.__captureName='canvas';await pause(700);
  // Every tile remains reachable within one screen, including dense and portrait layouts.
@@ -117,6 +119,29 @@ try {
  assert(canvas.bottom<=innerHeight+1&&canvas.right<=innerWidth+1,'Home exceeds viewport');
  assert(canvas.width===frame.clientWidth&&canvas.height===frame.clientHeight,'Canvas does not fill Home');
  checks.push('Home fills one screen with only inter-tile gaps; 1-100 mixed-size tiles fit without overlap or unused borders');
+ // Expand a long Components list while reclaiming room from collapsed groups.
+ for(const name of ['General','Projects','Design Inspo']){const heading=document.querySelector(`.sidebar button[aria-label="${name}"]`);if(heading.getAttribute('aria-expanded')==='true')heading.click();}
+ const components=document.querySelector('.sidebar .section-components');if(components.dataset.open!=='true')components.querySelector('.section-toggle').click();
+ for(const heading of components.querySelectorAll('.folder-group .section-toggle'))if(heading.getAttribute('aria-expanded')!=='true')heading.click();
+ await pause(600);const folderNav=components.querySelector('nav'),footer=document.querySelector('.sidebar-footer').getBoundingClientRect();
+ if(folderNav.scrollHeight>folderNav.clientHeight+2)assert(Math.abs(folderNav.getBoundingClientRect().bottom-footer.top)<10,'Sidebar leaves unused space below capped folder list');
+ if(innerHeight>1000)assert(folderNav.clientHeight>340,'Folder list still capped at 340px');
+ window.__captureName='sidebar-space';await pause(600);
+ document.querySelector('[title="Customise Home"]').click();await until(()=>document.querySelector('.customise-panel'),'Unified Home settings');await pause(260);
+ const panel=document.querySelector('.customise-panel').getBoundingClientRect(),side=document.querySelector('.sidebar').getBoundingClientRect();assert(Math.abs(panel.left-side.right-32)<1&&panel.top===32&&innerWidth-panel.right===32&&innerHeight-panel.bottom===32,'Customisation should leave sidebar visible and 32px context');
+ const setRange=(name,value)=>{const input=document.querySelector(`input[aria-label="${name}"]`);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};
+ setRange('Overlay darkness',75);setRange('Label size',40);await pause(100);assert(JSON.parse(localStorage.getItem('home-appearance')).darkness===75,'Overlay setting not saved');
+ assert(tile('project:7').querySelector('.home-tile-label').textContent==='Website','Image tile destination label missing');
+ assert(getComputedStyle(tile('project:7').querySelector('.home-tile-scrim')).backgroundColor.includes('0.75'),'Overlay darkness not applied');
+ const toggle=document.querySelector('.custom-toggle input');toggle.click();await pause(50);assert(!tile('project:7').querySelector('.home-tile-label'),'Overlay toggle did not apply');toggle.click();
+ const customNav=document.querySelector('.customise-layout > nav');
+ customNav.querySelector('button:nth-child(3)').click();await pause(50);setRange('Thumbnail size',300);await pause(50);assert(localStorage.getItem('tile-size')==='300','Library size did not persist');
+ customNav.querySelector('button:nth-child(5)').click();await pause(50);document.querySelector('.custom-toggle input').click();await pause(50);assert(document.documentElement.dataset.motion==='reduce','Reduce motion did not apply');document.querySelector('.custom-toggle input').click();
+ customNav.querySelector('button:nth-child(1)').click();await pause(50);setRange('Sidebar width',180);await pause(50);assert(document.querySelector('.sidebar').getBoundingClientRect().width===180,'Sidebar width did not apply');setRange('Sidebar width',208);
+ customNav.querySelector('button:nth-child(2)').click();await pause(100);
+ window.__captureName='customise-home';await pause(600);
+ document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close settings');
+ checks.push('Sidebar uses remaining height; unified customisation preserves page context; Home overlay and label controls apply and persist');
  const beforeRestart=signature(),planBeforeRestart=localStorage.getItem('home-plan');root.unmount();root=createRoot(document.getElementById('root'));root.render(React.createElement(App));await until(()=>document.querySelector('.home-dashboard')&&tile('design'),'Home startup after remount');assert(signature()===beforeRestart&&localStorage.getItem('home-plan')===planBeforeRestart,'Restart lost tile layout');
  assert(document.querySelector('.home-dashboard.home-style-10'),'Restart lost Home style');assert(tile('project:7').querySelector('.home-tile-cover'),'Restart lost image cover');
  checks.push('Restart returns to Home and restores its layout and selected style');

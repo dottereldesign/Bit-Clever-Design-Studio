@@ -2,8 +2,8 @@ import type { HomeTile } from "./HomeDashboard";
 export type Split = { split:number; axis:"x"|"y"; ratio:number };
 export type HomePlan = { count:number; splits:Record<string,Split> };
 export type Divider = { path:string; axis:"x"|"y"; ratio:number; min:number; max:number; left:number; top:number; width:number; height:number; origin:number; length:number; primary:number };
-export function homeLayout(tiles:HomeTile[],width:number,height:number,saved?:HomePlan|null){
-  const columns=12,gap=Math.min(10,width/40,height/40),unit=Math.max(1,(width-gap*(columns-1))/columns);
+export function homeLayout(tiles:HomeTile[],width:number,height:number,saved?:HomePlan|null,preferredGap=10){
+  const columns=12,gap=Math.min(preferredGap,width/40,height/40),unit=Math.max(1,(width-gap*(columns-1))/columns);
   const positions=tiles.map(()=>({left:0,top:0,width:0,height:0})),dividers:Divider[]=[];
   const plan:HomePlan={count:tiles.length,splits:{}};
   const preferences=tiles.map(tile=>{const w=(tile.span??6)*60,h=tile.cover&&tile.autoImageSize?w*tile.cover.height/tile.cover.width:tile.height;return {weight:w*Math.max(64,Math.min(900,h)),ratio:Math.max(.25,Math.min(4,w/h))};});

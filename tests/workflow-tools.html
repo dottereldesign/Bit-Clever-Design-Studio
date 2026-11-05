@@ -28,7 +28,7 @@ try{
  key(' ');await until(()=>!document.querySelector('.quick-preview'),'Space closes');assert(!document.querySelector('.viewer'),'Space opened viewer on close');
  document.querySelector('[data-item-id="2"] .card-open').focus();key(' ');await until(()=>document.querySelector('.quick-preview'),'reopen');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Esc closes');
  checks.push('Space peeks without full viewer; arrows browse links without launching them; Space/Esc restore library');
- nav('Fonts');await until(()=>document.querySelector('.fonts-table .link-name'),'Fonts table');document.querySelector('.fonts-table .link-name').focus();key(' ');await until(()=>document.querySelector('.quick-preview-link'),'Link preview');assert(!calls.some(c=>c.command==='open_external_url'),'Link preview launched website');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close link preview');document.querySelector('nav[aria-label=Categories] button').click();await until(()=>document.querySelector('[data-item-id="2"]'),'Category overview');
+ nav('Fonts');await until(()=>document.querySelector('.fonts-table .link-name'),'Fonts table');document.querySelector('.fonts-table .link-name').focus();key(' ');await until(()=>document.querySelector('.quick-preview-link'),'Link preview');assert(!calls.some(c=>c.command==='open_external_url'),'Link preview launched website');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close link preview');document.querySelector('nav[aria-label="Design Inspo"] button').click();await until(()=>document.querySelector('[data-item-id="2"]'),'Category overview');
  const search=document.querySelector('input[type=search]')||document.querySelector('input[placeholder="Search"]');search.focus();assert(!key(' ').defaultPrevented,'Space intercepted while typing');assert(!key('z',{ctrlKey:true}).defaultPrevented,'Text Undo intercepted');assert(!key('Z',{ctrlKey:true,shiftKey:true}).defaultPrevented,'Text Redo intercepted');assert(!key('y',{ctrlKey:true}).defaultPrevented,'Text Ctrl+Y intercepted');
  document.querySelector('[data-item-id="2"] .card-select').click();await pause(30);
  const data=new DataTransfer();document.querySelector('[data-item-id="2"]').dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));
@@ -69,15 +69,15 @@ try{
  assert(!document.querySelector('.capture-modal'),'Paste error opened modal');captureFailure=false;
  clipboard='url';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'URL retains capture form');
  document.querySelector('[aria-label="Close capture"]').click();await until(()=>!document.querySelector('.capture-modal'),'Close URL form');
- document.querySelector('nav[aria-label=Categories] button').click();await pause(60);document.querySelector('nav[aria-label=Library] button').focus();clipboard='image';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'Overview retains capture form');
+ document.querySelector('nav[aria-label="Design Inspo"] button').click();await pause(60);document.querySelector('nav[aria-label=Library] button').focus();clipboard='image';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'Overview retains capture form');
  checks.push('Save errors stay inline; URLs and non-category views retain existing capture forms');
  document.querySelector('[aria-label="Close capture"]').click();
  nav('Recently added');await until(()=>document.querySelector('.recent-list h3'),'Added date group');
  assert(document.querySelectorAll('.recent-reference').length===library.items.length,'Recent view omitted collection links');
  nav('Recently viewed');await until(()=>document.querySelector('.recent-reference'),'Previously previewed references');
- document.querySelector('[aria-label="Customise shortcuts"]').click();await until(()=>document.querySelector('dialog[open]'),'Shortcut editor');
+ document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Shortcut editor');
  const shortcut=[...document.querySelectorAll('.shortcut-row')].find(el=>el.textContent.startsWith('CodePen'));
- shortcut.querySelector('input').click();document.querySelector('dialog header button').click();await until(()=>![...document.querySelectorAll('nav[aria-label=Library] button span')].some(el=>el.textContent==='CodePen'),'Hide sidebar shortcut');
+ shortcut.querySelector('input').click();document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close customisation');await until(()=>![...document.querySelectorAll('nav[aria-label=Library] button span')].some(el=>el.textContent==='CodePen'),'Hide sidebar shortcut');
  document.querySelector('nav[aria-label=Projects] button.nav-item').click();
  const byText=(selector,text)=>[...document.querySelectorAll(selector)].find(el=>el.textContent.trim()===text);
  await until(()=>byText('button','Contact sheet'),'Project actions');byText('button','Contact sheet').click();await until(()=>document.querySelector('.sheet-picker input'),'Project sheet picker');
