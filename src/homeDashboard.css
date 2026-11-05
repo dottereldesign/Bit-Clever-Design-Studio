@@ -162,7 +162,7 @@
 .home-divider.is-active > span { opacity:1;background:#596f44; }
 .home-divider.is-editing:not(:hover):not(.is-active) > span { opacity:.18; }
 .home-resizing,.home-resizing * { user-select:none!important;cursor:inherit!important; }
-.home-tile.is-editing .home-tile-open { cursor:grab;touch-action:none; }
+.home-dashboard[data-drag-anywhere="true"] .home-tile-open { cursor:grab;touch-action:none; }
 .home-tile.is-lifted { opacity:.4; }
 .home-swap-preview { position:absolute;inset:0;border:2px solid #7b906b;border-radius:inherit;background:#93aa7922;pointer-events:none;z-index:6;display:grid;place-items:center; }
 .home-swap-preview span { padding:8px 12px;background:#35462a;color:#fff;border-radius:7px;font-size:11px;box-shadow:0 4px 16px #21331525; }
@@ -175,3 +175,16 @@
 .has-label-overlays .home-tile-open > .home-tile-title,.has-label-overlays .home-tile-count,.has-label-overlays .home-tile-top,.has-label-overlays .home-tile-index { visibility:hidden; }
 @container(max-width:170px) { .home-tile-label { font-size:20px;padding:12px; } }
 @container(max-height:100px) { .home-tile-label { font-size:18px;padding:8px; } }
+
+.home-tile-tools .home-remove { color:#bd3939; }
+.home-tile-tools .home-remove:hover { color:#a32121;background:#fbe4e1; }
+.home-remove-confirm { position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:8px;max-width:calc(100% - 24px);width:max-content;padding:8px 10px 8px 14px;border-radius:10px;background:#fffdf8f5;backdrop-filter:blur(12px);box-shadow:0 4px 22px #20271f25;border:1px solid #dedfd5;font-size:12px;color:#3e4539;animation:home-confirm-in .16s ease-out; }
+.home-remove-confirm > span { min-width:0;overflow-wrap:anywhere; }
+.home-remove-confirm button { flex-shrink:0;padding:6px 9px;border-radius:6px;color:#626b59;font-size:11px; }
+.home-remove-confirm button:hover { background:#e8eddf; }
+.home-remove-confirm .confirm-remove { color:#a32929;background:#f9e6e3; }
+.home-remove-confirm .confirm-remove:hover { background:#f4d3ce; }
+@keyframes home-confirm-in { from { opacity:0;margin-bottom:-5px; } to { opacity:1;margin-bottom:0; } }
+
+.home-tile-label { padding:clamp(8px,4cqh,28px) clamp(10px,4cqw,36px);line-height:1.08;letter-spacing:-.025em; }
+.home-tile-label > span { display:block;width:100%;text-wrap:balance;overflow-wrap:anywhere; }
