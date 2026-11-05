@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Grid width and workspace restore</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const phase=Number(sessionStorage.getItem('phase')??0),checks=JSON.parse(sessionStorage.getItem('checks')??'[]');
+if(!phase){localStorage.setItem('sidebar-width','306');localStorage.setItem('tile-size','420');}
+const artwork=id=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="${id%3===0?1100:600}"><rect width="100%" height="100%" fill="${id%3===0?'#d9c9ed':id%3===1?'#cbdcbb':'#edc4ad'}"/><text x="50" y="150" font-family="Arial" font-size="60">Reference ${id}</text></svg>`);
+const library={items:Array.from({length:160},(_,n)=>({id:n+1,name:`Reference ${n+1}`,kind:'image',source:'Design/Branding',category:'Branding',path:`C:/mock/${n+1}.png`,modified:1,added:n+1,missing:false,tags:[],projects:[]})),categories:['Branding'],projects:[],tags:[],sources:['Design/Branding'],root:'C:/mock',scanning:false};
+library.items.push({id:200,name:'Pricing cards',kind:'image',source:'Design',category:'Components / Pricing',component_folders:['Components / Pricing'],path:'C:/mock/200.png',modified:1,added:200,missing:false,tags:[],projects:[]});
+let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:path=>artwork(Number(path.match(/(\d+)\.png/)?.[1]??1)),invoke:async(command,args)=>{if(command==='get_library')return structuredClone(library);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media'){await new Promise(r=>setTimeout(r,75));return `C:/mock/${args.id}.png`;}if(command==='storage_usage')return {bytes:400000000,app_bytes:100000000,data_bytes:100000000,library_bytes:200000000,partial:false};throw Error(command);}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(v,label)=>{if(!v)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>8000)throw Error('Timed out: '+label);await pause(20);}}
+const category=name=>document.querySelector(`[data-category="${name}"]`),storage=()=>JSON.parse(localStorage.getItem('last-workspace-view')??'null');
+async function reload(next){await pause(300);sessionStorage.setItem('checks',JSON.stringify(checks));sessionStorage.setItem('phase',String(next));location.reload();}
+function filled(){const grid=document.querySelector('.media-grid');if(!grid)return false;const right=Math.max(...[...grid.querySelectorAll('.masonry-tile')].map(tile=>tile.getBoundingClientRect().right));return Math.abs(right-grid.getBoundingClientRect().right)<1;}
+try{
+ await until(()=>category('Branding'),'Sidebar library');
+ if(phase===0){
+  assert(document.querySelector('.home-nav.active'),'First launch should start on Home');
+  category('Branding').click();await until(()=>document.querySelector('.card img')?.naturalWidth>0,'Branding thumbnails');await pause(400);
+  assert(filled(),'Grid leaves a right-hand gap after opening from Home');
+  document.querySelector('.home-nav').click();await pause(40);category('Branding').click();await pause(400);assert(filled(),'Grid fails after repeated Home navigation');
+  const width=innerWidth;window.__resizeAction={id:1,width:width-120};await until(()=>window.__resizeActionDone===1,'Resize');await pause(150);assert(filled(),'Grid does not fill resized width');window.__resizeAction={id:2,width};await until(()=>window.__resizeActionDone===2,'Restore width');await pause(150);
+  checks.push('Grid fills its available width after opening from Home, repeated navigation and window resizing');
+  const content=document.querySelector('.content');content.scrollTop=2100;await pause(500);content.scrollTop+=10;await pause(150);assert(storage()?.scroll.anchor,'No visible thumbnail saved');
+  sessionStorage.setItem('expectedAnchor',JSON.stringify(storage().scroll.anchor));window.__screenshotReady=true;await pause(250);window.__screenshotReady=false;await reload(1);
+ }else if(phase===1){
+  await until(()=>document.querySelector('.topbar h1')?.textContent==='Branding','Restore Branding');
+  const anchor=JSON.parse(sessionStorage.getItem('expectedAnchor'));
+  await until(()=>document.querySelector(`[data-item-id="${anchor.id}"] img`)?.naturalWidth,'Restored thumbnail');await pause(600);
+  const card=document.querySelector(`[data-item-id="${anchor.id}"]`),content=document.querySelector('.content');
+  assert(Math.abs(card.getBoundingClientRect().top-content.getBoundingClientRect().top-anchor.offset)<2,'Did not restore the same visible thumbnail position');assert(filled(),'Restored grid leaves gap');
+  checks.push('A real reload restores the category and visible thumbnail position after asynchronous thumbnail loading');
+  const search=document.querySelector('[aria-label="Search library"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(search,'Reference');search.dispatchEvent(new Event('input',{bubbles:true}));const sort=document.querySelector('[aria-label="Sort items"]');sort.value='name';sort.dispatchEvent(new Event('change',{bubbles:true}));await pause(150);
+  const openButton=document.querySelector(".card-open");const viewerId=openButton.closest("[data-item-id]").dataset.itemId;openButton.click();await until(()=>document.querySelector('.viewer'),'Open image');sessionStorage.setItem('viewerId',viewerId);await reload(2);
+ }else if(phase===2){
+  await until(()=>document.querySelector('.viewer')?.dataset.itemId===sessionStorage.getItem('viewerId'),'Restore open viewer');assert(document.querySelector('[aria-label="Search library"]').value==='Reference'&&document.querySelector('[aria-label="Sort items"]').value==='name','Search or sort was not restored');checks.push('An open reference, search and sort order are restored on relaunch');
+  document.querySelector('[aria-label="Close viewer"]').click();await pause(100);
+  const resources=[...document.querySelectorAll('.sidebar button')].find(b=>b.textContent.trim()==='Resources');resources.click();await until(()=>document.querySelector('.topbar h1')?.textContent==='Resources','Resources page');await reload(3);
+ }else if(phase===3){
+  await until(()=>document.querySelector('.topbar h1')?.textContent==='Resources','Restore General collection');assert(document.querySelector('.resource-favourites'),'Resources content missing');checks.push('General collections reopen to their own page');
+  const header=document.querySelector('[data-section-label="App Components"]');if(!category('Components / Pricing'))header.querySelector('button').click();await until(()=>category('Components / Pricing'),'Pricing folder');category('Components / Pricing').click();await until(()=>document.querySelector('.topbar h1')?.textContent.includes('Pricing'),'Pricing page');await reload(4);
+ }else if(phase===4){
+  await until(()=>document.querySelector('.topbar h1')?.textContent.includes('Pricing')&&document.querySelector('.card img')?.naturalWidth,'Restore component folder');checks.push('App Components folders reopen correctly');document.querySelector('.home-nav').click();await reload(5);
+ }else{
+  assert(document.querySelector('.home-nav.active'),'Home was not restored');checks.push('Home stays the starting page when it was the last page used');document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks});
+ }
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,phase,checks,saved:storage(),heading:document.querySelector('.topbar h1')?.textContent});}
+</script></body></html>

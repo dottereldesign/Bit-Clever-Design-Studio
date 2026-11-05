@@ -12,7 +12,7 @@ export default function LinkBoard({ items, size, report, menu, add, selected, op
 }) {
   return <div className="link-board" style={{ columnWidth: size }}>
     {items.map(item => <article className={`link-card ${selected?.has(item.id) ? "selected" : ""}`} key={item.id} data-item-id={item.id}>
-      <button className="link-card-open" onClick={event => openItem ? openItem(item, event) : void openUrl(item.path).catch(report)} aria-label={`Open ${item.name}`}>
+      <button className="link-card-open" title="Open reference · Ctrl + scroll to enlarge" onClick={event => openItem ? openItem(item, event) : void openUrl(item.path).catch(report)} aria-label={`Open ${item.name}`}>
         {item.thumbnail ? <img loading="lazy" src={convertFileSrc(item.thumbnail)} alt="" /> : <div className="link-card-placeholder" />}
         <strong>{item.name}</strong><small>{new URL(item.path).hostname}</small>
       </button>

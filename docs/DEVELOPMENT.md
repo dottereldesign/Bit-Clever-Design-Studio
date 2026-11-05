@@ -29,6 +29,10 @@ Packaging writes a standalone copy to `app/Design.exe`; reopen it from the ordin
 
 ## Browse and preview references
 
+The app reopens your last page, filters, sort order and scroll position, including an open image viewer. Home is the first-launch default and remains a sidebar destination.
+
+Hold **Ctrl** and scroll up over a thumbnail to progressively enlarge the whole image against a softly blurred background. Scroll down to return it to the grid; **Escape**, **Space** or clicking outside also closes it. Releasing Ctrl keeps it open. **+ / −** and **↑ / ↓** resize an open enlargement. Video thumbnails enlarge their poster without starting playback. App and system reduced-motion preferences are respected.
+
 The main sidebar starts with Links. Media can be browsed through Categories and Projects; All categories provides the combined category view.
 
 - Hover a video or animation for a muted, looping preview. Click for the viewer; use arrow keys and Escape.

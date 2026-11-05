@@ -1,3 +1,4 @@
+import { readViewSession, useViewSession, type ViewState } from "./viewSession";
 import StorageBar from './StorageBar';
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
@@ -59,6 +60,7 @@ import { collections, sites, withCodePen, ordered, useLocalList, type Shortcut, 
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
+import ThumbnailEnlargement from "./ThumbnailEnlargement";
 import useItemDragFeedback from "./useItemDragFeedback";
 import ZoomImage from "./ZoomImage";
 import VideoDownloadDialog from "./VideoDownloadDialog";
@@ -229,8 +231,10 @@ function Popover({
   );
 }
 
-export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
-  const [homeView,setHomeView]=useState(startOnHome);
+export default function App({startOnHome}:{startOnHome?:boolean}={}) {
+  const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
+  const savedView=savedSession?.view;
+  const [homeView,setHomeView]=useState(savedView?.homeView??startOnHome??true);
   const [homeDrop,setHomeDrop]=useState<string|null>(null);
   const [lib, setLib] = useState<Library>(empty),
     [ready, setReady] = useState(false),
@@ -238,25 +242,25 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     [notice, setNoticeText] = useState("");
   const [receipt,setReceipt]=useState<{ids:number[];existing:boolean;undo?:string} | null>(null);
   const setNotice=useCallback((text:string)=>{setReceipt(null);setNoticeText(text);},[]);
-  const [tagMode,setTagMode]=useState<"any"|"all">("any");
-  const [recent,setRecent]=useState<"added"|"viewed"|null>(null);
+  const [tagMode,setTagMode]=useState<"any"|"all">(savedView?.tagMode??"any");
+  const [recent,setRecent]=useState<"added"|"viewed"|null>(savedView?.recent??null);
   const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
   const [collectionPrefs,setCollectionPrefs]=useHistoryState<Shortcut[]>("collection-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("collection-shortcuts")??"null");return Array.isArray(value)?value:collections;}catch{return collections;}},"Sidebar shortcuts");
   const [sitePrefs,setSitePrefs,setSitePrefsRaw]=useHistoryState<Shortcut[]>("site-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("site-shortcuts")??"null");return Array.isArray(value)?value:sites;}catch{return sites;}},"Favourite websites");
   useEffect(()=>{const next=withCodePen(sitePrefs);if(next!==sitePrefs)setSitePrefsRaw(next);},[sitePrefs,setSitePrefsRaw]);
   const [extraDialog,setExtraDialog]=useState<"sheet"|null>(null);
-  const [viewedOrder,setViewedOrder]=useState<number[]>([]);
+  const [viewedOrder,setViewedOrder]=useState<number[]>(()=>savedView?.recent==="viewed"?history.map(entry=>entry.id):[]);
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
     [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
-  const [project, setProject] = useState<number | null>(null),
-    [linksOnly, setLinksOnly] = useState(false);
-  const [search, setSearch] = useState(""),
-    [type, setType] = useState("all"),
-    [tags, setTags] = useState<number[]>([]),
-    [source, setSource] = useState(""),
-    [sort, setSort] = useState("recent");
-  const [seed, setSeed] = useState(Date.now()),
+  const [project, setProject] = useState<number | null>(savedView?.project??null),
+    [linksOnly, setLinksOnly] = useState(savedView?.linksOnly??false);
+  const [search, setSearch] = useState(savedView?.search??""),
+    [type, setType] = useState(savedView?.type??"all"),
+    [tags, setTags] = useState<number[]>(savedView?.tags??[]),
+    [source, setSource] = useState(savedView?.source??""),
+    [sort, setSort] = useState(savedView?.sort??"recent");
+  const [seed, setSeed] = useState(savedView?.seed??Date.now()),
     [size, setSize] = useHistoryState("tile-size",() => storedNumber("tile-size", 260),"Thumbnail size"),
     [sidebarWidth, setSidebarWidth] = useHistoryState("sidebar-width",() => storedNumber("sidebar-width",208),"Sidebar width");
   const [sectionStyle,setSectionStyle]=useHistoryState("sidebar-section-style",readSectionStyle,"Sidebar style");
@@ -271,16 +275,16 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [folderOrder,setFolderOrder]=useHistoryState<Record<string,string[]>>('sidebar-folder-order',()=>{try{return JSON.parse(localStorage.getItem('sidebar-folder-order')??'{}');}catch{return {}; }},'Folder order');
   const sortedFolders=(folders:string[],group:string)=>{const saved=folderOrder[group]??[];return [...folders].sort((a,b)=>{const ai=saved.indexOf(a),bi=saved.indexOf(b);return (ai<0?Infinity:ai)-(bi<0?Infinity:bi)||categoryLabel(a).localeCompare(categoryLabel(b),undefined,{numeric:true,sensitivity:'base'});});};
   const navLayout=sidebarLayouts[sidebarLayout-1]??sidebarLayouts[0];
-  const [generalKey,setGeneralKey]=useState<string|null>(null);
-  const generalRoute=useRef('');
+  const [generalKey,setGeneralKey]=useState<string|null>(savedView?.generalKey??null);
   const generalEntry=collectionPrefs.find(s=>s.key===generalKey);
+  const generalRoute=useRef(generalEntry?JSON.stringify([generalEntry.key,generalEntry.target??{kind:'view',value:generalEntry.key}]):'');
   const generalMissing=generalEntry?.target?.kind==='project'&&!lib.projects.some(p=>String(p.id)===generalEntry.target!.value);
   useSidebarSpace(sidebarLayout);
   useEffect(()=>{localStorage.setItem('home-style',String(homeStyle));},[homeStyle]);
   useEffect(()=>{localStorage.setItem('home-appearance',JSON.stringify(homeAppearance));},[homeAppearance]);
   useEffect(()=>{localStorage.setItem('reduce-motion',String(reducedMotion));document.documentElement.dataset.motion=reducedMotion?'reduce':'';if(reducedMotion)document.getAnimations().forEach(a=>a.cancel());},[reducedMotion]);
   const [selected, setSelected] = useState<Set<number>>(new Set()),
-    [viewer, setViewer] = useState<number | null>(null),
+    [viewer, setViewer] = useState<number | null>(savedView?.viewer??null),
     [modal, setModal] = useState<Modal | null>(null),
     [busy, setBusy] = useState(false);
   const [widePreview, setWidePreview] = useState(() => window.matchMedia("(min-width: 1600px)").matches);
@@ -292,6 +296,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   }, []);
   const [libraryExportOpen,setLibraryExportOpen]=useState(false);
   const [quickPreview,setQuickPreview]=useState<number|null>(null);
+  const [thumbnailEnlarged,setThumbnailEnlarged]=useState(false);
   const previewCandidate=useRef<number|null>(null);
   const historyActions=useHistory();
   const undoing=historyActions.busy;
@@ -299,15 +304,15 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const historyReady=useRef(false);
   const pasteBusy=useRef(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
-  const [category,setCategory] = useState<string|null>(null);
+  const [category,setCategory] = useState<string|null>(savedView?.category??null);
   const [categoryUndo,setCategoryUndo] = useState<[number,string][]|null>(null);
   const categoryUndoNotice = useRef("");
   const [categoryDrop,setCategoryDrop] = useState<string|null>(null);
-  const [videoView, setVideoView] = useState(false);
+  const [videoView, setVideoView] = useState(savedView?.videoView??false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [videoDialog, setVideoDialog] = useState<{url:string}|null>(null);
-  const [boardView, setBoardView] = useState<BoardKey | null>(null);
-  const [resourcesView, setResourcesView] = useState(false),
+  const [boardView, setBoardView] = useState<BoardKey | null>(savedView?.boardView??null);
+  const [resourcesView, setResourcesView] = useState(savedView?.resourcesView??false),
     [capture, setCapture] = useState<CaptureDraft | null>(null),
     [duplicatesOpen, setDuplicatesOpen] = useState(false),
     [dropActive, setDropActive] = useState(false),
@@ -315,7 +320,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [itemMenu, setItemMenu] = useState<ItemMenuTarget | null>(null),
     [removedOpen, setRemovedOpen] = useState(false),
     [undoIds, setUndoIds] = useState<number[]>([]);
-  const [gridReturn, setGridReturn] = useState<{ id: number } | null>(null);
+  const [gridReturn, setGridReturn] = useState<{ id: number; offset?: number } | null>(savedSession?.scroll.anchor??null);
   const [copying, setCopying] = useState<number | null>(null);
   const [resourceVersion, setResourceVersion] = useState(0);
   const copyBusy = useRef(false);
@@ -326,8 +331,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   }, [viewer, widePreview]);
   const closeItemMenu = useCallback(() => setItemMenu(null), []);
   useEffect(() => {
-    if (quickPreview !== null || modal || viewer !== null || capture || duplicatesOpen) setHoverId(null);
-  }, [quickPreview,modal, viewer, capture, duplicatesOpen]);
+    if (thumbnailEnlarged || quickPreview !== null || modal || viewer !== null || capture || duplicatesOpen) setHoverId(null);
+  }, [thumbnailEnlarged,quickPreview,modal, viewer, capture, duplicatesOpen]);
   useEffect(()=>{if(quickPreview!==null&&!lib.items.some(i=>i.id===quickPreview))setQuickPreview(null);},[lib.items,quickPreview]);
   const searchRef = useRef<HTMLInputElement>(null),
     anchor = useRef<number | null>(null);
@@ -439,11 +444,14 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     () => filtered.filter((i) => i.kind === "link" && (isComponent(categoryOf(i)) || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
+  const viewState=useMemo<ViewState>(()=>({homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
+  useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
   const dockedPreview = widePreview && !!activeItem;
   useEffect(() => {
-    if (viewer !== null && !filtered.some(item => item.id === viewer)) setViewer(null);
-  }, [filtered, viewer]);
+    if (ready && viewer !== null && !filtered.some(item => item.id === viewer)) setViewer(null);
+  }, [filtered, viewer, ready]);
   const title = generalEntry?.name??(recent==="added"?"Recently added":recent==="viewed"?"Recently viewed":videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
     ? "Resources"
     : project
@@ -981,7 +989,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     onTags={id=>setModal({kind:"tags",ids:[id]})} onDelete={id=>void removeItems([id])} project={project}
     onPin={item=>project&&void perform({action:item.favourites?.includes(project)?"unpin_project":"pin_project",target:project,ids:[item.id]})}/>;
   const itemDrag=useItemDragFeedback({
-    enabled:(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!libraryExportOpen,
+    enabled:!thumbnailEnlarged&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!libraryExportOpen,
     ids:id=>selected.has(id)?[...selected]:[id],
     category:(ids,name)=>void changeCategory(ids,name).catch(report),
     project:(ids,target)=>void mutate({action:"add_project",ids,target}).then(()=>{setUndoIds([]);setNotice("Added to project");}).catch(report),
@@ -1008,7 +1016,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     >
       <aside
         className="sidebar"
-        inert={!!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
@@ -1140,7 +1148,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           aria-orientation="vertical"
         />
       </aside>
-      <main inert={!!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
+      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
         {homeView?<HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
         <header className="topbar">
           <div className="view-title">
@@ -1445,13 +1453,15 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         </div>
         </>}
       </main>
+      <ThumbnailEnlargement items={lib.items} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
+        enabled={!homeView&&!customTab&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!folderMenu&&!libraryExportOpen&&!extraDialog}/>
       {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>}
       {activeItem && (
         <div className={dockedPreview ? "preview-shell preview-shell-docked" : "preview-shell"}>
         <Viewer
           key={activeItem.id}
           docked={dockedPreview}
-          blocked={quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+          blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
           item={activeItem}
           items={images}
           tags={lib.tags}
@@ -1605,7 +1615,7 @@ function MediaGrid({
   previewId: number | null;
   copy: (id: number) => Promise<void>;
   copying: number | null;
-  returnTo: { id: number } | null;
+  returnTo: { id: number; offset?: number } | null;
   onReturned: () => void;
   project: number | null;
   onPin: (item: Item) => void;
@@ -1626,7 +1636,9 @@ function MediaGrid({
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
   const ratioFrame = useRef(0);
   useLayoutEffect(() => {
-    const grid = ref.current, scroller = parent.current;
+    // On Home -> library, the child layout effect precedes the parent ref attachment.
+    // The DOM ancestor is already present, so always attach the size observer.
+    const grid = ref.current, scroller = parent.current ?? grid?.closest<HTMLDivElement>(".content");
     if (!grid || !scroller) return;
     let frame = 0;
     const update = () => {
@@ -1652,12 +1664,12 @@ function MediaGrid({
     const tile = layout.tiles[index], scroller = parent.current, grid = ref.current;
     if (!scroller || !grid) return;
     const offset = grid.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-    scroller.scrollTop = Math.max(0, offset + tile.top - Math.max(0, (scroller.clientHeight - tile.height) / 2));
+    scroller.scrollTop = Math.max(0, offset + tile.top - (returnTo.offset ?? Math.max(0, (scroller.clientHeight - tile.height) / 2)));
     setViewport({ top: scroller.scrollTop - offset, height: scroller.clientHeight });
     const button = grid.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
     const image = button?.querySelector('img');
-    if (button && (!image || image.complete)) {
-      button.focus({ preventScroll: true }); setHighlighted(returnTo); onReturned();
+    if (button && (returnTo.offset === undefined ? (!image || image.complete) : (image?.complete && image.naturalWidth > 0) || !!button.querySelector(".file-fallback"))) {
+      button.focus({ preventScroll: true }); if(returnTo.offset===undefined)setHighlighted(returnTo); onReturned();
     }
   }, [returnTo, items, layout, parent, onReturned, viewport.top]);
   useEffect(() => {
@@ -1666,12 +1678,13 @@ function MediaGrid({
     return () => window.clearTimeout(timer);
   }, [highlighted]);
   return <div ref={ref} className="media-grid poster-masonry" style={{ height: layout.height }}
+    onErrorCapture={() => { if(returnTo&&!ratioFrame.current)ratioFrame.current=requestAnimationFrame(()=>{ratioFrame.current=0;setRevision(value=>value+1);}); }}
     onLoadCapture={event => {
       const image = event.target as HTMLImageElement;
       if (image.tagName !== 'IMG' || image.classList.contains('hover-preview') || !image.naturalWidth || !image.naturalHeight) return;
       const key = image.closest<HTMLElement>('[data-media-key]')?.dataset.mediaKey;
       const ratio = image.naturalWidth / image.naturalHeight;
-      if (!key || thumbnailRatios.get(key) === ratio) return;
+      if (!key || (thumbnailRatios.get(key) === ratio && !returnTo)) return;
       if (thumbnailRatios.size > 10000) thumbnailRatios.clear();
       thumbnailRatios.set(key, ratio);
       if (!ratioFrame.current) ratioFrame.current = requestAnimationFrame(() => { ratioFrame.current = 0; setRevision(value => value + 1); });
@@ -1800,7 +1813,7 @@ function Card({
     >
       <button
         className="card-open"
-        title="Open reference · Space to peek"
+        title="Open reference · Ctrl + scroll to enlarge · Space to peek"
         aria-label={`Open ${item.name}`}
         onClick={open}
         onFocus={() => hover(false)}

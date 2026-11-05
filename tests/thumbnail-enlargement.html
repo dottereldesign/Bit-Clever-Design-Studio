@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Thumbnail enlargement check</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import App from '/src/App.tsx';
+import '/src/style.css';
+const artwork=(id,original=false)=>{
+ const tall=id===149;const w=tall?400:900,h=tall?1500:600;
+ return 'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#bdd5be"/><stop offset="1" stop-color="#eff0d9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${w*.7}" cy="${h*.5}" r="${w*.28}" fill="#eb6a42"/><rect x="30" y="30" width="${w-60}" height="${h-60}" rx="12" fill="none" stroke="#20372b" stroke-width="3"/><text x="50" y="100" fill="#20372b" font-family="Arial" font-weight="bold" font-size="46">Form &amp; colour</text><text x="50" y="${h-60}" fill="#20372b" font-family="Arial" font-size="22">${original?'Original':'Thumbnail'} · ${id}</text></svg>`);
+};
+const library={items:Array.from({length:150},(_,n)=>({id:n+1,name:`Form & colour ${n+1}`,source:'Design/Poster',category:'Poster',kind:'image',path:`C:/mock/original-${n+1}.png`,modified:1,added:n+1,missing:false,tags:[],projects:[]})),categories:['Poster'],projects:[],tags:[],sources:['Design/Poster'],root:'C:/mock',scanning:false};
+let callback=0;const calls=[];
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:path=>artwork(Number(path.match(/(\d+)\.png/)?.[1]??1),path.includes('original')),invoke:async(command,args)=>{
+ calls.push({command,args});if(command==='get_library')return structuredClone(library);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return `C:/mock/thumb-${args.id}.png`;if(command==='storage_usage')return {bytes:400000000,app_bytes:100000000,data_bytes:100000000,library_bytes:200000000,partial:false};throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(value,label)=>{if(!value)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(20);}}
+const overlay=()=>document.querySelector('.thumbnail-enlargement'),stage=()=>document.querySelector('.thumbnail-enlargement-image');
+let wheelId=0,pointerId=0;
+async function wheel(x,y,deltaY,ctrl=true){window.__wheelAction={id:++wheelId,x,y,deltaY,ctrl};await until(()=>window.__wheelActionDone===wheelId,'Native wheel');await pause(80);}
+async function click(x,y){window.__pointerAction={id:++pointerId,from:{x,y},to:{x,y},click:true};await until(()=>window.__pointerActionDone===pointerId,'Native click');}
+function key(key){document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));}
+function visibleImage(){const content=document.querySelector('.content');if(!content)return null;const top=content.getBoundingClientRect().top;return [...document.querySelectorAll('.card-open > img')].find(img=>{const r=img.getBoundingClientRect();return img.complete&&img.naturalWidth&&r.top>=top&&r.bottom<innerHeight-20;});}
+const checks=[];
+try{
+ await until(()=>visibleImage(),'Loaded thumbnails');await pause(300);
+ const originalWidth=innerWidth,originalScale=devicePixelRatio;const content=document.querySelector('.content');content.scrollTop=1600;await pause(300);
+ let image=visibleImage();assert(image,'Scrolled source thumbnail');image.closest('button').focus({preventScroll:true});
+ const rect=image.getBoundingClientRect(),position=content.scrollTop,point={x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+ await wheel(point.x,point.y,-120);await until(()=>stage()?.getBoundingClientRect().width>rect.width+10,'Thumbnail grows');
+ assert(!document.querySelector('.viewer')&&!document.querySelector('.quick-preview'),'Wheel opened another viewer');
+ assert(document.querySelector('main').inert&&document.querySelector('.sidebar').inert,'Background should be inert');
+ const firstWidth=stage().getBoundingClientRect().width;
+ await wheel(point.x,point.y,-120);await pause(320);assert(stage().getBoundingClientRect().width>firstWidth+10,'Second scroll did not grow further');
+ assert(content.scrollTop===position&&innerWidth===originalWidth&&devicePixelRatio===originalScale,'Grid moved or app zoomed');
+ assert(getComputedStyle(document.querySelector('.thumbnail-enlargement-backdrop')).backdropFilter!=='none','No cinematic blur');
+ checks.push('Native Ctrl-wheel progressively enlarges the hovered thumbnail without opening either existing viewer or moving the grid');
+ // The pointer can leave the original tile and the same image remains the target.
+ for(let n=0;n<4;n++)await wheel(innerWidth-10,innerHeight/2,-300);
+ await pause(450);const large=stage().getBoundingClientRect();
+ assert(large.left>=23&&large.right<=innerWidth-23&&large.top>=20&&large.bottom<=innerHeight-65,'Full image escaped viewport');
+ assert(Math.abs(large.width/large.height-1.5)<.01,'Image aspect ratio changed');
+ assert(stage().querySelector('img').src.includes(encodeURIComponent('Original')),'Original-resolution image not loaded');
+ window.__screenshotReady=true;await pause(250);window.__screenshotReady=false;
+ const max=large.width;await wheel(point.x,point.y,120,false);assert(overlay()&&Math.abs(stage().getBoundingClientRect().width-max)<1&&content.scrollTop===position,'Releasing Ctrl changed size or scrolled the grid');
+ key('Delete');assert(!calls.some(c=>c.command==='update'),'Inspection deleted library data');
+ checks.push('Whole image fits the viewport, loads its original, stays open without Ctrl and blocks background actions');
+ // Scroll reversal must shrink rather than restarting the gesture.
+ await wheel(point.x,point.y,120);await pause(250);assert(stage().getBoundingClientRect().width<max-10,'Reverse scroll did not shrink');
+ for(let n=0;n<4;n++)await wheel(point.x,point.y,300);
+ await until(()=>!overlay(),'Scroll back to original');await pause(50);
+ assert(content.scrollTop===position&&!document.querySelector('main').inert&&!image.classList.contains('thumbnail-enlargement-source'),'Original grid not restored');
+ assert(document.activeElement===image.closest('button'),'Original focus not restored');
+ assert(Math.abs(image.getBoundingClientRect().width-rect.width)<1,'Original thumbnail changed size');
+ checks.push('Reverse scrolling returns to the exact thumbnail, scroll position and keyboard focus');
+ await wheel(point.x,point.y,-240);await until(()=>overlay(),'Reopen');key('Escape');await until(()=>!overlay(),'Escape close');
+ await wheel(point.x,point.y,-240);await until(()=>overlay(),'Reopen for outside click');await click(10,innerHeight/2);await until(()=>!overlay(),'Outside close');
+ assert(!document.querySelector('.viewer'),'Close clicked through to thumbnail');
+ await wheel(point.x,point.y,180,false);await until(()=>content.scrollTop>position,'Ordinary wheel scroll');assert(!overlay(),'Ordinary scrolling enlarged image');
+ checks.push('Escape and outside click close without click-through; ordinary wheel scrolling remains unchanged');
+ content.scrollTop=0;await pause(300);const tall=document.querySelector('[data-item-id="149"] .card-open > img');assert(tall?.naturalHeight>tall?.naturalWidth,'Tall thumbnail missing');
+ const tr=tall.getBoundingClientRect();await wheel(tr.left+tr.width/2,Math.min(tr.top+60,innerHeight-30),-300);
+ for(let n=0;n<3;n++)await wheel(innerWidth-10,innerHeight/2,-300);await pause(400);
+ const tallBox=stage().getBoundingClientRect();assert(tallBox.top>=20&&tallBox.bottom<innerHeight-65&&Math.abs(tallBox.width/tallBox.height-400/1500)<.01,'Tall image cropped');
+ document.querySelector('.thumbnail-enlargement-close').click();await until(()=>!overlay(),'Close button');
+ checks.push('Very tall references remain uncropped at maximum size');
+ image=visibleImage();const normal=image.getBoundingClientRect();await click(normal.left+normal.width/2,normal.top+normal.height/2);await until(()=>document.querySelector('.viewer'),'Normal click viewer');
+ checks.push('Ordinary thumbnail clicks still open the existing viewer');
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,checks,stage:stage()?.getBoundingClientRect().toJSON(),scroll:document.querySelector('.content')?.scrollTop,calls:calls.slice(-3)});}
+</script></body></html>

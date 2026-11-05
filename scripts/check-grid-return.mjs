@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['component-links', 'customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+if (!['view-session', 'thumbnail-enlargement', 'component-links', 'customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
 const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
@@ -56,18 +56,19 @@ try {
         const { sessionId } = await call('Target.attachToTarget', { targetId, flatten: true });
         const [width, height] = dimensions.split(',').map(Number);
         await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
-        if(fixture==='home-styles'&&width===960) await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]},sessionId);
+        if(['home-styles','thumbnail-enlargement'].includes(fixture)&&width===960) await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]},sessionId);
         await call('Page.bringToFront', {}, sessionId);
         await call('Page.navigate', { url: testUrl }, sessionId);
         let sentEnter = false;
         let lastPointerAction=0;
+        let lastWheelAction=0;
         let lastResizeAction=0;
         let captured = false;
         let lastCaptureName="";
-        const deadline = Date.now() + (['home-styles','customization'].includes(fixture)?120000:60000);
+        const deadline = Date.now() + (['home-styles','customization','grid-return'].includes(fixture)?120000:60000);
         while (Date.now() < deadline) {
-          const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady, captureName: window.__captureName })', returnByValue: true }, sessionId);
-          if (['copy-resources', 'component-links', 'customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
+          const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, wheel: window.__wheelAction, resize: window.__resizeAction, capture: !!window.__screenshotReady, captureName: window.__captureName })', returnByValue: true }, sessionId);
+          if (['view-session', 'thumbnail-enlargement', 'copy-resources', 'component-links', 'customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
             await mkdir('.tools/checks', { recursive: true });
             const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
             const captureName=['home-styles','customization'].includes(fixture)&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";
@@ -79,6 +80,12 @@ try {
             const action = state.value.resize; lastResizeAction = action.id;
             await call('Emulation.setDeviceMetricsOverride', { width: action.width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
             await call('Runtime.evaluate', { expression: `window.__resizeActionDone=${action.id}` }, sessionId);
+          }
+          if(state.value?.wheel?.id>lastWheelAction){
+            const action=state.value.wheel;lastWheelAction=action.id;
+            await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:action.x,y:action.y},sessionId);
+            await call('Input.dispatchMouseEvent',{type:'mouseWheel',x:action.x,y:action.y,deltaX:0,deltaY:action.deltaY,modifiers:action.ctrl?2:0},sessionId);
+            await call('Runtime.evaluate',{expression:`window.__wheelActionDone=${action.id}`},sessionId);
           }
           if(state.value?.pointer?.id>lastPointerAction){
             const action=state.value.pointer;lastPointerAction=action.id;
