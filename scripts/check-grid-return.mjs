@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+if (!['customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
 const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
@@ -64,13 +64,13 @@ try {
         let lastResizeAction=0;
         let captured = false;
         let lastCaptureName="";
-        const deadline = Date.now() + 60000;
+        const deadline = Date.now() + (['home-styles','customization'].includes(fixture)?120000:60000);
         while (Date.now() < deadline) {
           const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady, captureName: window.__captureName })', returnByValue: true }, sessionId);
-          if (['home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (fixture==='home-styles'&&state.value.captureName!==lastCaptureName))) {
+          if (['customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
             await mkdir('.tools/checks', { recursive: true });
             const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
-            const captureName=fixture==='home-styles'&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";
+            const captureName=['home-styles','customization'].includes(fixture)&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";
             await writeFile(`.tools/checks/${fixture}${captureName}-${dimensions}.png`, Buffer.from(shot.data, 'base64'));
             lastCaptureName=state.value.captureName;
             captured = true;

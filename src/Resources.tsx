@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Dribbble, ExternalLink, MoreHorizontal } from "lucide-react";
 import { openUrl } from "./api";
 import { isResource, type Item } from "./model";
+import { AppIcon,type IconPreferences } from './AppIcon';
 
 const categoryOf = (item: Item) => item.source.startsWith("Resources/") ? item.source.slice(10) : "Saved";
 const hasIcon = (key: string) => key === "pinterest" || key === "dribbble" || key === "awwwards";
@@ -20,7 +21,8 @@ function FavouriteIcon({ name }: { name: string }) {
     </>}
   </svg>;
 }
-export default function Resources({ search, items, report, menu, favourites, openItem }: {
+export default function Resources({ search, items, report, menu, favourites, openItem, icons }: {
+  icons?:IconPreferences;
   favourites: Shortcut[]; openItem:(item:Item)=>void;
   search: string; items: Item[]; report: (e: unknown) => void;
   menu: (id: number, event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -31,7 +33,7 @@ export default function Resources({ search, items, report, menu, favourites, ope
   return <div className="resources-view">
     <nav className="resource-favourites" aria-label="Favourite websites">
       {favourites.map(site => <button key={site.key} title={`Open ${site.name}`} onClick={() => void openUrl(site.url!).catch(report)}>
-        {hasIcon(site.key)&&<FavouriteIcon name={site.key} />}<span>{site.name}</span>
+        <AppIcon value={icons?.overrides[`website:${site.key}`]} size={21} fallback={hasIcon(site.key)?<FavouriteIcon name={site.key}/>:null}/><span>{site.name}</span>
       </button>)}
     </nav>
     <div className="resources-filter"><select aria-label="Resource category" value={category} onChange={e => setCategory(e.target.value)}>

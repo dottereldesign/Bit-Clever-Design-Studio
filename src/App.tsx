@@ -52,14 +52,13 @@ import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
 import RecentReferences from "./RecentReferences";
-import { collections, sites, ordered, useLocalList, type Shortcut } from "./Shortcuts";
+import { collections, sites, ordered, useLocalList, type Shortcut, type GeneralTarget } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
 import useItemDragFeedback from "./useItemDragFeedback";
 import ZoomImage from "./ZoomImage";
 import VideoDownloadDialog from "./VideoDownloadDialog";
-import SidebarIcon from "./SidebarIcon";
 import VideoDownloadQueue from "./VideoDownloadQueue";
 import useVideoQueue from "./useVideoQueue";
 import Resources from "./Resources";
@@ -79,6 +78,11 @@ import HomeDashboard, { homeMime, type HomeDestination } from "./HomeDashboard";
 import { readSectionStyle } from "./SectionStylePicker";
 import Customization, { readHomeAppearance, type CustomTab } from "./Customization";
 import useSidebarSpace from "./useSidebarSpace";
+import SidebarNavigation from "./SidebarNavigation";
+import { sidebarLayouts, readSidebarLayout } from './appearance';
+import { AppIcon, FolderIcon, GeneralEntryIcon, readIcons } from './AppIcon';
+import type { GeneralDraft,GeneralOption } from './GeneralEditor';
+import CollectionView from './CollectionView';
 import { appHistory } from "./appHistory";
 import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
 import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
@@ -253,10 +257,17 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     [sidebarWidth, setSidebarWidth] = useHistoryState("sidebar-width",() => storedNumber("sidebar-width",208),"Sidebar width");
   const [sectionStyle,setSectionStyle]=useHistoryState("sidebar-section-style",readSectionStyle,"Sidebar style");
   const [customTab,setCustomTab]=useState<CustomTab|null>(null);
-  const [homeStyle,setHomeStyle]=useHistoryState('home-style',()=>Math.max(1,Math.min(10,storedNumber('home-style',1))),'Home style');
+  const [homeStyle,setHomeStyle]=useHistoryState('home-style',()=>Math.max(1,Math.min(20,storedNumber('home-style',1))),'Home style');
   const [homeAppearance,setHomeAppearance]=useHistoryState("home-appearance",readHomeAppearance,"Home appearance");
   const [reducedMotion,setReducedMotion]=useHistoryState('reduce-motion',()=>localStorage.getItem('reduce-motion')==='true','Motion preference');
-  useSidebarSpace();
+  const [sidebarLayout,setSidebarLayout]=useHistoryState('sidebar-layout',readSidebarLayout,'Sidebar layout');
+  const [icons,setIcons]=useHistoryState('app-icons',readIcons,'App icons');
+  const navLayout=sidebarLayouts[sidebarLayout-1]??sidebarLayouts[0];
+  const [generalKey,setGeneralKey]=useState<string|null>(null);
+  const generalRoute=useRef('');
+  const generalEntry=collectionPrefs.find(s=>s.key===generalKey);
+  const generalMissing=generalEntry?.target?.kind==='project'&&!lib.projects.some(p=>String(p.id)===generalEntry.target!.value);
+  useSidebarSpace(sidebarLayout);
   useEffect(()=>{localStorage.setItem('home-style',String(homeStyle));},[homeStyle]);
   useEffect(()=>{localStorage.setItem('home-appearance',JSON.stringify(homeAppearance));},[homeAppearance]);
   useEffect(()=>{localStorage.setItem('reduce-motion',String(reducedMotion));document.documentElement.dataset.motion=reducedMotion?'reduce':'';if(reducedMotion)document.getAnimations().forEach(a=>a.cancel());},[reducedMotion]);
@@ -388,26 +399,29 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const filtered = useMemo(
     () => {
       const matches=filterItems(lib.items, {
-        tagMode, includeCollections:!!recent,
+        tagMode, includeCollections:!!recent||resourcesView||generalEntry?.target?.kind==='project',
         category,
         collection: boardView ? boardNames[boardView] : undefined,
         search,
-        type: videoView ? "video" : type,
+        type: videoView ? "video" : type==='all'?(generalEntry?.content??'all'):type,
         tags,
-        source: videoView ? "Videos" : source,
+        source: videoView ? "Videos" : generalEntry&&resourcesView?"Resources":source,
         project,
         linksOnly,
         sort:recent?"recent":sort, seed,
       });
+      if(generalMissing)return [];
       if(allCategoriesView)return matches.filter(i=>i.kind==="link" || !isComponent(categoryOf(i)));
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
     },
-    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView],
+    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
   );
   useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
+  const customCollection = !!generalEntry?.layout && generalEntry.layout !== 'auto';
+  const originalResources = resourcesView && !customCollection;
   const tableBoard = isTableCollection(boardView);
   const images = useMemo(
     () => filtered.filter((i) => i.kind !== "link"),
@@ -422,13 +436,13 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   useEffect(() => {
     if (viewer !== null && !filtered.some(item => item.id === viewer)) setViewer(null);
   }, [filtered, viewer]);
-  const title = recent==="added"?"Recently added":recent==="viewed"?"Recently viewed":videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
+  const title = generalEntry?.name??(recent==="added"?"Recently added":recent==="viewed"?"Recently viewed":videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
     ? "Resources"
     : project
       ? lib.projects.find((p) => p.id === project)?.name || "Project"
       : linksOnly
         ? "Links"
-        : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Categories";
+        : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Categories");
   const activeFilters = !!(search || type !== "all" || tags.length);
   const clearFilters = () => {
     setSearch("");
@@ -438,6 +452,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   };
   const navigate = (id: number | null, onlyLinks = false) => {
     setHomeView(false);
+    setGeneralKey(null);
     setQuickPreview(null);
     setGridReturn(null);
     setRecent(null);
@@ -495,7 +510,35 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
     ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?name.slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
   ];
+  const generalOptions:GeneralOption[]=[
+    ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
+    {label:'Design Inspo / All',target:{kind:'category',value:'__all__'}},{label:'App Components / All',target:{kind:'category',value:allComponents}},
+    ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
+    ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
+  ];
+  const iconTargets=[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))];
+  const saveGeneral=async(draft:GeneralDraft,key?:string)=>{
+    if(!draft.name)throw Error('Enter a name for the entry.');
+    let target:GeneralTarget;
+    if(draft.target.kind==='new'){const next=await mutate({action:'create_project',name:draft.name});const created=next.projects.find(p=>p.name===draft.name);if(!created)throw Error('Could not find the new collection.');target={kind:'project',value:String(created.id)};}else target=draft.target;
+    const entry:Shortcut={...collectionPrefs.find(s=>s.key===key),key:key??crypto.randomUUID(),name:draft.name,target,layout:draft.layout,content:draft.content};
+    setCollectionPrefs(previous=>key?previous.map(s=>s.key===key?entry:s):[...previous,entry]);
+  };
+  const openGeneral=(entry:Shortcut)=>{
+    const target=entry.target??{kind:'view',value:entry.key};
+    if(target.kind==='website'){setGeneralKey(null);void openUrl(target.value).catch(report);return;}
+    generalRoute.current=JSON.stringify([entry.key,target]);
+    navigate(target.kind==='project'?Number(target.value):null,target.kind==='view'&&target.value==='links');setGeneralKey(entry.key);
+    if(target.kind==='category'){if(target.value!=='__all__')setCategory(target.value);return;}
+    if(target.kind==='project')return;
+    const key=target.value;if(isBoardDestination(key))setBoardView(key);if(key==='resources')setResourcesView(true);
+    if(key==='facebook'){setVideoView(true);setSource('Videos');}
+    if(key==='added'||key==='viewed'){setRecent(key);if(key==='viewed'){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}}
+  };
+  useEffect(()=>{if(!generalEntry)return;const target=generalEntry.target??{kind:'view',value:generalEntry.key};if(generalRoute.current!==JSON.stringify([generalEntry.key,target])){if(target.kind==='website')setGeneralKey(null);else openGeneral(generalEntry);}},[generalKey,generalEntry?.target?.kind,generalEntry?.target?.value]);
   const openHomeDestination=(destination:HomeDestination)=>{
+    if(destination.kind==='collection'){const entry=collectionPrefs.find(s=>s.key===destination.value);if(entry)openGeneral(entry);return;}
     if(destination.kind==="project"){navigate(Number(destination.value));return;}
     navigate(null,destination.value==="links");
     if(destination.kind==="category"){if(destination.value!=="__all__")setCategory(destination.value);return;}
@@ -535,7 +578,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   });
   const folderRow = (s: string) => (
     <button
-      className={`nav-item source-item ${!homeView && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
+      className={`nav-item source-item ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
       {...homeDrag(`category:${s}`)}
       data-category={s}
       {...categoryDropProps(s)}
@@ -543,7 +586,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       title={`Open ${categoryLabel(s)}; drop references here to ${isComponent(s)&&s!==componentInbox?"add to this folder":"change category"}`}
       onClick={() => { navigate(null); setCategory(s); }}
     >
-      <Folder size={14} />
+      <FolderIcon preferences={icons} id={`category:${s}`} size={14}/>
       <span>{isComponent(s) ? s.split(" / ").pop() : categoryLabel(s)}</span>
       <small>{categoryCounts.get(s)||""}</small>
     </button>
@@ -930,7 +973,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   });
   return (
     <div
-      className="app" data-sidebar-compact={sidebarWidth<200}
+      className="app" data-sidebar-layout={sidebarLayout} data-sidebar-brand={navLayout.brand} data-sidebar-counts={navLayout.counts!==false} data-sidebar-compact={sidebarWidth<200}
       onClickCapture={homeShortcutDrag.captureClick}
       onDragStart={itemDrag.start}
       onPointerDown={itemDrag.pointerDown}
@@ -945,7 +988,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         setHoverId(null);
         setItemMenu({ x: e.clientX, y: e.clientY, ids: (viewer === null || widePreview) && selected.has(id) ? [...selected] : [id] });
       }}
-      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+      style={{ "--sidebar-width": `${sidebarWidth}px`,"--nav-row":`${navLayout.row}px`,"--nav-inset":`${navLayout.inset}px`,"--nav-radius":`${navLayout.radius}px`,"--nav-indent":navLayout.indent===undefined?undefined:`${navLayout.indent}px` } as React.CSSProperties}
     >
       <aside
         className="sidebar"
@@ -955,28 +998,20 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </button>
-        <div className="sidebar-scroll">
-        <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><House size={16}/><span>Home</span></button>
-        <SidebarSection name="General" dropProps={homeDrag("group:general")}>
+        <SidebarNavigation order={navLayout.order}>
+        <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><AppIcon value={icons.overrides.home} fallback={<House size={16}/>}/><span>Home</span></button>
+        <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
         <nav aria-label="Library">
-          {ordered(collectionPrefs).filter(s=>!s.hidden).map(({key,name,pinned})=>{
-            const board=isBoardDestination(key);
-            const active=!homeView&&(key==="links"?linksOnly:key==="resources"?resourcesView:key==="facebook"?videoView:board?boardView===key:recent===key);
-            const count=key==="links"?lib.items.filter(i=>i.kind==="link"&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[key]).length:key==="facebook"?lib.items.filter(i=>i.kind==="video"&&(i.source==="Videos"||i.source.startsWith("Videos/"))).length:0;
-            return <button className={`nav-item ${active?"active":""}`} key={key} {...homeDrag(`collection:${key}`)} onClick={()=>{
-              navigate(null,key==="links");
-              if(board)setBoardView(key);
-              if(key==="resources")setResourcesView(true);
-              if(key==="facebook"){setVideoView(true);setSource("Videos");}
-              if(key==="added"||key==="viewed"){
-                setRecent(key);
-                if(key==="viewed"){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}
-              }
-            }}>{board||key==="facebook"||key==="resources"?<SidebarIcon name={key}/>:key==="links"?<Link2 size={15}/>:<Grid2X2 size={15}/>}<span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||""}</small></button>;
+          {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
+            const {key,name,pinned}=entry,target=entry.target??{kind:'view',value:key},view=target.kind==='view'?target.value:'',board=isBoardDestination(view);
+            const count=target.kind==='project'?lib.projects.find(p=>String(p.id)===target.value)?.count:target.kind==='category'?categoryCounts.get(target.value):view==='links'?lib.items.filter(i=>i.kind==='link'&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[view]).length:view==='facebook'?lib.items.filter(i=>i.kind==='video'&&(i.source==='Videos'||i.source.startsWith('Videos/'))).length:0;
+            const folder=target.kind==='category'?(target.value==='__all__'?'':target.value===allComponents?componentInbox:target.value):undefined;
+            const projectProps=target.kind==='project'?{'data-project-id':Number(target.value),'data-project-name':name,onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes('application/design-items')){e.preventDefault();e.currentTarget.classList.add('drop-target');}},onDragLeave:(e:React.DragEvent)=>e.currentTarget.classList.remove('drop-target'),onDrop:(e:React.DragEvent)=>drop(e,Number(target.value))}:{};
+            return <button className={`nav-item general-nav ${!homeView&&generalKey===key?'active':''}`} key={key} {...homeDrag(`collection:${key}`)} {...projectProps} {...(folder!==undefined?{'data-category':folder,...categoryDropProps(folder)}:{})} onClick={()=>openGeneral(entry)} title={name}><GeneralEntryIcon entry={entry} preferences={icons}/><span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||''}</small></button>;
           })}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Projects" dropProps={homeDrag("group:projects")} action={
+        <SidebarSection name="Projects" icon={icons.overrides["section:Projects"]&&<AppIcon value={icons.overrides["section:Projects"]}/>} dropProps={homeDrag("group:projects")} action={
           <IconButton
             title="New project"
             onClick={() => setModal({ kind: "project" })}
@@ -987,7 +1022,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           <nav aria-label="Projects">
             {lib.projects.map((p) => (
               <div
-                className={`project-row ${!homeView && project === p.id ? "active" : ""}`}
+                className={`project-row ${!homeView && !generalKey && project === p.id ? "active" : ""}`}
                 data-project-id={p.id}
                 data-project-name={p.name}
                 key={p.id}
@@ -1006,7 +1041,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
                 onDrop={(e) => drop(e, p.id)}
               >
                 <button className="nav-item" {...homeDrag(`project:${p.id}`)} onClick={() => navigate(p.id)}>
-                  <Folder size={15} />
+                  <FolderIcon preferences={icons} id={`project:${p.id}`}/>
                   <span>{p.name}</span>
                   <small>{p.count || ""}</small>
                 </button>
@@ -1040,7 +1075,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           )}
         </div>
         </SidebarSection>
-        <SidebarSection name="Categories" label="Design Inspo" identity="design" styleId={sectionStyle} dropProps={{...homeDrag("design"),...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
+        <SidebarSection name="Categories" label="Design Inspo" identity="design" icon={icons.overrides.design&&<AppIcon value={icons.overrides.design} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag("design"),...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
           <IconButton
             title="New category"
             onClick={() => setModal({kind:"category",ids:[]})}
@@ -1049,11 +1084,11 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           </IconButton>}>
         <nav className="source-list" aria-label="Design Inspo">
           <button
-            className={`nav-item ${!homeView&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
+            className={`nav-item ${!homeView&&!generalKey&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
             {...homeDrag("design")}
             onClick={() => navigate(null)}
           >
-            <Folder size={14} />
+            <FolderIcon preferences={icons} id="design:all" size={14}/>
             <span>
               All categories
             </span>
@@ -1061,7 +1096,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           {[...categories, ""].map(folderRow)}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Components" label="App Components" identity="components" styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
+        <SidebarSection name="Components" label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
           <nav aria-label="App Components">
             {folderRow(allComponents)}
             {folderRow(componentInbox)}
@@ -1072,7 +1107,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
             )}
           </nav>
         </SidebarSection>
-        </div>
+        </SidebarNavigation>
         <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('sidebar')}><SlidersHorizontal size={15}/><span>Customise</span></button>
           <button title="Settings" aria-label="Settings" onClick={() => setModal({ kind: "settings" })}>
             <Settings2 size={15} />
@@ -1094,13 +1129,13 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         />
       </aside>
       <main inert={!!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
-        {homeView?<HomeDashboard style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
+        {homeView?<HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
         <header className="topbar">
           <div className="view-title">
             <h1>{title}</h1>
             <span>
               {boardView ? boardItems.length : resourcesView
-                ? lib.items.filter(isResource).length
+                ? filtered.filter(isResource).length
                 : filtered.length.toLocaleString()}
             </span>
             {lib.scanning && (
@@ -1144,7 +1179,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
             </Popover>
           </div>
         </header>
-        {!resourcesView && (
+        {!originalResources && (
           <div className="toolbar">
             <div className="filters">
               {!boardView && !videoView && <select
@@ -1229,7 +1264,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
                   <RefreshCw size={12} />
                 </IconButton>
               )}
-              {!tableBoard && <><span className="divider" />
+              {(!tableBoard || customCollection) && <><span className="divider" />
               <Grid2X2 size={13} />
               <input
                 type="range"
@@ -1248,7 +1283,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
             <LoaderCircle className="spin" size={13} /> Reading files…
           </div>
         )}
-        {selected.size > 0 && !resourcesView && (
+        {selected.size > 0 && !originalResources && (
           <div className="selection-bar">
             <IconButton
               title="Clear selection"
@@ -1316,11 +1351,11 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (
-            <Resources favourites={ordered(sitePrefs).filter(s=>!s.hidden)} openItem={openItem} key={resourceVersion} search={search} items={lib.items} report={report}
+            <Resources icons={icons} favourites={ordered(sitePrefs).filter(s=>!s.hidden)} openItem={openItem} key={resourceVersion} search={search} items={filtered} report={report}
               menu={(id, event) => { const rect = event.currentTarget.getBoundingClientRect(); setItemMenu({ ids: [id], x: rect.left, y: rect.bottom }); }} />
           ) : !ready && !error ? (
             <div className="empty-state">
@@ -1502,7 +1537,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       )}
       {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Drop on Home</small></div>}
-      {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
+      {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
         sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}

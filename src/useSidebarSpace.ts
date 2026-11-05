@@ -4,7 +4,7 @@ export function shareSidebarSpace(demands:number[],available:number){
  while(pending.size){const share=left/pending.size,small=[...pending].filter(i=>demands[i]<=share);if(!small.length){for(const i of pending)result[i]=share;break;}for(const i of small){result[i]=demands[i];left-=demands[i];pending.delete(i);}}
  return result;
 }
-export default function useSidebarSpace(){
+export default function useSidebarSpace(layout=1){
  useLayoutEffect(()=>{
   const container=document.querySelector<HTMLElement>('.sidebar-scroll');if(!container)return;let frame=0;
   const measure=()=>{frame=0;
@@ -20,5 +20,5 @@ export default function useSidebarSpace(){
   const watch=()=>{container.querySelectorAll('.sidebar-heading,.sidebar-section-body,.section-reveal,.section-reveal-inner > nav').forEach(node=>resize.observe(node));schedule();};
   const mutation=new MutationObserver(watch);mutation.observe(container,{subtree:true,childList:true,attributes:true,attributeFilter:['data-open','class']});watch();
   return ()=>{cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();};
- },[]);
+ },[layout]);
 }

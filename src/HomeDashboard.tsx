@@ -6,6 +6,7 @@ import "./homeDashboard.css";
 import { appHistory } from "./appHistory";
 import { useHistoryState, HistoryButtons } from "./useAppHistory";
 import HomeTileLabel from "./HomeTileLabel";
+import { AppIcon,type IconPreferences } from "./AppIcon";
 import type { HomeAppearance } from "./Customization";
 import { homeLayout, moveDivider, type HomePlan, type Divider } from "./homeLayout";
 export { homeLayout } from "./homeLayout";
@@ -27,9 +28,19 @@ export const homeStyles=[
   ["Orbit","Deep colour and atmospheric light."],
   ["Swiss board","Graphic numbers and sharp rules."],
   ["Soft studio","Sculpted surfaces and quiet depth."],
+  ["Porcelain","A clean surface with a bold corner of colour."],
+  ["Ink stamp","Black and white, generous type."],
+  ["Citrus","Bright curved shapes and playful colour."],
+  ["Clay","Warm earth tones and soft inset surfaces."],
+  ["Ocean","Deep sea colour with a luminous horizon."],
+  ["Vellum","Layered translucent paper."],
+  ["Blueprint","A fine grid with technical lettering."],
+  ["Monograph","Large editorial type on warm ivory."],
+  ["Lilac ribbon","Pastel surfaces and a broad ribbon of light."],
+  ["Ember","Dark warm surfaces with a glowing edge."],
 ];
 const loadTiles=():HomeTile[]=>{try {const rows=JSON.parse(localStorage.getItem("home-tiles")??"[]");if(!Array.isArray(rows))return [];const seen=new Set<string>();return rows.filter(t=>t&&typeof t.id==="string"&&!seen.has(t.id)&&seen.add(t.id)).slice(0,100).map(t=>({id:t.id,span:Number.isFinite(t.span)?Math.max(2,Math.min(12,t.span)):undefined,height:Number.isFinite(t.height)?Math.max(128,Math.min(512,t.height)):224,radius:Number.isFinite(t.radius)?Math.max(0,Math.min(48,t.radius)):18,cover:t.cover&&typeof t.cover.path==="string"&&Number.isFinite(t.cover.width)&&t.cover.width>0&&Number.isFinite(t.cover.height)&&t.cover.height>0?t.cover:undefined,autoImageSize:t.autoImageSize===true}));}catch{return [];}};
-export default function HomeDashboard({destinations,open,incoming,received,dragging=false,style,appearance,customize}:{style:number;appearance:HomeAppearance;customize:()=>void;destinations:HomeDestination[];open:(d:HomeDestination)=>void;incoming?:string|null;received?:()=>void;dragging?:boolean}){
+export default function HomeDashboard({destinations,open,incoming,received,dragging=false,style,appearance,customize,icons}:{icons:IconPreferences;style:number;appearance:HomeAppearance;customize:()=>void;destinations:HomeDestination[];open:(d:HomeDestination)=>void;incoming?:string|null;received?:()=>void;dragging?:boolean}){
   const [reorderGhost,setReorderGhost]=useState<{id:string;x:number;y:number}|null>(null);
   const [dropTarget,setDropTarget]=useState<string|null>(null),[plan,,setPlan]=useHistoryState<HomePlan|null>("home-plan",loadPlan,"Home layout");
   const suppressTileClick=useRef(false);
@@ -129,7 +140,7 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
       {tiles.map((tile,index)=>{const destination=byId.get(tile.id),position=layout.positions[index];return <article key={tile.id} data-home-tile={tile.id} data-home-edges={[position.top<1?"top":"",position.left<1?"left":"",position.left+position.width>=width-1?"right":"",position.top+position.height>=height-1?"bottom":""].filter(Boolean).join(" ")} data-tile-group={destination?.group??"design"} className={`home-tile ${tile.cover?"has-cover":""} ${coverBusy.includes(tile.id)?"cover-busy":""} ${editing?"is-editing":""} ${reorderGhost?.id===tile.id?"is-lifted":""} ${dropTarget===tile.id?"is-swap-target":""}`} id={`home-slot-${index}`} style={{...position,"--tile-radius":`${tile.radius}px`} as React.CSSProperties} onDragOver={e=>{if(e.dataTransfer.types.includes(tileMime)||e.dataTransfer.types.includes('Files')){e.preventDefault();e.currentTarget.classList.add('tile-drop-target');}}} onDragLeave={e=>e.currentTarget.classList.remove('tile-drop-target')} onDrop={e=>{e.currentTarget.classList.remove('tile-drop-target');drop(e,index);}}>
         <button className="home-tile-open" onPointerDown={e=>{if(appearance.dragAnywhere)reorder(e,tile);}} disabled={!destination} onClick={()=>destination&&activate(destination)} aria-label={`Open ${destination?.label??"unavailable destination"}`}>
           {tile.cover?<img className="home-tile-cover" src={convertFileSrc(tile.cover.path)} alt={destination?.label??"Tile image"} draggable={false}/>:<>
-          <span className="home-tile-top"><span>{destination?.group??"Unavailable"}</span><ArrowUpRight size={18}/></span><span className="home-tile-art" aria-hidden="true"><i/><i/><i/></span><span className="home-tile-index" aria-hidden="true">{String(index+1).padStart(2,"0")}</span><span className="home-tile-icon" aria-hidden="true">{destination?.kind==="project"?<Folder size={27}/>:destination?.group==="components"?<Layers size={27}/>:<LayoutGrid size={27}/>}</span>
+          <span className="home-tile-top"><span>{destination?.group??"Unavailable"}</span><ArrowUpRight size={18}/></span><span className="home-tile-art" aria-hidden="true"><i/><i/><i/></span><span className="home-tile-index" aria-hidden="true">{String(index+1).padStart(2,"0")}</span><span className="home-tile-icon" aria-hidden="true"><AppIcon size={27} value={icons.overrides[tile.id]??(tile.id==='category:All Components'?icons.overrides.components:undefined)} fallback={destination?.kind==="project"?<Folder size={27}/>:destination?.group==="components"?<Layers size={27}/>:<LayoutGrid size={27}/>}/></span>
           <span className="home-tile-title">{destination?.label??"Destination unavailable"}</span><span className="home-tile-count">{destination?.count!==undefined?`${destination.count.toLocaleString()} references`:destination?"Open collection":"Remove this tile or restore its destination"}</span></>}
           {appearance.labels&&<><span className="home-tile-scrim" aria-hidden="true"/><HomeTileLabel label={destination?.label??"Destination unavailable"} scale={appearance.textSize/32}/></>}
         </button>

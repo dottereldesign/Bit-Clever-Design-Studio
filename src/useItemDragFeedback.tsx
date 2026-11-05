@@ -21,7 +21,7 @@ export default function useItemDragFeedback(options:Options) {
       if(session?.host.hasPointerCapture(session.id))session.host.releasePointerCapture(session.id);
       document.body.classList.remove('dragging-items');
       count.current=0;setFeedback(null);ghost.current?.remove();ghost.current=null;
-      document.querySelectorAll('.project-row.drop-target,.source-item.drop-target,.sidebar-heading.drop-target').forEach(row=>row.classList.remove('drop-target'));
+      document.querySelectorAll('.project-row.drop-target,.general-nav.drop-target,.source-item.drop-target,.sidebar-heading.drop-target').forEach(row=>row.classList.remove('drop-target'));
     };
     const show=(element:Element|null,x:number,y:number)=>{
       if(!count.current)return;
@@ -39,7 +39,7 @@ export default function useItemDragFeedback(options:Options) {
     const highlight=(session:PointerDrag)=>{
       const element=document.elementFromPoint(session.x,session.y);
       const target=element?.closest('[data-category],[data-project-id]');
-      document.querySelectorAll('.source-item.drop-target,.sidebar-heading.drop-target,.project-row.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
+      document.querySelectorAll('.source-item.drop-target,.sidebar-heading.drop-target,.project-row.drop-target,.general-nav.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
       target?.classList.add('drop-target');show(element,session.x,session.y);
     };
     const scroll=()=>{
@@ -104,8 +104,8 @@ export default function useItemDragFeedback(options:Options) {
     suppressClick.current=false;
     if(!latest.current.enabled||e.button!==0||!e.isPrimary)return;
     const target=e.target instanceof Element?e.target:null;
-    const card=target?.closest<HTMLElement>('.card[data-item-id]');
-    if(!card||target?.closest('button:not(.card-open),input,textarea,select'))return;
+    const card=target?.closest<HTMLElement>('.card[data-item-id],.collection-reference[data-item-id]');
+    if(!card||target?.closest('button:not(.card-open):not(.collection-reference-open),input,textarea,select'))return;
     pointer.current={id:e.pointerId,ids:latest.current.ids(Number(card.dataset.itemId)),startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,active:false,host:e.currentTarget};
   };
   const start=(e:DragEvent)=>{

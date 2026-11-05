@@ -91,25 +91,25 @@ try {
  checks.push('Shared dividers track the pointer without animation lag or orientation flips; keyboard resize and Escape restore work');
  checks.push('Red removal control asks first; Cancel preserves the tile; confirmed removal supports Undo');
  checks.push('Home starts empty; sidebar destinations add without duplicates; adaptive layout, sizing, shapes, rearranging, removal, Undo and navigation persistence work');
- document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelectorAll('.style-study').length===10,'Ten sidebar styles');
+ document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelectorAll('.style-study').length===20,'Twenty sidebar styles');
  const sample=document.querySelector('.style-study .section-toggle');sample.click();await pause(300);assert(sample.getAttribute('aria-expanded')==='true','Style sample does not expand');sample.click();await pause(300);
  // Capture every style together at the large test viewport.
  window.__captureName="sidebar";window.__screenshotReady=true;await pause(700);
- for(let i=1;i<=10;i++){if(!document.querySelector('.customise-panel')){document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Reopen style chooser');}
+ for(let i=1;i<=20;i++){if(!document.querySelector('.customise-panel')){document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Reopen style chooser');}
  document.querySelector(`[data-style-study="${i}"] .use-section-style`).click();await until(()=>document.querySelector(`.sidebar .section-design.section-style-${i}`),'Apply sidebar style');
  assert(localStorage.getItem('sidebar-section-style')===String(i),'Style not persisted');
  const app=document.querySelector('.app');app.style.setProperty('--sidebar-width','168px');await pause(30);for(const heading of document.querySelectorAll('.sidebar .section-feature > .sidebar-heading'))assert(heading.querySelector('.section-title').scrollWidth<=heading.querySelector('.section-title').clientWidth+2,'Title overflows narrow sidebar: '+i);app.style.setProperty('--sidebar-width','208px');assert(!document.querySelector('.sidebar .folder-group.section-feature'),'Subfolders restyled');assert(parseFloat(getComputedStyle(document.querySelector('.sidebar .folder-group .section-toggle')).minHeight)<=27,'Subfolder toggle enlarged');
  }
  if(matchMedia('(prefers-reduced-motion: reduce)').matches)assert(getComputedStyle(document.querySelector('.sidebar .section-reveal')).transitionDuration==='0s','Reduced motion ignored');
- checks.push('All ten sidebar styles apply and persist; previews expand; subfolders stay minimal; scrolling belongs to folder lists');
+ checks.push('All twenty sidebar styles apply and persist; previews expand; subfolders stay minimal; scrolling belongs to folder lists');
  document.querySelector('.customise-layout > nav button:nth-child(2)').click();
- for(let i=1;i<=10;i++){await until(()=>document.querySelectorAll('.home-style-choice').length===10,'Ten Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');
+ for(let i=1;i<=20;i++){await until(()=>document.querySelectorAll('.home-style-choice').length===20,'Twenty Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');
  await pause(450);const bounds=document.querySelector('.home-canvas').getBoundingClientRect();
  for(const tileNode of document.querySelectorAll('[data-home-tile]')){const r=tileNode.getBoundingClientRect(),css=getComputedStyle(tileNode),top=r.top<=bounds.top+1,left=r.left<=bounds.left+1,right=r.right>=bounds.right-1,bottom=r.bottom>=bounds.bottom-1;
  for(const [property,edge] of [['borderTopLeftRadius',top||left],['borderTopRightRadius',top||right],['borderBottomLeftRadius',bottom||left],['borderBottomRightRadius',bottom||right]])assert(edge?parseFloat(css[property])===0:parseFloat(css[property])>0,'Incorrect edge rounding: style '+i+' '+property);
  }}
  document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close customisation');
- checks.push('All ten Home styles preserve interior rounding and square corners touching each canvas edge; logo navigation restores Home');
+ checks.push('All twenty Home styles preserve interior rounding and square corners touching each canvas edge; logo navigation restores Home');
  window.__captureName='canvas';await pause(700);
  // Every tile remains reachable within one screen, including dense and portrait layouts.
  for(const [w,h] of [[1200,750],[600,650],[1800,400]])for(const count of [1,3,4,12,40,100]){
@@ -163,7 +163,7 @@ try {
  }
  labelRoot.unmount();labelHost.remove();checks.push('Labels grow with tile width and height and fit long names without clipping');
  const beforeRestart=signature(),planBeforeRestart=localStorage.getItem('home-plan');root.unmount();root=createRoot(document.getElementById('root'));root.render(React.createElement(App));await until(()=>document.querySelector('.home-dashboard')&&tile('design'),'Home startup after remount');assert(signature()===beforeRestart&&localStorage.getItem('home-plan')===planBeforeRestart,'Restart lost tile layout');
- assert(document.querySelector('.home-dashboard.home-style-10'),'Restart lost Home style');assert(tile('project:7').querySelector('.home-tile-cover'),'Restart lost image cover');
+ assert(document.querySelector('.home-dashboard.home-style-20'),'Restart lost Home style');assert(tile('project:7').querySelector('.home-tile-cover'),'Restart lost image cover');
  checks.push('Restart returns to Home and restores its layout and selected style');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks,calls:calls.slice(-3)});}

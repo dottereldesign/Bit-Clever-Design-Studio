@@ -76,6 +76,7 @@ try{
  assert(document.querySelectorAll('.recent-reference').length===library.items.length,'Recent view omitted collection links');
  nav('Recently viewed');await until(()=>document.querySelector('.recent-reference'),'Previously previewed references');
  document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Shortcut editor');
+ [...document.querySelectorAll('.customise-layout > nav button')].find(b=>b.textContent==='General').click();await until(()=>document.querySelector('.general-editor'),'General editor');
  const shortcut=[...document.querySelectorAll('.shortcut-row')].find(el=>el.textContent.startsWith('CodePen'));
  shortcut.querySelector('input').click();document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close customisation');await until(()=>![...document.querySelectorAll('nav[aria-label=Library] button span')].some(el=>el.textContent==='CodePen'),'Hide sidebar shortcut');
  document.querySelector('nav[aria-label=Projects] button.nav-item').click();

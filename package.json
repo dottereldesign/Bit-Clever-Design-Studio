@@ -17,6 +17,7 @@
     "test:grid": "node scripts/check-grid-return.mjs",
     "test:video": "node scripts/check-grid-return.mjs video-download",
     "test:boards": "node scripts/check-grid-return.mjs link-boards",
+    "test:customization": "node scripts/check-grid-return.mjs customization",
     "test:history": "node scripts/check-grid-return.mjs app-history",
     "test:home": "node scripts/check-grid-return.mjs home-styles",
     "test:categories": "node scripts/check-grid-return.mjs categories",

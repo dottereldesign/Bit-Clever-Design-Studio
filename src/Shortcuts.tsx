@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { boardNames } from "./model";
+import type { CollectionLayout } from './appearance';
+export type GeneralTarget={kind:'view'|'project'|'category'|'website';value:string};
 
 export const collectionNames = {
   links: "Links",
@@ -15,6 +17,9 @@ export type Shortcut = {
   url?: string;
   pinned?: boolean;
   hidden?: boolean;
+  target?: GeneralTarget;
+  layout?: CollectionLayout;
+  content?: 'all'|'image'|'video'|'link';
 };
 export const collections: Shortcut[] = Object.entries(collectionNames).map(
   ([key, name]) => ({ key, name }),
