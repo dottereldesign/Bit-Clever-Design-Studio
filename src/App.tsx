@@ -85,7 +85,7 @@ import type { GeneralDraft,GeneralOption } from './GeneralEditor';
 import CollectionView from './CollectionView';
 import { appHistory } from "./appHistory";
 import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
-import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
+import { allComponents, componentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
 import {componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
 
@@ -262,6 +262,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [reducedMotion,setReducedMotion]=useHistoryState('reduce-motion',()=>localStorage.getItem('reduce-motion')==='true','Motion preference');
   const [sidebarLayout,setSidebarLayout]=useHistoryState('sidebar-layout',readSidebarLayout,'Sidebar layout');
   const [icons,setIcons]=useHistoryState('app-icons',readIcons,'App icons');
+  const [folderOrder,setFolderOrder]=useHistoryState<Record<string,string[]>>('sidebar-folder-order',()=>{try{return JSON.parse(localStorage.getItem('sidebar-folder-order')??'{}');}catch{return {}; }},'Folder order');
+  const sortedFolders=(folders:string[],group:string)=>{const saved=folderOrder[group]??[];return [...folders].sort((a,b)=>{const ai=saved.indexOf(a),bi=saved.indexOf(b);return (ai<0?Infinity:ai)-(bi<0?Infinity:bi)||categoryLabel(a).localeCompare(categoryLabel(b),undefined,{numeric:true,sensitivity:'base'});});};
   const navLayout=sidebarLayouts[sidebarLayout-1]??sidebarLayouts[0];
   const [generalKey,setGeneralKey]=useState<string|null>(null);
   const generalRoute=useRef('');
@@ -548,7 +550,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     if(key==="facebook"){setVideoView(true);setSource("Videos");}
     if(key==="added"||key==="viewed"){setRecent(key);if(key==="viewed"){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}}
   };
-  const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop);
+  const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop,(id,target,after)=>{const from=id.slice(9),to=target.slice(9),group=isComponent(from)?'components':'design';if(isComponent(from)!==isComponent(to)||from===to)return;const rows=sortedFolders(group==='components'?componentFolders:[...categories,''],group).filter(name=>name!==from),index=rows.indexOf(to);if(index<0)return;rows.splice(index+(after?1:0),0,from);setFolderOrder(previous=>({...previous,[group]:rows}));});
   const homeDrag=(id:string)=>homeShortcutDrag.props(id,homeDestinations.find(d=>d.id===id)?.label??"Destination");
   const changeCategory = async (ids:number[],name:string) => {
     const items=lib.items.filter(i=>ids.includes(i.id)&&i.kind!=="link");
@@ -580,6 +582,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     <button
       className={`nav-item source-item ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
       {...homeDrag(`category:${s}`)}
+      data-folder-order={s===allComponents?undefined:isComponent(s)?'components':'design'}
       data-category={s}
       {...categoryDropProps(s)}
       key={s}
@@ -1093,18 +1096,13 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
               All categories
             </span>
           </button>
-          {[...categories, ""].map(folderRow)}
+          {sortedFolders([...categories, ''],'design').map(folderRow)}
         </nav>
         </SidebarSection>
         <SidebarSection name="Components" label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
           <nav aria-label="App Components">
             {folderRow(allComponents)}
-            {folderRow(componentInbox)}
-            {Object.entries(componentGroups).map(([group, folders]) =>
-              <SidebarSection key={group} name={group} nested>
-                {folders.map(folder => folderRow(componentKey(folder)))}
-              </SidebarSection>
-            )}
+            {sortedFolders(componentFolders,'components').map(folderRow)}
           </nav>
         </SidebarSection>
         </SidebarNavigation>
@@ -1536,7 +1534,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         </div>
       )}
       {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
-      {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Drop on Home</small></div>}
+      {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Reorder folders or drop on Home</small></div>}
       {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
