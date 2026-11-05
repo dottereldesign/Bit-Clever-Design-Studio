@@ -13,6 +13,7 @@
     "test": "tsx --test src/model.test.ts src/zoom.test.ts src/videoQueue.test.ts src/masonry.test.ts src/mediaQueue.test.ts src/homeLayout.test.ts src/sidebarSpace.test.ts src/appHistory.test.ts",
     "diagnose:performance": "node scripts/check-grid-return.mjs performance",
     "diagnose:processes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/monitor-performance.ps1",
+    "test:clipboard-scroll": "node scripts/check-grid-return.mjs clipboard-scroll",
     "test:session": "node scripts/check-grid-return.mjs view-session",
     "test:enlarge": "node scripts/check-grid-return.mjs thumbnail-enlargement",
     "test:preview": "node scripts/check-grid-return.mjs wide-preview",

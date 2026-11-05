@@ -42,7 +42,7 @@ try{
  assert(Math.abs(large.width/large.height-1.5)<.01,'Image aspect ratio changed');
  assert(stage().querySelector('img').src.includes(encodeURIComponent('Original')),'Original-resolution image not loaded');
  window.__screenshotReady=true;await pause(250);window.__screenshotReady=false;
- const max=large.width;await wheel(point.x,point.y,120,false);assert(overlay()&&Math.abs(stage().getBoundingClientRect().width-max)<1&&content.scrollTop===position,'Releasing Ctrl changed size or scrolled the grid');
+ const max=large.width;document.dispatchEvent(new KeyboardEvent('keyup',{key:'Control',bubbles:true}));await pause(80);assert(overlay()&&Math.abs(stage().getBoundingClientRect().width-max)<1&&content.scrollTop===position,'Releasing Ctrl changed size or scrolled the grid');
  key('Delete');assert(!calls.some(c=>c.command==='update'),'Inspection deleted library data');
  checks.push('Whole image fits the viewport, loads its original, stays open without Ctrl and blocks background actions');
  // Scroll reversal must shrink rather than restarting the gesture.

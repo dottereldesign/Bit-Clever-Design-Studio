@@ -332,6 +332,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const closeItemMenu = useCallback(() => setItemMenu(null), []);
   useEffect(() => {
     if (thumbnailEnlarged || quickPreview !== null || modal || viewer !== null || capture || duplicatesOpen) setHoverId(null);
+    if (thumbnailEnlarged) setGridReturn(null);
   }, [thumbnailEnlarged,quickPreview,modal, viewer, capture, duplicatesOpen]);
   useEffect(()=>{if(quickPreview!==null&&!lib.items.some(i=>i.id===quickPreview))setQuickPreview(null);},[lib.items,quickPreview]);
   const searchRef = useRef<HTMLInputElement>(null),
@@ -1635,6 +1636,7 @@ function MediaGrid({
   const [revision, setRevision] = useState(0);
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
   const ratioFrame = useRef(0);
+  const interruptedReturn = useRef<typeof returnTo>(null);
   useLayoutEffect(() => {
     // On Home -> library, the child layout effect precedes the parent ref attachment.
     // The DOM ancestor is already present, so always attach the size observer.
@@ -1659,6 +1661,28 @@ function MediaGrid({
   const visible = layout.tiles.filter(tile => tile.top + tile.height >= viewport.top - viewport.height && tile.top <= viewport.top + viewport.height * 2);
   useLayoutEffect(() => {
     if (!returnTo) return;
+    interruptedReturn.current = null;
+    const scroller = parent.current ?? ref.current?.closest<HTMLDivElement>(".content");
+    if (!scroller) return;
+    // Restoring a position is temporary. A slow/failed thumbnail must never
+    // pin the viewport against user input or pull it back after they move on.
+    const cancel = () => { interruptedReturn.current = returnTo; onReturned(); };
+    const key = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Escape", " "].includes(event.key)) cancel();
+    };
+    scroller.addEventListener("wheel", cancel, { passive: true, capture: true });
+    scroller.addEventListener("touchstart", cancel, { passive: true });
+    window.addEventListener("pointerdown", cancel, true);
+    window.addEventListener("keydown", key, true);
+    const timeout = window.setTimeout(cancel, 3000);
+    return () => {
+      clearTimeout(timeout);
+      scroller.removeEventListener("wheel", cancel, true); scroller.removeEventListener("touchstart", cancel);
+      window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", key, true);
+    };
+  }, [returnTo, parent, onReturned]);
+  useLayoutEffect(() => {
+    if (!returnTo || interruptedReturn.current === returnTo) return;
     const index = items.findIndex(item => item.id === returnTo.id);
     if (index < 0) { onReturned(); return; }
     const tile = layout.tiles[index], scroller = parent.current, grid = ref.current;

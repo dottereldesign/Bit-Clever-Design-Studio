@@ -29,9 +29,9 @@ Packaging writes a standalone copy to `app/Design.exe`; reopen it from the ordin
 
 ## Browse and preview references
 
-The app reopens your last page, filters, sort order and scroll position, including an open image viewer. Home is the first-launch default and remains a sidebar destination.
+The app reopens your last page, filters, sort order and scroll position, including an open image viewer. Home is the first-launch default and remains a sidebar destination. Position restoration yields to user input and stops waiting after three seconds if a thumbnail is unavailable.
 
-Hold **Ctrl** and scroll up over a thumbnail to progressively enlarge the whole image against a softly blurred background. Scroll down to return it to the grid; **Escape**, **Space** or clicking outside also closes it. Releasing Ctrl keeps it open. **+ / −** and **↑ / ↓** resize an open enlargement. Video thumbnails enlarge their poster without starting playback. App and system reduced-motion preferences are respected.
+Hold **Ctrl** and scroll up over a thumbnail to progressively enlarge the whole image against a softly blurred background. Scroll down to return it to the grid; **Escape**, **Space** or clicking outside also closes it. Releasing Ctrl keeps it open; scrolling without Ctrl closes the enlargement and continues scrolling the page. **+ / −** and **↑ / ↓** resize an open enlargement. Video thumbnails enlarge their poster without starting playback. App and system reduced-motion preferences are respected.
 
 The main sidebar starts with Links. Media can be browsed through Categories and Projects; All categories provides the combined category view.
 
@@ -137,6 +137,8 @@ npm run test:native
 Tests cover combined filters, project-specific pin ordering, source descendants, stable shuffle, indexing without losing curation, thumbnail decoding, missing files, project deletion without deleting originals, URL validation, idempotent backup import including pins, duplicate capture across image formats, duplicate video bytes with renamed files, recovery and stale-match rejection, and chunked file staging.
 
 `test:grid` launches its own headless Chrome process with a temporary profile and a mocked 420-image library. It checks returning after 200 arrow-key advances, Escape and X, actual Enter-key reopening, highlight expiry, retained filters/sorting, and wraparound at wide and narrow window sizes. It never attaches to or controls your open browser/app windows or reads the real library.
+
+`test:clipboard-scroll` checks failed copy/paste recovery, ordinary scrolling out of an accidental Ctrl-wheel enlargement, and cancellation/timeout of a stalled position restore using an isolated mock library.
 
 `test:actions` uses the same isolated browser harness to check image-copy entry points, Resources paste routing and metadata, and moving misplaced links. Clipboard commands are mocked in browser tests; native tests verify original-size RGBA pixels and Resources persistence without replacing your system clipboard or touching the real library.
 

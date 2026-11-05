@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Clipboard error scroll recovery</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const phase=Number(sessionStorage.getItem('phase')??0),checks=JSON.parse(sessionStorage.getItem('checks')??'[]');
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="#c9dac0"/></svg>');
+const library={items:Array.from({length:150},(_,n)=>({id:n+1,name:`Reference ${n+1}`,source:'Design/Poster',category:'Poster',kind:'image',path:`C:/mock/${n+1}.png`,modified:1,added:n+1,missing:false,tags:[],projects:[]})),categories:['Poster'],projects:[],tags:[],sources:['Design/Poster'],root:'C:/mock',scanning:false};
+if(!phase)localStorage.setItem('last-workspace-view',JSON.stringify({version:1,view:{homeView:false,generalKey:null,project:null,category:'Poster',linksOnly:false,resourcesView:false,boardView:null,videoView:false,recent:null,search:'',type:'all',tags:[],tagMode:'any',source:'',sort:'recent',seed:1,viewer:null},scroll:{top:0}}));
+let callback=0;const calls=[];let releaseThumbnail;
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ calls.push(command);if(command==='get_library')return structuredClone(library);if(command.startsWith('plugin:event|'))return ++callback;
+ if(command==='get_media'){if(phase&&args.id===150)await new Promise(resolve=>{releaseThumbnail=resolve;});return 'mock.png';}
+ if(command==='read_clipboard'||command==='copy_image'){await new Promise(r=>setTimeout(r,40));throw 'The clipboard is currently unavailable.';}
+ throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(20);}}
+let wheelId=phase*100;
+async function wheel(deltaY,ctrl=false,point){const r=document.querySelector('.content').getBoundingClientRect();window.__wheelAction={id:++wheelId,x:point?.x??r.left+r.width/2,y:point?.y??r.top+r.height/2,deltaY,ctrl};await until(()=>window.__wheelActionDone===wheelId,'Mouse wheel');await pause(300);}
+function paste(){document.querySelector('.content').dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));}
+const scroll=()=>document.querySelector('.content').scrollTop;
+try{
+ await until(()=>document.querySelector('.card img')?.naturalWidth,'Thumbnails');await pause(150);
+ paste();await until(()=>document.querySelector('.error-banner')&&!document.querySelector('.capture-reading'),'Paste failure settles');
+ assert(!document.querySelector('main').inert&&!document.querySelector('.modal-backdrop'),'Failed paste left a modal lock');
+ if(phase===2){await pause(3200);document.querySelector('.content').scrollTop=240;await pause(200);assert(scroll()>100,'Restoration did not time out while thumbnail was unavailable');checks.push('A stalled restoration expires without waiting indefinitely for an image');document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks});}else{
+ const before=scroll();await wheel(240);
+ assert(scroll()>before+50,phase?'Pending session restoration overrides scrolling after a clipboard error':'Normal scrolling fails after clipboard error');
+ if(phase){
+  checks.push('User wheel input cancels a pending restoration even while its thumbnail is unavailable');
+  const position=scroll();releaseThumbnail?.();await pause(500);assert(scroll()>=position-2,'Late thumbnail load pulled user back to the saved position');
+  checks.push('A late thumbnail response cannot restore a cancelled scroll position');
+  const saved=JSON.parse(localStorage.getItem('last-workspace-view'));saved.scroll={top:0,anchor:{id:150,offset:22}};window.addEventListener('pagehide',()=>localStorage.setItem('last-workspace-view',JSON.stringify(saved)));sessionStorage.setItem('phase','2');sessionStorage.setItem('checks',JSON.stringify(checks));location.reload();
+ }else{
+  checks.push('A failed paste clears its busy state and leaves normal wheel scrolling usable');
+  document.querySelector('.card button[aria-label^="Copy"]').click();await pause(100);const copied=scroll();await wheel(200);assert(scroll()>copied+50,'Failed copy blocks scrolling');checks.push('A failed image copy also leaves the page scrollable');
+  const content=document.querySelector('.content').getBoundingClientRect();const image=[...document.querySelectorAll('.card img')].find(img=>{const r=img.getBoundingClientRect();return r.top>=content.top&&r.bottom<innerHeight&&img.naturalWidth;});assert(image,'Visible image missing');const r=image.getBoundingClientRect(),point={x:r.left+r.width/2,y:r.top+r.height/2};
+  await wheel(-1,true,point);assert(document.querySelector('.thumbnail-enlargement'),'Small Ctrl-wheel did not reproduce enlargement');
+  const enlargedAt=scroll();await wheel(200,false,point);
+  assert(!document.querySelector('.thumbnail-enlargement')&&scroll()>enlargedAt+50,'Tiny Ctrl-wheel gesture leaves an invisible overlay swallowing ordinary scroll');
+  checks.push('Ordinary wheel scrolling exits an accidental tiny Ctrl-wheel enlargement and continues browsing');
+  const saved=JSON.parse(localStorage.getItem('last-workspace-view'));saved.scroll={top:0,anchor:{id:150,offset:22}};saved.view.viewer=null;
+  // Save a fixture-only restart state after the normal pagehide save runs.
+  window.addEventListener('pagehide',()=>localStorage.setItem('last-workspace-view',JSON.stringify(saved)));
+  sessionStorage.setItem('phase','1');sessionStorage.setItem('checks',JSON.stringify(checks));location.reload();
+ }
+}
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),phase,checks,scroll:document.querySelector('.content')?.scrollTop,inert:document.querySelector('main')?.inert,enlargement:!!document.querySelector('.thumbnail-enlargement'),calls:calls.slice(-8)});}
+</script></body></html>

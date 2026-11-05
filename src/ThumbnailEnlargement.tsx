@@ -97,8 +97,17 @@ export default function ThumbnailEnlargement(props: Props) {
         progress.current = 0; target.current = 0;
         latest.current.onActiveChange(true); setSession(next);
       } else {
-        // Lock the underlying scroll position, even after releasing Control.
         event.preventDefault(); event.stopImmediatePropagation();
+        if (!event.ctrlKey) {
+          // A tiny Ctrl-wheel after pasting can create an almost invisible
+          // enlargement. Ordinary scrolling means resume browsing, not lock
+          // the app behind that overlay until the user discovers Escape.
+          const scroller = active.current.source.closest<HTMLElement>(".content");
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroller?.clientHeight || innerHeight : 1;
+          finish();
+          scroller?.scrollBy({ top: event.shiftKey ? 0 : event.deltaY * unit, left: (event.deltaX || (event.shiftKey ? event.deltaY : 0)) * unit, behavior: "auto" });
+          return;
+        }
       }
       if (!event.ctrlKey || event.altKey || event.shiftKey) return;
       const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
@@ -124,7 +133,7 @@ export default function ThumbnailEnlargement(props: Props) {
       cancelAnimationFrame(frame.current); frame.current = 0;
       active.current?.source.classList.remove("thumbnail-enlargement-source");
     };
-  }, [dismiss, wake]);
+  }, [dismiss, wake, finish]);
 
   useEffect(() => {
     if (!props.enabled || (active.current && (!active.current.source.isConnected || !props.items.some(item => item.id === active.current!.item.id)))) finish();
