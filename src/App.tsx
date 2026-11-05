@@ -55,7 +55,7 @@ import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
 import RecentReferences from "./RecentReferences";
-import { collections, sites, ordered, useLocalList, type Shortcut, type GeneralTarget } from "./Shortcuts";
+import { collections, sites, withCodePen, ordered, useLocalList, type Shortcut, type GeneralTarget } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
@@ -242,7 +242,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [recent,setRecent]=useState<"added"|"viewed"|null>(null);
   const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
   const [collectionPrefs,setCollectionPrefs]=useHistoryState<Shortcut[]>("collection-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("collection-shortcuts")??"null");return Array.isArray(value)?value:collections;}catch{return collections;}},"Sidebar shortcuts");
-  const [sitePrefs,setSitePrefs]=useHistoryState<Shortcut[]>("site-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("site-shortcuts")??"null");return Array.isArray(value)?value:sites;}catch{return sites;}},"Favourite websites");
+  const [sitePrefs,setSitePrefs,setSitePrefsRaw]=useHistoryState<Shortcut[]>("site-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("site-shortcuts")??"null");return Array.isArray(value)?value:sites;}catch{return sites;}},"Favourite websites");
+  useEffect(()=>{const next=withCodePen(sitePrefs);if(next!==sitePrefs)setSitePrefsRaw(next);},[sitePrefs,setSitePrefsRaw]);
   const [extraDialog,setExtraDialog]=useState<"sheet"|null>(null);
   const [viewedOrder,setViewedOrder]=useState<number[]>([]);
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);

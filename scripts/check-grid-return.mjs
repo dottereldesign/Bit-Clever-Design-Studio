@@ -67,7 +67,7 @@ try {
         const deadline = Date.now() + (['home-styles','customization'].includes(fixture)?120000:60000);
         while (Date.now() < deadline) {
           const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, resize: window.__resizeAction, capture: !!window.__screenshotReady, captureName: window.__captureName })', returnByValue: true }, sessionId);
-          if (['component-links', 'customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
+          if (['copy-resources', 'component-links', 'customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
             await mkdir('.tools/checks', { recursive: true });
             const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
             const captureName=['home-styles','customization'].includes(fixture)&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";

@@ -28,7 +28,13 @@ export const sites: Shortcut[] = [
   { key: "pinterest", name: "Pinterest", url: "https://www.pinterest.com/" },
   { key: "dribbble", name: "Dribbble", url: "https://dribbble.com/" },
   { key: "awwwards", name: "Awwwards", url: "https://www.awwwards.com/" },
+  { key: "codepen", name: "CodePen", url: "https://codepen.io/" },
 ];
+export function withCodePen(list:Shortcut[]):Shortcut[]{
+ if(list.some(site=>site.key==='codepen'||site.url?.replace(/\/$/,'')==='https://codepen.io'))return list;
+ const index=list.findIndex(site=>site.key==='awwwards'),next=[...list];
+ next.splice(index<0?next.length:index+1,0,{...sites.find(site=>site.key==='codepen')!,pinned:index>=0?list[index].pinned:undefined});return next;
+}
 export function useLocalList<T>(key: string, defaults: T[]) {
   const [list, setList] = useState<T[]>(() => {
     try {

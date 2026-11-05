@@ -1,14 +1,15 @@
 import type { Shortcut } from "./Shortcuts";
 import { useState } from "react";
-import { Dribbble, ExternalLink, MoreHorizontal } from "lucide-react";
+import { Codepen, Dribbble, ExternalLink, MoreHorizontal } from "lucide-react";
 import { openUrl } from "./api";
 import { isResource, type Item } from "./model";
 import { AppIcon,type IconPreferences } from './AppIcon';
 
 const categoryOf = (item: Item) => item.source.startsWith("Resources/") ? item.source.slice(10) : "Saved";
-const hasIcon = (key: string) => key === "pinterest" || key === "dribbble" || key === "awwwards";
+const hasIcon = (key: string) => key === "pinterest" || key === "dribbble" || key === "awwwards" || key === "codepen";
 
 function FavouriteIcon({ name }: { name: string }) {
+  if (name === 'codepen') return <Codepen size={21} color="#9361cc" strokeWidth={1.8} aria-hidden="true"/>;
   if (name === "dribbble") return <Dribbble size={21} color="#EA4C89" strokeWidth={1.7} aria-hidden="true" />;
   return <svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
     {name === "pinterest" ? <>
