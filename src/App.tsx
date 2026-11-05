@@ -1,3 +1,4 @@
+import StorageBar from './StorageBar';
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
 import {
@@ -1012,6 +1013,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </button>
+        <StorageBar revision={lib} report={report}/>
         <SidebarNavigation order={navLayout.order}>
         <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><AppIcon value={icons.overrides.home} fallback={<House size={16}/>}/><span>Home</span></button>
         <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>

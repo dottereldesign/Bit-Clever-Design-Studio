@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod browser;
+mod storage;
 mod clipboard;
 mod content;
 mod db;
@@ -37,6 +38,16 @@ struct State {
     index_progress: Arc<std::sync::Mutex<Option<content::DuplicateProgress>>>,
     exporting: Arc<AtomicBool>,
     export_cancel: Arc<AtomicBool>,
+}
+#[tauri::command]
+async fn storage_usage(state:tauri::State<'_,State>)->Result<storage::Usage>{
+ let s=state.inner().clone();
+ tauri::async_runtime::spawn_blocking(move||{let mut app_files=vec![s.ffmpeg,s.downloader];if let Ok(exe)=std::env::current_exe(){app_files.push(exe);}storage::usage(&s.db,app_files)}).await.map_err(err)?
+}
+#[tauri::command]
+fn open_data_folder(state:tauri::State<'_,State>)->Result<()>{
+ let folder=state.db.parent().ok_or("Data folder unavailable")?;
+ tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
 }
 #[tauri::command]
 async fn save_home_cover(bytes:Vec<u8>,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<home_covers::Cover>{
@@ -494,6 +505,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            storage_usage,
+            open_data_folder,
             save_home_cover,
             open_external_url,
             app_version,
