@@ -33,9 +33,9 @@
 .customise-panel .shortcut-add { display:flex;flex-wrap:wrap;gap:8px;margin-top:18px; }
 .customise-panel .shortcut-add input { flex:1;min-width:120px;background:#fff;border:1px solid #d9dfd2;border-radius:6px;padding:9px; }
 .customise-panel .shortcut-add button,.custom-action { background:#e5ecdc;border-radius:7px;padding:10px 14px;font-size:12px; }
-.custom-cover-preview { position:relative;height:160px;border-radius:10px;overflow:hidden;background:linear-gradient(125deg,#fff 15%,#faf3b6 45%,#ccdef9);display:grid;place-items:center; }
-.custom-cover-preview > span { position:absolute;inset:0;background:rgb(0 0 0 / var(--home-overlay)); }
-.custom-cover-preview strong { z-index:1;color:white;font-size:var(--home-label-size);font-weight:600; }
+.custom-cover-preview { position:relative;height:160px;border-radius:10px;overflow:hidden;background:linear-gradient(125deg,#fff 15%,#faf3b6 45%,#ccdef9);display:flex;align-items:flex-end;padding:16px; }
+.custom-cover-preview > span { position:absolute;inset:0;background:var(--home-scrim); }
+.custom-cover-preview strong { z-index:1;text-align:left;line-height:1.08;color:white;font-size:var(--home-label-size);font-weight:600; }
 .custom-grid-preview { display:grid;gap:10px;margin:24px 0; }
 .custom-grid-preview span { aspect-ratio:1.2;background:linear-gradient(130deg,#e0e8d5,#c6d3bd);border-radius:8px; }
 .custom-grid-preview span:nth-child(3n) { background:linear-gradient(130deg,#e5d7cf,#d8c5b8); }
