@@ -102,9 +102,13 @@ export const categoryOf = (item: Item): string => {
   const name=item.category ?? (item.source === "Photography" || item.source.startsWith("Photography/") ? "Photography" : item.source.startsWith("Design/") ? item.source.slice(7).split('/')[0] : "");
   return name.toLowerCase()==="captures"?"":filingCategory(name);
 };
-export const categoryLabel = (name: string): string => name.replace(/_/g," ").trim().replace(/[\p{L}\p{N}]+/gu,word=>
+export const readFolderLabels=():Record<string,string>=>{try{const value=JSON.parse(localStorage.getItem('folder-labels')??'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch{return {};}};
+export const categoryLabel = (name: string): string => {
+ const label=readFolderLabels()[name];if(typeof label==='string'&&label.trim())return isComponent(name)?`Components / ${label}`:label;
+ return name.replace(/_/g," ").trim().replace(/[\p{L}\p{N}]+/gu,word=>
   /^(2d|3d|ui|ux|ai|ar|vr|css|html)$/i.test(word)?word.toUpperCase():word===word.toLocaleLowerCase()?word.charAt(0).toLocaleUpperCase()+word.slice(1):word
 ) || "Uncategorised";
+};
 export const libraryCategories = (lib: Library): string[] => [...new Set([...(lib.categories ?? []), ...lib.sources.filter(s=>s.startsWith("Design/")).map(s=>s.slice(7).split('/')[0]), ...lib.items.filter(i=>i.kind!=="link").map(categoryOf)].filter(name=>!!name&&!isWebDesign(name)&&!isComponent(name)&&name!==allComponents&&name.toLowerCase()!=="captures"))].sort((a,b)=>a.localeCompare(b));
 
 

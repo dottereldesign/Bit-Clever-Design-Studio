@@ -1,3 +1,5 @@
+import FolderRename from './FolderRename';
+import { readFolderLabels } from './model';
 import {
   useCallback,
   useEffect,
@@ -262,6 +264,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [reducedMotion,setReducedMotion]=useHistoryState('reduce-motion',()=>localStorage.getItem('reduce-motion')==='true','Motion preference');
   const [sidebarLayout,setSidebarLayout]=useHistoryState('sidebar-layout',readSidebarLayout,'Sidebar layout');
   const [icons,setIcons]=useHistoryState('app-icons',readIcons,'App icons');
+  const [folderLabels,setFolderLabels]=useHistoryState<Record<string,string>>('folder-labels',readFolderLabels,'Rename folder');
+  const [folderMenu,setFolderMenu]=useState<{name:string;x:number;y:number}|null>(null);
   const [folderOrder,setFolderOrder]=useHistoryState<Record<string,string[]>>('sidebar-folder-order',()=>{try{return JSON.parse(localStorage.getItem('sidebar-folder-order')??'{}');}catch{return {}; }},'Folder order');
   const sortedFolders=(folders:string[],group:string)=>{const saved=folderOrder[group]??[];return [...folders].sort((a,b)=>{const ai=saved.indexOf(a),bi=saved.indexOf(b);return (ai<0?Infinity:ai)-(bi<0?Infinity:bi)||categoryLabel(a).localeCompare(categoryLabel(b),undefined,{numeric:true,sensitivity:'base'});});};
   const navLayout=sidebarLayouts[sidebarLayout-1]??sidebarLayouts[0];
@@ -510,7 +514,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
     ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
-    ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?name.slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
+    ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?categoryLabel(name).slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
   ];
   const generalOptions:GeneralOption[]=[
     ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
@@ -582,6 +586,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     <button
       className={`nav-item source-item ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
       {...homeDrag(`category:${s}`)}
+      onContextMenu={e=>{if(s===allComponents||s===componentInbox||!s)return;e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
       data-folder-order={s===allComponents?undefined:isComponent(s)?'components':'design'}
       data-category={s}
       {...categoryDropProps(s)}
@@ -590,7 +595,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       onClick={() => { navigate(null); setCategory(s); }}
     >
       <FolderIcon preferences={icons} id={`category:${s}`} size={14}/>
-      <span>{isComponent(s) ? s.split(" / ").pop() : categoryLabel(s)}</span>
+      <span>{isComponent(s) ? categoryLabel(s).slice("Components / ".length) : categoryLabel(s)}</span>
       <small>{categoryCounts.get(s)||""}</small>
     </button>
   );
@@ -989,7 +994,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       onPointerOver={e=>{const target=(e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");previewCandidate.current=target?Number(target.dataset.itemId):null;}}
       onDragEnd={()=>setCategoryDrop(null)}
       onContextMenu={(e) => {
-        if (modal || capture || duplicatesOpen || removedOpen) return;
+        if (modal || capture || duplicatesOpen || removedOpen || folderMenu) return;
         const target = (e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");
         if (!target) return;
         const id = Number(target.dataset.itemId);
@@ -1236,7 +1241,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
                 <option value="__all__">All categories</option><option value="">Uncategorised</option>
                 {[...categories, allComponents, ...componentFolders].map((s) => (
                   <option value={s} key={s}>
-                    {s.replace(/_/g, " ")}
+                    {categoryLabel(s)}
                   </option>
                 ))}
               </select>}
@@ -1398,7 +1403,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
             <>
               {images.length > 0 && (
                 <MediaGrid
-                  removeFolder={category&&isComponent(category)&&category!==componentInbox?category.slice("Components / ".length):undefined}
+                  removeFolder={category&&isComponent(category)&&category!==componentInbox?categoryLabel(category).slice("Components / ".length):undefined}
                   onRemoveFolder={removeFromComponentFolder}
                   masonry={true}
                   copy={copyImage}
@@ -1541,6 +1546,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       )}
       {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Reorder folders or drop on Home</small></div>}
+      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
       {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}

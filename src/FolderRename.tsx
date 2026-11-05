@@ -1,0 +1,12 @@
+import {useEffect,useRef,useState} from 'react';
+import {Pencil,X} from 'lucide-react';
+import {categoryLabel} from './model';
+import {StudioDialog} from './Shortcuts';
+
+export default function FolderRename({target,close,save}:{target:{name:string;x:number;y:number};close:()=>void;save:(name:string)=>void}){
+ const [editing,setEditing]=useState(false),[name,setName]=useState(()=>categoryLabel(target.name).replace(/^Components \/ /,'')),[error,setError]=useState('');
+ const ref=useRef<HTMLDivElement>(null),input=useRef<HTMLInputElement>(null);
+ useEffect(()=>{if(editing){input.current?.focus();input.current?.select();return;}ref.current?.querySelector('button')?.focus();const dismiss=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))close();};const blur=()=>close();document.addEventListener('pointerdown',dismiss,true);window.addEventListener('blur',blur);return()=>{document.removeEventListener('pointerdown',dismiss,true);window.removeEventListener('blur',blur);};},[editing]);
+ if(!editing)return <div ref={ref} className="item-context-menu" role="menu" aria-label="Folder actions" style={{position:'fixed',left:Math.max(8,Math.min(target.x,innerWidth-280)),top:Math.max(8,Math.min(target.y,innerHeight-60)),zIndex:1600}} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape')close();}}><button role="menuitem" onClick={()=>setEditing(true)}><Pencil size={14}/>Rename</button></div>;
+ return <StudioDialog title="Rename folder" close={close}><form onSubmit={e=>{e.preventDefault();try{const value=name.trim();if(!value)throw Error('Enter a folder name.');if(/[\\/\x00-\x1f]/.test(value))throw Error('Use a name without slashes or control characters.');save(value);close();}catch(e){setError(String(e));}}}><label>Folder name<input ref={input} aria-label="Folder name" value={name} maxLength={100} required onChange={e=>setName(e.target.value)} style={{display:'block',width:'100%',margin:'12px 0',padding:10}}/></label>{error&&<p role="alert" className="form-error">{error}</p>}<div style={{display:'flex',justifyContent:'flex-end',gap:12}}><button type="button" onClick={close}><X size={14}/> Cancel</button><button className="primary">Save name</button></div></form></StudioDialog>;
+}
