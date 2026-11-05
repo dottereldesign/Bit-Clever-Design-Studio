@@ -2,7 +2,7 @@ use crate::{
     db::{self, err, Result},
     library,
 };
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -301,6 +301,7 @@ pub struct Capture {
 }
 #[derive(Serialize)]
 pub struct CaptureResult {
+    pub history_labels: Vec<String>,
     pub move_label: Option<String>,
     pub moved_from: Option<String>,
     pub destination: Option<&'static str>,
@@ -339,6 +340,22 @@ pub(crate) fn attach(db: &Connection, id: i64, c: &Capture) -> Result<()> {
     }
     Ok(())
 }
+fn attachment_history(db:&Connection,id:i64,c:&Capture)->Result<Vec<crate::history::Patch>> {
+    use crate::history::Patch;
+    let mut patches=vec![];
+    for (project,ids) in [(true,&c.projects),(false,&c.tags)] {
+        let mut seen=HashSet::new();
+        for label in ids {
+            if !seen.insert(label) {continue;}
+            let sql=if project {"SELECT favourite FROM item_projects WHERE item_id=? AND label_id=?"}else{"SELECT 0 FROM item_tags WHERE item_id=? AND label_id=?"};
+            let previous:Option<i64>=db.query_row(sql,params![id,label],|r|r.get(0)).optional().map_err(err)?;
+            if previous.is_none(){patches.push(Patch::Member(project,id,*label,previous));}
+        }
+    }
+    let source:String=db.query_row("SELECT source_url FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?;
+    if source.is_empty()&&!c.source_url.trim().is_empty(){patches.push(Patch::SourceUrl(id,source));}
+    Ok(patches)
+}
 // Remove a newly written thumbnail if metadata saving fails at any point.
 struct PendingThumbnail(Option<PathBuf>);
 impl Drop for PendingThumbnail {
@@ -365,6 +382,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         }
     }
     let mut result = CaptureResult {
+        history_labels: vec![],
         move_label: None,
         moved_from: None,
         destination: None,
@@ -435,6 +453,13 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             result.added = 1;
             tx.last_insert_rowid()
         };
+        let mut patches=attachment_history(&tx,id,&c)?;
+        if existing.is_none(){patches.push(crate::history::Patch::Archived(id,true));}
+        if existing.is_some(){
+            let archived:bool=tx.query_row("SELECT archived FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?;
+            if archived {patches.push(crate::history::Patch::Archived(id,true));}
+            if thumbnail.0.is_some(){let previous=tx.query_row("SELECT thumbnail FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?;patches.push(crate::history::Patch::Thumbnail(id,previous));}
+        }
         tx.execute("UPDATE items SET archived=0 WHERE id=?", [id])
             .map_err(err)?;
         if existing.is_some() {
@@ -442,7 +467,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             if previous != collection && !(collection == "Resources" && previous.starts_with("Resources/")) {
                 let label = if previous.is_empty() { "Links" } else { &previous };
                 let move_label = format!("Move {} from {}", url, label);
-                crate::history::record(&tx, &move_label, vec![crate::history::Patch::Source(id,previous.clone())])?;
+                patches.push(crate::history::Patch::Source(id,previous.clone()));
                 result.move_label = Some(move_label);
                 result.moved_from = Some(label.to_string());
             }
@@ -461,6 +486,10 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             tx.execute("UPDATE items SET thumbnail=? WHERE id=?", params![path.to_string_lossy(), id]).map_err(err)?;
         }
         attach(&tx, id, &c)?;
+        if !patches.is_empty(){
+            let label=result.move_label.clone().unwrap_or_else(||if existing.is_some(){"Update saved link"}else{"Create link"}.to_owned());
+            crate::history::record(&tx,&label,patches)?;result.history_labels.push(label);
+        }
         tx.commit().map_err(err)?;
         thumbnail.0.take();
         result.ids.push(id);
@@ -482,7 +511,9 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         let fp = fingerprint(&path)?;
         if let Some(id) = matching(&db, &fp, &root)? {
             let tx = db.transaction().map_err(err)?;
+            let patches=attachment_history(&tx,id,&c)?;
             attach(&tx, id, &c)?;
+            if !patches.is_empty(){crate::history::record(&tx,"Update captured reference",patches)?;result.history_labels.push("Update captured reference".to_owned());}
             tx.commit().map_err(err)?;
             result.ids.push(id);
             result.reused += 1;
@@ -544,8 +575,12 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             params![name, c.source_url.trim(), id],
         )
         .map_err(err)?;
+        let mut patches=attachment_history(&tx,id,&c)?;
+        patches.push(crate::history::Patch::Archived(id,true));
         attach(&tx, id, &c)?;
         store(&tx, id, &Fingerprint { modified, ..fp })?;
+        crate::history::record(&tx,"Add reference",patches)?;
+        result.history_labels.push("Add reference".to_owned());
         tx.commit().map_err(err)?;
         result.ids.push(id);
         result.added += 1;

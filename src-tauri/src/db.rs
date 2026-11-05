@@ -39,7 +39,14 @@ pub struct Label {
     pub count: i64,
 }
 #[derive(Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub id:i64,
+    pub label:String,
+}
+#[derive(Serialize, Deserialize)]
 pub struct Library {
+    #[serde(default)]
+    pub undo_entries:Vec<HistoryEntry>,
     #[serde(default)]
     pub undo_label: Option<String>,
     #[serde(default)]
@@ -288,6 +295,11 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         Ok(rows)
     };
     Ok(Library {
+        undo_entries:{
+            let mut stmt=db.prepare("SELECT id,label FROM organisation_history ORDER BY id").map_err(err)?;
+            let rows=stmt.query_map([],|r|Ok(HistoryEntry{id:r.get(0)?,label:r.get(1)?})).map_err(err)?;
+            rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?
+        },
         redo_label: db.query_row("SELECT label FROM organisation_redo ORDER BY id DESC LIMIT 1",[],|r|r.get(0)).ok(),
         redo_count: db.query_row("SELECT count(*) FROM organisation_redo",[],|r|r.get(0)).map_err(err)?,
         undo_label: db.query_row("SELECT label FROM organisation_history ORDER BY id DESC LIMIT 1",[],|r|r.get(0)).ok(),
@@ -471,7 +483,9 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
             )
             .map_err(err)?;
             let id = tx.last_insert_rowid();
+            let mut patches=vec![crate::history::Patch::Archived(id,true)];
             if target > 0 {
+                patches.push(crate::history::Patch::Member(true,id,target,None));
                 touch_project(&tx, target)?;
                 tx.execute(
                     "INSERT INTO item_projects(item_id,label_id) VALUES(?,?)",
@@ -479,6 +493,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
                 )
                 .map_err(err)?;
             }
+            crate::history::record(&tx,"Create link",patches)?;
         }
         "pin_project" | "unpin_project" => {
             for id in c.ids {

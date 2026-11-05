@@ -52,7 +52,7 @@ import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
 import RecentReferences from "./RecentReferences";
-import { collections, sites, ordered, useLocalList } from "./Shortcuts";
+import { collections, sites, ordered, useLocalList, type Shortcut } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
@@ -79,6 +79,8 @@ import HomeDashboard, { homeMime, type HomeDestination } from "./HomeDashboard";
 import { readSectionStyle } from "./SectionStylePicker";
 import Customization, { readHomeAppearance, type CustomTab } from "./Customization";
 import useSidebarSpace from "./useSidebarSpace";
+import { appHistory } from "./appHistory";
+import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
 import { allComponents, componentFolders, componentGroups, componentInbox, componentKey, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
 import {componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
@@ -232,8 +234,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [tagMode,setTagMode]=useState<"any"|"all">("any");
   const [recent,setRecent]=useState<"added"|"viewed"|null>(null);
   const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
-  const [collectionPrefs,setCollectionPrefs]=useLocalList("collection-shortcuts",collections);
-  const [sitePrefs,setSitePrefs]=useLocalList("site-shortcuts",sites);
+  const [collectionPrefs,setCollectionPrefs]=useHistoryState<Shortcut[]>("collection-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("collection-shortcuts")??"null");return Array.isArray(value)?value:collections;}catch{return collections;}},"Sidebar shortcuts");
+  const [sitePrefs,setSitePrefs]=useHistoryState<Shortcut[]>("site-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("site-shortcuts")??"null");return Array.isArray(value)?value:sites;}catch{return sites;}},"Favourite websites");
   const [extraDialog,setExtraDialog]=useState<"sheet"|null>(null);
   const [viewedOrder,setViewedOrder]=useState<number[]>([]);
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
@@ -247,15 +249,13 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     [source, setSource] = useState(""),
     [sort, setSort] = useState("recent");
   const [seed, setSeed] = useState(Date.now()),
-    [size, setSize] = useState(() => storedNumber("tile-size", 260)),
-    [sidebarWidth, setSidebarWidth] = useState(() =>
-      storedNumber("sidebar-width", 208),
-    );
-  const [sectionStyle,setSectionStyle]=useState(readSectionStyle);
+    [size, setSize] = useHistoryState("tile-size",() => storedNumber("tile-size", 260),"Thumbnail size"),
+    [sidebarWidth, setSidebarWidth] = useHistoryState("sidebar-width",() => storedNumber("sidebar-width",208),"Sidebar width");
+  const [sectionStyle,setSectionStyle]=useHistoryState("sidebar-section-style",readSectionStyle,"Sidebar style");
   const [customTab,setCustomTab]=useState<CustomTab|null>(null);
-  const [homeStyle,setHomeStyle]=useState(()=>Math.max(1,Math.min(10,storedNumber('home-style',1))));
-  const [homeAppearance,setHomeAppearance]=useState(readHomeAppearance);
-  const [reducedMotion,setReducedMotion]=useState(()=>localStorage.getItem('reduce-motion')==='true');
+  const [homeStyle,setHomeStyle]=useHistoryState('home-style',()=>Math.max(1,Math.min(10,storedNumber('home-style',1))),'Home style');
+  const [homeAppearance,setHomeAppearance]=useHistoryState("home-appearance",readHomeAppearance,"Home appearance");
+  const [reducedMotion,setReducedMotion]=useHistoryState('reduce-motion',()=>localStorage.getItem('reduce-motion')==='true','Motion preference');
   useSidebarSpace();
   useEffect(()=>{localStorage.setItem('home-style',String(homeStyle));},[homeStyle]);
   useEffect(()=>{localStorage.setItem('home-appearance',JSON.stringify(homeAppearance));},[homeAppearance]);
@@ -274,8 +274,10 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const [libraryExportOpen,setLibraryExportOpen]=useState(false);
   const [quickPreview,setQuickPreview]=useState<number|null>(null);
   const previewCandidate=useRef<number|null>(null);
-  const undoBusy=useRef(false);
-  const [undoing,setUndoing]=useState(false);
+  const historyActions=useHistory();
+  const undoing=historyActions.busy;
+  const libRef=useRef(lib);libRef.current=lib;
+  const historyReady=useRef(false);
   const pasteBusy=useRef(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
   const [category,setCategory] = useState<string|null>(null);
@@ -311,9 +313,20 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const searchRef = useRef<HTMLInputElement>(null),
     anchor = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async function refresh() {
     const next = await loadLibrary();
-    setLib(next);
+    // Observe native history itself, including imports/downloads completed by
+    // other dialogs, rather than trying to enumerate every possible save path.
+    if(historyReady.current&&next.undo_entries){
+      const known=new Set(libRef.current.undo_entries?.map(e=>e.id));
+      for(const entry of next.undo_entries){if(!known.has(entry.id))appHistory.record({
+        label:entry.label,kind:'library',
+        undo:async()=>{await changeLibrary({action:'undo_organisation',value:entry.label});await refresh();},
+        redo:async()=>{await changeLibrary({action:'redo_organisation'});await refresh();},
+      });}
+    }
+    historyReady.current=true;
+    libRef.current=next;setLib(next);
     setReady(true);
     return next;
   }, []);
@@ -439,25 +452,30 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     clearFilters();
     scrollRef.current?.scrollTo(0, 0);
   };
-  const mutate = useCallback(
-    async (c: Change) => {
-      await changeLibrary(c);
-      return refresh();
-    },
-    [refresh],
-  );
-  const undoLast=useCallback(async(expected?:string)=>{
-    if(undoBusy.current||!lib.undo_label)return;
-    undoBusy.current=true;setUndoing(true);
-    try {await mutate({action:"undo_organisation",value:expected});setUndoIds([]);setCategoryUndo(null);setNotice(`Undid: ${lib.undo_label}`);}
-    catch(e){report(e);}finally{undoBusy.current=false;setUndoing(false);}
-  },[lib.undo_label,mutate,report]);
-  const redoLast=useCallback(async()=>{
-    if(undoBusy.current||!lib.redo_label)return;
-    undoBusy.current=true;setUndoing(true);
-    try {await mutate({action:"redo_organisation"});setUndoIds([]);setCategoryUndo(null);setNotice(`Redid: ${lib.redo_label}`);}
-    catch(e){report(e);}finally{undoBusy.current=false;setUndoing(false);}
-  },[lib.redo_label,mutate,report]);
+  const runLibraryHistory=useCallback(async(redo:boolean,expected?:string)=>{
+    await changeLibrary({action:redo?'redo_organisation':'undo_organisation',value:expected});await refresh();setUndoIds([]);setCategoryUndo(null);
+  },[refresh]);
+  appHistory.onError=report;
+  appHistory.fallback={undoLabel:lib.undo_label,redoLabel:lib.redo_label,undo:()=>runLibraryHistory(false),redo:()=>runLibraryHistory(true)};
+  const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
+  const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
+    const before=libRef.current;await changeLibrary(c);const next=await refresh();
+    const tracked=new Set(['set_category','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
+    if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
+    return next;
+  }),[refresh,runLibraryHistory]);
+  const undoLast=useCallback(async(expected?:string)=>{if(expected&&appHistory.undoLabel!==expected){setNotice("A newer change took place. Use the header Undo action.");return;}await appHistory.undo();},[]);
+  const redoLast=useCallback(async()=>{await appHistory.redo();},[]);
+  useEffect(()=>{
+    const gesture=()=>crypto.randomUUID();
+    const typing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!target.closest('textarea,[contenteditable=true],input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button])');
+    const key=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&!e.altKey&&!typing(e.target)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();e.stopImmediatePropagation();void ((e.key.toLowerCase()==='y'||e.shiftKey)?appHistory.redo():appHistory.undo());return;}if(e.target instanceof HTMLElement&&e.target.matches('input[type=range]')&&e.key.startsWith('Arrow'))appHistory.beginGesture(`key-${gesture()}`);};
+    const down=(e:PointerEvent)=>{if(e.target instanceof HTMLElement&&e.target.closest('input[type=range],.sidebar-resize'))appHistory.beginGesture(`pointer-${gesture()}`);};
+    const end=()=>appHistory.endGesture();
+    document.addEventListener('keydown',key,true);document.addEventListener('keyup',end,true);document.addEventListener('pointerdown',down,true);document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);window.addEventListener('blur',end);
+    return ()=>{document.removeEventListener('keydown',key,true);document.removeEventListener('keyup',end,true);document.removeEventListener('pointerdown',down,true);document.removeEventListener('pointerup',end);document.removeEventListener('pointercancel',end);window.removeEventListener('blur',end);};
+  },[]);
   const categories = useMemo(()=>libraryCategories(lib),[lib]);
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -688,11 +706,12 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       if(videoView && draft.url){setVideoDialog({url:draft.url});return;}
       if(category!==null && draft.files.length && !resourcesView && !boardView && !videoView && !linksOnly){
         try {
-          const result=await invoke<CaptureResult>("capture_items",{input:{
+          const result=await appHistory.perform(()=>invoke<CaptureResult>("capture_items",{input:{
             files:draft.files,url:"",name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/, ""):"",
             source:category==="Photography"?"Photography":"Design",projects:[],tags:[],source_url:"",resource:false,
-          }});
-          if(result.ids.length)await changeLibrary({action:"set_category",ids:result.ids,value:filingCategory(category)});
+          }}));
+          recordCapture(result);
+          if(result.ids.length)await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
           showCaptureReceipt(result,await refresh(),category);
         } finally {await invoke("discard_capture",{paths:draft.files.map(file=>file.path)}).catch(report);}
         return;
@@ -704,7 +723,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
       pasteBusy.current=false;
       setReadingCapture(false);
     }
-  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt]);
+  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture]);
   const chooseCaptureFiles = async () => {
     try {
       const paths = await open({
@@ -806,7 +825,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     };
   }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog]);
   const captured = async (result: CaptureResult) => {
-    if(category!==null && capture?.files.length && result.ids.length) await changeLibrary({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    recordCapture(result);
+    if(category!==null && capture?.files.length && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
     const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
@@ -838,8 +858,10 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         defaultPath: lib.root || undefined,
       });
       if (typeof path === "string") {
+        const previous=lib.root;
         await invoke("set_root", { path });
         await refresh();
+        if(previous&&previous!==path){const restore=async(path:string)=>{await invoke("set_root",{path});await refresh();};appHistory.record({label:"Library folder",undo:()=>restore(previous),redo:()=>restore(path)});}
       }
     } catch (e) {
       report(e);
@@ -858,7 +880,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           });
       if (typeof path === "string") {
         await invoke("backup", { path, restore });
-        if (restore) await refresh();
+        if (restore) {appHistory.clearLibrary();await refresh();}
         setUndoIds([]);
         setNotice(restore ? "Backup imported" : "Backup exported");
       }
@@ -1088,8 +1110,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           <div className="header-actions">
             <ThumbnailProgress />
             {project!==null&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
-            <button className="icon-button" aria-label="Undo organisation change" disabled={!lib.undo_label||undoing} title={lib.undo_label?`Undo: ${lib.undo_label} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
-            <button className="icon-button" aria-label="Redo organisation change" disabled={!lib.redo_label||undoing} title={lib.redo_label?`Redo: ${lib.redo_label} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
+            <button className="icon-button" aria-label="Undo organisation change" disabled={!historyActions.undoLabel||undoing} title={historyActions.undoLabel?`Undo: ${historyActions.undoLabel} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
+            <button className="icon-button" aria-label="Redo organisation change" disabled={!historyActions.redoLabel||undoing} title={historyActions.redoLabel?`Redo: ${historyActions.redoLabel} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
             <label className="search">
               <Search size={15} />
               <input
@@ -1413,7 +1435,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         />
         </div>
       )}
-      {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{await refresh();setModal(null);setNotice("Thumbnail updated");}}/>}
+      {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{const next=await refresh();if(!next.undo_entries)appHistory.record({label:'Change thumbnail',kind:'library',undo:()=>runLibraryHistory(false,'Change thumbnail'),redo:()=>runLibraryHistory(true)});setModal(null);setNotice("Thumbnail updated");}}/>}
       {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
         const ids=modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))??[];
         await mutate({action:remove?"remove_component_folder":"set_category",ids,value:name});
@@ -1478,9 +1500,9 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           <span>Drop to capture</span>
         </div>
       )}
-      {removedOpen && <RemovedDialog close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
+      {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Drop on Home</small></div>}
-      {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={id=>{setSectionStyle(id);localStorage.setItem('sidebar-section-style',String(id));}} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
+      {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
         sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}
@@ -1497,8 +1519,8 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
           <Check size={14} />
           {notice}
           {receipt&&<button onClick={()=>{const ids=receipt.ids.filter(id=>lib.items.some(i=>i.id===id));if(ids.length){setReceiptBrowse(ids);setQuickPreview(ids[0]);}setNotice("");}}>{receipt.existing?"View existing":"View"}</button>}
-          {receipt?.undo&&receipt.undo===lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast(receipt.undo)}>Undo move</button>}
-          {(categoryUndo||undoIds.length>0)&&lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast()}>Undo</button>}
+          {receipt?.undo&&receipt.undo===historyActions.undoLabel&&<button disabled={undoing} onClick={()=>void undoLast(receipt.undo)}>Undo move</button>}
+          {(categoryUndo||undoIds.length>0)&&lib.undo_label===historyActions.undoLabel&&lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast()}>Undo</button>}
         </div>
       )}
       {itemDrag.badge}
@@ -2297,6 +2319,7 @@ function Dialog({
       >
         <div className="modal-heading">
           <h2 id="dialog-title">{titles[kind]}</h2>
+          {kind==="settings"&&<div className="customise-history"><HistoryButtons/></div>}
           <IconButton title="Close dialog" onClick={close}>
             <X size={17} />
           </IconButton>

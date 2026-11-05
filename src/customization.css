@@ -47,3 +47,5 @@
 @media(max-width:850px) { .customise-layout { grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr); }.customise-layout > nav { flex-direction:row;overflow-x:auto;border:0;padding:0 18px 14px; }.customise-layout > nav button { padding:9px; }.customise-layout > nav svg { display:none; }.custom-control-grid { grid-template-columns:1fr;gap:0; } }
 @media(prefers-reduced-motion:reduce) { .customise-backdrop,.customise-panel,.customise-content { animation:none!important; } }
 :root[data-motion=reduce] *, :root[data-motion=reduce] *::before, :root[data-motion=reduce] *::after { animation:none!important;transition:none!important;scroll-behavior:auto!important; }
+
+.customise-history { display:flex;align-items:center;gap:8px; }

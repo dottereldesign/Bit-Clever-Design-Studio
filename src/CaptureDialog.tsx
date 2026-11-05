@@ -3,10 +3,11 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Check, FileImage, LoaderCircle, X } from "lucide-react";
 import { boardNames, isBoardDestination, isTableCollection, type Library, type LinkDestination } from "./model";
 import { RatioSelect, ThumbnailCrop } from "./ThumbnailEditor";
+import { appHistory } from "./appHistory";
 
 export type CaptureFile = { path: string; name: string };
 export type CaptureDraft = { files: CaptureFile[]; url: string; thumbnail?: CaptureFile; destination?: LinkDestination };
-export type CaptureResult = { move_label?: string; moved_from?: string | null; ids: number[]; added: number; reused: number; destination?: LinkDestination | null };
+export type CaptureResult = { history_labels?: string[]; move_label?: string; moved_from?: string | null; ids: number[]; added: number; reused: number; destination?: LinkDestination | null };
 export async function stageFiles(files: File[]): Promise<CaptureDraft> {
   const staged: CaptureFile[] = [];
   try {
@@ -100,7 +101,7 @@ export default function CaptureDialog({
     setBusy(true);
     setError("");
     try {
-      const result = await invoke<CaptureResult>("capture_items", {
+      const result = await appHistory.perform(()=>invoke<CaptureResult>("capture_items", {
         input: {
           files: draft.files,
           thumbnail: image,
@@ -113,7 +114,7 @@ export default function CaptureDialog({
           source: destination,
           resource: draft.files.length === 0 && linkDestination === "resources",
         },
-      });
+      }));
       await complete(result);
     } catch (e) {
       setError(String(e));

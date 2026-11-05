@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { CaptureDraft, CaptureFile } from "./CaptureDialog";
 import type { Item } from "./model";
+import { appHistory } from "./appHistory";
 
 export const thumbnailRatios = [["4:3",4/3],["1:1",1],["16:9",16/9],["3:4",3/4],["Free",0]] as const;
 export function RatioSelect({value, change, disabled = false}: {value:number; change:(n:number)=>void; disabled?:boolean}) {
@@ -64,7 +65,7 @@ export default function ThumbnailEditor({item,close,complete}: {item:Item;close:
   const staged = useRef<string[]>([]);
   const cleanup = useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   useEffect(()=>{clearTimeout(cleanup.current);return()=>{cleanup.current=setTimeout(()=>void invoke('discard_capture',{paths:staged.current}).catch(()=>{}),0);};},[]);
-  const save = async (next:CaptureFile) => {staged.current.push(next.path);await invoke('replace_thumbnail',{id:item.id,file:next});await complete();};
+  const save = async (next:CaptureFile) => {staged.current.push(next.path);await appHistory.perform(async()=>{await invoke('replace_thumbnail',{id:item.id,file:next});await complete();});};
   const capture = async () => {
     if(busy)return;setBusy(true);setError("");
     try {const next=await invoke<CaptureFile|null>('capture_screen',{ratio});if(next){staged.current.push(next.path);setFile(next);await save(next);}}

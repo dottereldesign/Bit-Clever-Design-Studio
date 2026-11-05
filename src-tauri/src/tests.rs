@@ -174,8 +174,52 @@ fn replacing_thumbnail_preserves_link_and_memberships() {
     fs::remove_file(&file.path).unwrap();
     let (url,source,thumbnail):(String,String,String) = connection.query_row("SELECT path,source,thumbnail FROM items WHERE id=?",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
     assert_eq!(url,"https://codepen.io/a/pen/b"); assert_eq!(source,"CodePen");
-    assert_eq!(image::image_dimensions(thumbnail).unwrap(),(160,90));
+    assert_eq!(image::image_dimensions(&thumbnail).unwrap(),(160,90));
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    assert!(db::load(&path,false).unwrap().items[0].thumbnail.is_empty());
+    db::init(&path).unwrap();
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();
+    assert_eq!(db::load(&path,false).unwrap().items[0].thumbnail,thumbnail);
+    assert!(std::path::Path::new(&thumbnail).is_file());
     assert!(crate::thumbnail::replace(&path,id+1,&file).is_err());
+}
+#[test]
+fn creating_a_link_can_be_undone_and_redone_without_losing_its_project() {
+    let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");db::init(&path).unwrap();
+    db::change(&path,change("create_project",vec![],None,Some("Board"),None)).unwrap();
+    let project=db::load(&path,false).unwrap().projects[0].id;
+    db::change(&path,change("create_link",vec![],Some(project),Some("Example"),Some("https://example.com"))).unwrap();
+    let original=db::load(&path,false).unwrap().items.remove(0);
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    assert!(db::load(&path,false).unwrap().items.is_empty());
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    assert!(db::load(&path,false).unwrap().projects.is_empty());
+    db::init(&path).unwrap();
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();
+    let restored=db::load(&path,false).unwrap().items.remove(0);
+    assert_eq!(restored.id,original.id);assert_eq!(restored.path,original.path);assert_eq!(restored.projects,vec![project]);
+}
+#[test]
+fn captured_references_and_link_updates_roundtrip_without_deleting_originals() {
+    let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");let root=temp.path().join("Design");fs::create_dir(&root).unwrap();db::init(&path).unwrap();
+    let conn=db::connect(&path).unwrap();db::set_setting(&conn,"root",root.to_str().unwrap()).unwrap();
+    let original=temp.path().join("reference.png");image::RgbImage::new(8,12).save(&original).unwrap();
+    db::change(&path,change("create_project",vec![],None,Some("Board"),None)).unwrap();let project=db::load(&path,false).unwrap().projects[0].id;
+    let file=content::capture(&path,capture_request(&original,vec![project],vec![])).unwrap();assert_eq!(file.history_labels,vec!["Add reference"]);
+    let stored=db::load(&path,false).unwrap().items[0].path.clone();
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();assert!(db::load(&path,false).unwrap().items.is_empty());
+    assert!(original.is_file());assert!(std::path::Path::new(&stored).is_file());
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();assert!(db::load(&path,false).unwrap().projects.is_empty());
+    for _ in 0..2{db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();}
+    assert_eq!(db::load(&path,false).unwrap().items[0].projects,vec![project]);
+    let mut request=capture_request(&original,vec![project],vec![]);request.files.clear();request.url="https://example.com/".into();
+    let link=content::capture(&path,request).unwrap();assert_eq!(link.history_labels,vec!["Create link"]);
+    let mut update=capture_request(&original,vec![],vec![]);update.files.clear();update.url="https://example.com/".into();update.destination="fonts".into();update.thumbnail=Some(content::CaptureFile{path:original.to_string_lossy().into_owned(),name:"reference.png".into()});
+    let changed=content::capture(&path,update).unwrap();assert_eq!(changed.history_labels.len(),1);
+    let after=db::load(&path,false).unwrap().items.into_iter().find(|i|i.id==link.ids[0]).unwrap();assert_eq!(after.source,"Fonts");assert!(!after.thumbnail.is_empty());
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();let before=db::load(&path,false).unwrap().items.into_iter().find(|i|i.id==link.ids[0]).unwrap();assert!(before.source.is_empty());assert!(before.thumbnail.is_empty());
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();let restored=db::load(&path,false).unwrap().items.into_iter().find(|i|i.id==link.ids[0]).unwrap();assert_eq!(restored.thumbnail,after.thumbnail);assert_eq!(restored.source,"Fonts");
 }
 #[test]
 fn clipboard_image_contains_original_pixels_and_transparency_without_writing_clipboard() {
@@ -1032,7 +1076,7 @@ fn organisation_history_redo_roundtrips_all_actions_and_survives_restarts() {
       (3,'https://old.example/','Old link','link','',3);").unwrap();
     let state=|| {
         let mut value=serde_json::to_value(db::load(&path,false).unwrap()).unwrap();
-        for key in ["undo_label","undo_count","redo_label","redo_count","recent_projects"] {value.as_object_mut().unwrap().remove(key);}
+        for key in ["undo_entries","undo_label","undo_count","redo_label","redo_count","recent_projects"] {value.as_object_mut().unwrap().remove(key);}
         value
     };
     let mut states=vec![state()];

@@ -28,6 +28,7 @@ export const isTableLink = (item: Item) => item.kind === "link" && (item.source 
 export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item);
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
+  undo_entries?: {id:number;label:string}[];
   undo_label?: string | null;
   undo_count?: number;
   redo_label?: string | null;

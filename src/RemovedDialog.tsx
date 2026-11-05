@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RotateCcw, X } from "lucide-react";
+import { HistoryButtons } from "./useAppHistory";
 
 type RemovedItem = { id: number; name: string; path: string };
-export default function RemovedDialog({ close, restore }: { close: () => void; restore: (ids: number[]) => Promise<unknown> }) {
+export default function RemovedDialog({ close, restore, revision }: { close: () => void; restore: (ids: number[]) => Promise<unknown>; revision:unknown }) {
   const [items, setItems] = useState<RemovedItem[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const reload = () => invoke<RemovedItem[]>("removed_items").then(setItems);
-  useEffect(() => { void reload().catch((e) => setError(String(e))); }, []);
+  useEffect(() => { void reload().catch((e) => setError(String(e))); }, [revision]);
   return <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) close(); }}>
     <div className="modal removed-modal" role="dialog" aria-modal="true" aria-label="Removed items">
-      <div className="modal-heading"><h2>Removed items</h2><button className="icon-button" aria-label="Close removed items" onClick={close}><X size={17} /></button></div>
+      <div className="modal-heading"><h2>Removed items</h2><div className="customise-history"><HistoryButtons/><button className="icon-button" aria-label="Close removed items" onClick={close}><X size={17} /></button></div></div>
       <div className="removed-items">
         {items?.map((item) => <div key={item.id} className="removed-item"><span><strong>{item.name}</strong><small title={item.path}>{item.path}</small></span><button disabled={busy} onClick={async () => {
           setBusy(true); setError("");

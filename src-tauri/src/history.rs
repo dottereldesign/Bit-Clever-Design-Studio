@@ -9,6 +9,7 @@ pub enum Patch {
     Member(bool, i64, i64, Option<i64>),
     Archived(i64, bool),
     Link(i64, String, String),
+    Thumbnail(i64, String),
     Source(i64, String),
     SourceUrl(i64, String),
     Rename(bool, i64, String),
@@ -123,6 +124,7 @@ fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
             Patch::Member(*project,*id,*label,db.query_row(query,params![id,label],|r|r.get(0)).optional().map_err(err)?)
         },
         Patch::Archived(id,_) => Patch::Archived(*id,db.query_row("SELECT archived FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?),
+        Patch::Thumbnail(id,_) => Patch::Thumbnail(*id,db.query_row("SELECT thumbnail FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?),
         Patch::Link(id,_,_) => {
             let (name,path)=db.query_row("SELECT name,path FROM items WHERE id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
             Patch::Link(*id,name,path)
@@ -177,6 +179,7 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
             },
             Patch::Archived(id,previous)=>{db.execute("UPDATE items SET archived=? WHERE id=? AND NOT EXISTS(SELECT 1 FROM duplicate_recovery WHERE item_id=items.id)",params![previous,id]).map_err(err)?;},
             Patch::Link(id,name,path)=>{db.execute("UPDATE items SET name=?,path=? WHERE id=? AND kind='link'",params![name,path,id]).map_err(err)?;},
+            Patch::Thumbnail(id,path)=>{db.execute("UPDATE items SET thumbnail=? WHERE id=?",params![path,id]).map_err(err)?;},
             Patch::Source(id,source)=>{db.execute("UPDATE items SET source=? WHERE id=? AND kind='link'",params![source,id]).map_err(err)?;},
             Patch::SourceUrl(id,url)=>{db.execute("UPDATE items SET source_url=? WHERE id=?",params![url,id]).map_err(err)?;},
             Patch::Rename(project,id,name)=>{db.execute(&format!("UPDATE {} SET name=? WHERE id=?",if project{"projects"}else{"tags"}),params![name,id]).map_err(err)?;},

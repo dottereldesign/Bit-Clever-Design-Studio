@@ -1,19 +1,19 @@
-import { useState, type ReactNode, type HTMLAttributes } from "react";
+import { type ReactNode, type HTMLAttributes } from "react";
+import { useHistoryState } from "./useAppHistory";
 import { ChevronDown, ChevronRight, Palette, Blocks } from "lucide-react";
 
 export default function SidebarSection({name, label = name, action, children, nested = false, dropProps, styleId, identity, preview = false}: {
   styleId?:number; identity?:"design"|"components"; preview?:boolean; name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean; dropProps?: HTMLAttributes<HTMLDivElement> & {"data-category"?:string; "data-section-label"?:string};
 }) {
   const key = "sidebar-open:" + name;
-  const [open, setOpen] = useState(() => {
+  const [open, setOpen, setPreview] = useHistoryState(key,() => {
     const saved = preview?"false":localStorage.getItem(key);
     return saved === null ? !nested : saved === "true";
-  });
+  },`${label} section visibility`);
   return <section className={`${nested ? "folder-group" : "sidebar-section"} ${identity?`section-feature section-style-${styleId??1} section-${identity}`:""}`} data-open={open}>
     <div {...dropProps} className={`${nested ? "folder-heading" : "sidebar-heading"} ${dropProps?.className??""}`}>
       <button className="section-toggle" aria-label={label} aria-expanded={open} onClick={() => {
-        if(!preview)localStorage.setItem(key, String(!open));
-        setOpen(!open);
+        if(preview)setPreview(!open);else setOpen(!open);
       }}>
         {identity?<>
           <span className="section-number" aria-hidden="true">{identity==="design"?"01":"02"}</span>

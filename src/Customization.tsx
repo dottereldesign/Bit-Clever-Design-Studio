@@ -4,6 +4,7 @@ import { SectionStyleOptions } from "./SectionStylePicker";
 import { homeStyles } from "./HomeDashboard";
 import { ShortcutEditor, type Shortcut } from "./Shortcuts";
 import "./customization.css";
+import { HistoryButtons } from "./useAppHistory";
 export type CustomTab="sidebar"|"home"|"library"|"websites"|"motion";
 export type HomeAppearance={dragAnywhere:boolean;gap:number;labels:boolean;darkness:number;textSize:number};
 export const readHomeAppearance=():HomeAppearance=>{try{const saved=JSON.parse(localStorage.getItem('home-appearance')??'{}');return {dragAnywhere:saved.dragAnywhere!==false,gap:Math.max(4,Math.min(24,Number(saved.gap)||10)),labels:saved.labels!==false,darkness:Math.max(55,Math.min(85,Number(saved.darkness)||64)),textSize:Math.max(22,Math.min(48,Number(saved.textSize)||32))};}catch{return {dragAnywhere:true,gap:10,labels:true,darkness:64,textSize:32};}};
@@ -15,7 +16,7 @@ export default function Customization({initial,close,sectionStyle,chooseSection,
  const range=(label:string,value:number,min:number,max:number,change:(n:number)=>void,unit='px')=><label className="custom-setting"><span>{label}<output>{value}{unit}</output></span><input type="range" aria-label={label} min={min} max={max} value={value} onChange={e=>change(Number(e.target.value))}/></label>;
  return <div className={`customise-backdrop ${closing?'is-closing':''}`} onMouseDown={e=>{if(e.currentTarget===e.target)dismiss();}}>
  <div className="customise-panel" ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="customise-title" onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape')dismiss();if(e.key==='Tab'){const nodes=[...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select,[tabindex="0"]')].filter(n=>!n.closest('[inert]')&&n.getClientRects().length),first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===ref.current)){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}>
- <header><h1 id="customise-title">Customise</h1><button className="icon-button" aria-label="Close customisation" onClick={dismiss}><X size={20}/></button></header>
+ <header><h1 id="customise-title">Customise</h1><div className="customise-history"><HistoryButtons/><button className="icon-button" aria-label="Close customisation" onClick={dismiss}><X size={20}/></button></div></header>
  <div className="customise-layout"><nav aria-label="Customisation sections">{tabs.map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={16}/>{label}</button>)}</nav>
  <div className="customise-content" key={tab}><h2>{tabs.find(([id])=>id===tab)![1]}</h2>
  {tab==='sidebar'&&<>{range('Sidebar width',sidebarWidth,168,320,setSidebarWidth)}<h3>Section style</h3><SectionStyleOptions selected={sectionStyle} choose={chooseSection}/><ShortcutEditor list={collections} change={setCollections}/></>}
