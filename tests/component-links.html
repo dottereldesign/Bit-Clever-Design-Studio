@@ -1,0 +1,34 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Customization checks</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#ccd9bc"/><circle cx="300" cy="100" r="100" fill="#a6bba0"/></svg>');
+const item=(id,name,kind='image',source='Design/3d')=>({id,name,kind,source,path:kind==='link'?`https://example.com/${id}`:`C:/Design/${name}.png`,modified:1,added:id,missing:false,tags:[],projects:[]});
+const library={items:[item(1,'Landscape'),item(2,'Brand study','image','Design/branding'),item(3,'Font library','link','Fonts'),item(4,'Code experiment','link','CodePen')],projects:[{id:7,name:'Website',count:0}],tags:[],sources:['Design/3d','Design/branding'],root:'C:/Design',scanning:false};
+const history=[],redo=[],calls=[];let callback=0,nextId=8,historyId=0,iconURL=image;
+const snapshot=()=>structuredClone({items:library.items,projects:library.projects});
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:path=>path.includes('/icons/')?iconURL:image,invoke:async(command,args)=>{
+ calls.push({command,args});if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='open_external_url')return;
+ if(command==='save_home_cover'){const blob=new Blob([new Uint8Array(args.bytes)],{type:'image/png'}),bitmap=await createImageBitmap(blob);assert(bitmap.width===128&&bitmap.height===128,'Icon upload was not normalized');bitmap.close();iconURL=URL.createObjectURL(blob);return {path:'C:/icons/custom.png',width:128,height:128};}
+ if(command==='read_clipboard')return {files:[],url:'https://webflow.com/blog/404'};if(command==='capture_items'){let saved=library.items.find(i=>i.path===args.input.url);const reused=!!saved;if(!saved){saved={...item(5,'webflow.com','link',''),path:args.input.url};library.items.push(saved);}return {ids:[saved.id],added:reused?0:1,reused:reused?1:0,destination:'links'};}if(command==='get_library')return {...structuredClone(library),projects:library.projects.map(p=>({...p,count:library.items.filter(i=>i.projects.includes(p.id)).length})),undo_entries:history.map(h=>({id:h.id,label:h.label})),undo_count:history.length,undo_label:history.at(-1)?.label,redo_count:redo.length,redo_label:redo.at(-1)?.label};
+ if(command==='update'){const c=args.change;
+  if(c.action==='undo_organisation'){const h=history.pop();redo.push({...h,state:snapshot()});Object.assign(library,h.state);return;}
+  if(c.action==='redo_organisation'){const h=redo.pop();history.push({...h,state:snapshot()});Object.assign(library,h.state);return;}
+  const before=snapshot();if(c.action==='create_project'){if(library.projects.some(p=>p.name===c.name))throw Error('That collection already exists.');library.projects.push({id:nextId++,name:c.name,count:0});}
+  else if(c.action==='add_project'){for(const i of library.items.filter(i=>c.ids.includes(i.id)))if(!i.projects.includes(c.target))i.projects.push(c.target);}
+  else if(c.action==='set_category'){for(const i of library.items.filter(i=>c.ids.includes(i.id))){i.category='Components / Uncategorised';i.component_folders=[...new Set([...(i.component_folders??[]),c.value])];}}else throw Error(c.action);
+  history.push({id:++historyId,label:c.action==='create_project'?'Create project':'Add to project',state:before});redo.length=0;return;
+ }throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(App));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error(label);await pause(25);}}
+const folder=name=>document.querySelector(`[data-category="Components / ${name}"]`);
+const paste=()=>document.querySelector('.home-nav').dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));
+try{
+ await until(()=>folder('404 pages'),'startup');library.items[0].category='Components / 404 pages';folder('404 pages').click();await pause(100);paste();
+ await until(()=>document.querySelector('.links-table tr[data-item-id="5"]'),'pasted link row');assert(!document.querySelector('.capture-dialog'),'Unexpected capture dialog');assert(document.querySelectorAll('.card').length===1,'Missing image');assert(!!(document.querySelector('.card').compareDocumentPosition(document.querySelector('.links-table'))&Node.DOCUMENT_POSITION_FOLLOWING),'Links should follow thumbnails');
+ await pause(150);paste();await pause(300);assert(library.items.filter(i=>i.path==='https://webflow.com/blog/404').length===1,'Duplicate link');
+ document.querySelector('.links-table tr[data-item-id="5"] button').click();await until(()=>calls.some(c=>c.command==='open_external_url'&&c.args.url==='https://webflow.com/blog/404'),'Open saved URL');
+ window.__screenshotReady=true;await pause(600);folder('Headers').click();await until(()=>!document.querySelector('.links-table'),'Wrong folder shows link');paste();await until(()=>document.querySelector('.links-table'),'Second membership');folder('404 pages').click();await until(()=>document.querySelector('.links-table'),'Original membership retained');
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Paste URL directly into a component folder','Link list follows thumbnails','Duplicate pastes reuse links','Saved URL opens correctly','Links support multiple component folders']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error)});}
+</script></body></html>

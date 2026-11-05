@@ -25,7 +25,7 @@ export const isBoardDestination = (destination: string): destination is BoardKey
 export const isBoardLink = (item: Item) => item.kind === "link" && Object.values(boardNames).includes(item.source);
 export const isTableCollection = (destination: string | null) => destination === "fonts" || destination === "brand-guidelines";
 export const isTableLink = (item: Item) => item.kind === "link" && (item.source === "Fonts" || item.source === "Brand Guidelines");
-export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item);
+export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && isComponent(categoryOf(item)));
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
   undo_entries?: {id:number;label:string}[];
@@ -65,11 +65,11 @@ export function filterItems(items: Item[], f: Filters): Item[] {
   const query = f.search.toLocaleLowerCase().trim();
   const result = items.filter(
     (i) =>
-      (f.collection ? i.kind === "link" && i.source === f.collection : (f.includeCollections || !isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
+      (f.collection ? i.kind === "link" && i.source === f.collection : (f.includeCollections || (f.category && (isComponent(f.category) || f.category === allComponents)) || !isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
       (!f.project || i.projects.includes(f.project)) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
-      (f.category == null || (i.kind !== "link" && (f.category === allComponents ? isComponent(categoryOf(i)) : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : categoryOf(i) === f.category)))) &&
+      (f.category == null || ((i.kind !== "link" || isComponent(categoryOf(i))) && (f.category === allComponents ? isComponent(categoryOf(i)) : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : categoryOf(i) === f.category)))) &&
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&

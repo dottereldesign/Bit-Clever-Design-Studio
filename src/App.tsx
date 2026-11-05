@@ -413,7 +413,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
         sort:recent?"recent":sort, seed,
       });
       if(generalMissing)return [];
-      if(allCategoriesView)return matches.filter(i=>i.kind==="link" || !isComponent(categoryOf(i)));
+      if(allCategoriesView)return matches.filter(i=>!isComponent(categoryOf(i)));
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
@@ -430,7 +430,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     [filtered],
   );
   const links = useMemo(
-    () => filtered.filter((i) => i.kind === "link" && (!isBoardLink(i) || isTableLink(i))),
+    () => filtered.filter((i) => i.kind === "link" && (isComponent(categoryOf(i)) || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
   const activeItem = lib.items.find((i) => i.id === viewer);
@@ -497,7 +497,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of lib.items) {
-      if (item.kind === "link") continue;
+      if (item.kind === "link" && !isComponent(categoryOf(item))) continue;
       const name = categoryOf(item);
       for (const folder of isComponent(name)?componentFoldersOf(item):[name]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
       if (isComponent(name)) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
@@ -553,7 +553,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop,(id,target,after)=>{const from=id.slice(9),to=target.slice(9),group=isComponent(from)?'components':'design';if(isComponent(from)!==isComponent(to)||from===to)return;const rows=sortedFolders(group==='components'?componentFolders:[...categories,''],group).filter(name=>name!==from),index=rows.indexOf(to);if(index<0)return;rows.splice(index+(after?1:0),0,from);setFolderOrder(previous=>({...previous,[group]:rows}));});
   const homeDrag=(id:string)=>homeShortcutDrag.props(id,homeDestinations.find(d=>d.id===id)?.label??"Destination");
   const changeCategory = async (ids:number[],name:string) => {
-    const items=lib.items.filter(i=>ids.includes(i.id)&&i.kind!=="link");
+    const items=lib.items.filter(i=>ids.includes(i.id)&&(i.kind!=="link"||isComponent(name)||isComponent(categoryOf(i))));
     if(!items.length)throw Error("Select images or videos to change category.");
     name = filingCategory(name);
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
@@ -729,9 +729,9 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
     const item=saved[0];
-    const destination=result.destination==="links"?"Links":result.destination==="resources"?"Resources":
+    const destination=targetCategory!==null?categoryLabel(targetCategory):result.destination==="links"?"Links":result.destination==="resources"?"Resources":
       result.destination&&isBoardDestination(result.destination)?boardNames[result.destination]:
-      targetCategory!==null?categoryLabel(targetCategory):item.source;
+      item.source;
     const prior=new Map(lib.items.map(i=>[i.id,i]));
     const already=result.reused>0&&!result.added&&saved.every(i=>{
       const previous=prior.get(i.id);
@@ -749,6 +749,12 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
     try {
       setReadingCapture(true);
       const draft = await invoke<CaptureDraft>("read_clipboard");
+      if(category!==null && (isComponent(category)||category===allComponents) && draft.url && !draft.files.length){
+        const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{files:[],url:draft.url,name:'',source:'Design',projects:[],tags:[],source_url:'',resource:false}}));
+        recordCapture(result);
+        if(result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(category)});
+        showCaptureReceipt(result,await refresh(),filingCategory(category));return;
+      }
       if(videoView && draft.url){setVideoDialog({url:draft.url});return;}
       if(category!==null && draft.files.length && !resourcesView && !boardView && !videoView && !linksOnly){
         try {
@@ -872,7 +878,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
   }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
-    if(category!==null && capture?.files.length && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
     const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
@@ -1422,7 +1428,7 @@ export default function App({startOnHome=true}:{startOnHome?:boolean}={}) {
                   setHoverId={setHoverId}
                 />
               )}
-              {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i))} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
+              {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)&&!isComponent(categoryOf(i))) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i)&&!isComponent(categoryOf(i)))} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
               {links.length > 0 && (
                 linkTable(links)
               )}

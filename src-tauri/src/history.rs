@@ -28,7 +28,7 @@ pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch
         "set_category" | "remove_component_folder" => {
             let mut ids=c.ids.clone();ids.sort();ids.dedup();
             for id in ids {
-                let source: Option<String> = db.query_row("SELECT source FROM items WHERE id=? AND kind!='link'",[id],|r|r.get(0)).optional().map_err(err)?;
+                let source: Option<String> = db.query_row("SELECT source FROM items WHERE id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                 if let Some(source)=source {
                     let previous: Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                     let folders=db::component_memberships(db,id)?;

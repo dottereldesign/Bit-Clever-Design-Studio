@@ -1211,9 +1211,29 @@ fn component_folders_add_remove_undo_and_category_moves_are_atomic() {
     apply("undo_organisation",vec![],None).unwrap();
     apply("undo_organisation",vec![],None).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
     assert!(apply("set_category",vec![1,999999],Some("Components / Footers")).is_err());assert_eq!(folders(),vec!["Components / Navbars"]);
-    assert!(apply("set_category",vec![3],Some("Components / Headers")).is_err());
+    assert!(apply("set_category",vec![3],Some("Components / Headers")).is_ok());
     assert!(apply("remove_component_folder",vec![1],Some("branding")).is_err());
     // Adding across a mixed selection preserves each item's existing memberships.
     apply("set_category",vec![1,2],Some("Components / Headers")).unwrap();assert_eq!(folders().len(),2);
     assert_eq!(db::load(&path,false).unwrap().items[1].component_folders,vec!["Components / Headers"]);
+}
+
+#[test]
+fn component_links_persist_and_undo_memberships() {
+ let temp=tempfile::tempdir().unwrap();let path=temp.path().join("links.sqlite");db::init(&path).unwrap();
+ db::connect(&path).unwrap().execute("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'https://webflow.com/blog/404','404 inspiration','link','',1)",[]).unwrap();
+ let apply=|action,value|db::change(&path,change(action,vec![1],None,None,value));
+ apply("set_category",Some("Components / 404 pages")).unwrap();
+ let read=||db::load(&path,false).unwrap().items.remove(0);
+ assert_eq!(read().category.as_deref(),Some("Components / Uncategorised"));
+ assert_eq!(read().component_folders,vec!["Components / 404 pages"]);
+ apply("undo_organisation",None).unwrap();assert!(read().category.is_none());
+ apply("redo_organisation",None).unwrap();assert_eq!(read().component_folders.len(),1);
+ apply("set_category",Some("Components / Headers")).unwrap();assert_eq!(read().component_folders.len(),2);
+ apply("remove_component_folder",Some("Components / Headers")).unwrap();assert_eq!(read().component_folders,vec!["Components / 404 pages"]);
+ assert!(apply("set_category",Some("branding")).is_err());
+ db::init(&path).unwrap();assert_eq!(read().path,"https://webflow.com/blog/404");assert_eq!(read().component_folders.len(),1);
+ let backup=temp.path().join("links.json");db::export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();
+ let link=db::load(&restored,false).unwrap().items.remove(0);assert_eq!(link.category.as_deref(),Some("Components / Uncategorised"));assert_eq!(link.component_folders,vec!["Components / 404 pages"]);
+
 }

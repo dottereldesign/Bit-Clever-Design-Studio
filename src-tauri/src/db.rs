@@ -244,7 +244,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?
     };
     for item in &mut items {
-        if item.kind != "link" {
+        if item.kind != "link" || overrides.contains_key(&item.id) {
             let initial = default_category(&item.source);
             if !initial.is_empty() { categories.push(initial.clone()); }
             let mut category = overrides.get(&item.id).cloned().unwrap_or(initial);
@@ -332,7 +332,7 @@ pub fn default_category(source: &str) -> String {
 }
 fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     if !name.is_empty() { valid_name(name)?; }
-    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND kind!='link' AND archived=0)",[id],|r|r.get(0)).map_err(err)?;
+    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND archived=0 AND (kind!='link' OR ? LIKE 'Components / %' OR (?='' AND EXISTS(SELECT 1 FROM item_categories WHERE item_id=items.id AND name LIKE 'Components / %'))))",params![id,name,name],|r|r.get(0)).map_err(err)?;
     if !exists { return Err("Only references still in your library can change category.".into()); }
     if name.starts_with("Components / ") && name != "Components / Uncategorised" {
         materialize_component_folder(db,id)?;
@@ -416,7 +416,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         "remove_component_folder" => {
             if !value.starts_with("Components / ") || value=="Components / Uncategorised" {return Err("Choose a component folder.".into());}
             for id in c.ids {
-                let category:Option<String>=tx.query_row("SELECT c.name FROM item_categories c JOIN items i ON i.id=c.item_id WHERE i.id=? AND i.kind!='link' AND i.archived=0",[id],|r|r.get(0)).optional().map_err(err)?;
+                let category:Option<String>=tx.query_row("SELECT c.name FROM item_categories c JOIN items i ON i.id=c.item_id WHERE i.id=? AND i.archived=0",[id],|r|r.get(0)).optional().map_err(err)?;
                 if !category.is_some_and(|n|n.starts_with("Components / ")) {return Err("Select a component still in your library.".into());}
                 materialize_component_folder(&tx,id)?;
                 tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;
@@ -662,11 +662,19 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             // thumbnails, including resources already seeded by a fresh app.
             tx.execute("UPDATE items SET name=?,source=?,source_url=?,thumbnail=?,archived=0 WHERE id=?",params![item.name,item.source,item.source_url,item.thumbnail,id]).map_err(err)?;
         }
-        if item.kind != "link" {
+        if item.kind != "link" || item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")) {
             if let Some(category) = &item.category {
                 // Archived items keep their category too when merging a backup.
                 if !category.is_empty() { valid_name(category)?; tx.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[category]).map_err(err)?; }
                 tx.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,category]).map_err(err)?;
+            }
+        }
+        if item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")) {
+            tx.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;
+            for folder in &item.component_folders {
+                if !folder.starts_with("Components / ") || folder=="Components / Uncategorised" {continue;}
+                valid_name(folder)?;
+                tx.execute("INSERT OR IGNORE INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,folder]).map_err(err)?;
             }
         }
         if item.kind == "link"

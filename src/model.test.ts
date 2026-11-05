@@ -186,3 +186,10 @@ describe("component folder memberships",()=>{
     equal(filterItems([regular],{...defaults,category:"branding"}).length,1);
   });
 });
+
+it("component links appear in their folder and aggregate, separately from ordinary Links",()=>{
+ const link={...items[0],kind:'link' as const,path:'https://webflow.com/blog/404',source:'',category:'Components / Uncategorised',component_folders:['Components / 404 pages']};
+ for(const category of ['Components / 404 pages','All Components'])equal(filterItems([link],{...defaults,category}).length,1);
+ equal(filterItems([link],{...defaults,category:'Components / Headers'}).length,0);
+ equal(filterItems([link],{...defaults,linksOnly:true}).length,0);
+});
