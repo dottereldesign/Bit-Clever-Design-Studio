@@ -1,5 +1,5 @@
 use crate::db::{self, err, Backup, Result};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use sha2::{Digest, Sha256};
 use std::{fs, io::{Read, Write}, path::{Path, PathBuf}, sync::atomic::{AtomicBool, Ordering}, time::{Duration, Instant}};
 
@@ -20,9 +20,86 @@ pub struct ExportResult {
     pub missing: Vec<String>,
     pub cancelled: bool,
 }
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Entry { path: String, bytes: u64, sha256: String }
 struct CopyJob { source: PathBuf, relative: String, size: u64 }
+
+fn checksum(path: &Path) -> Result<String> {
+    let mut file=fs::File::open(path).map_err(err)?;
+    let mut hash=Sha256::new();let mut buffer=[0u8;65536];
+    loop {let n=file.read(&mut buffer).map_err(err)?;if n==0 {break;}hash.update(&buffer[..n]);}
+    Ok(format!("{:x}",hash.finalize()))
+}
+
+// Only app-owned appearance files are followed; preferences cannot select arbitrary files.
+fn pack_assets(value: &mut serde_json::Value, data: &Path, jobs: &mut Vec<CopyJob>, missing: &mut Vec<String>) -> Result<()> {
+    match value {
+        serde_json::Value::String(text) if Path::new(text).is_absolute()=>{
+            let source=PathBuf::from(&*text);
+            if !source.starts_with(data.join("home-covers")) {return Ok(());}
+            let relative=format!("Appearance/{}",safe_name(source.file_name().and_then(|s|s.to_str()).unwrap_or("cover.png")));
+            if let Ok(meta)=fs::metadata(&source) {
+                if !source.canonicalize().map_err(err)?.starts_with(data.canonicalize().map_err(err)?) {return Err("Appearance file points outside app data.".into());}
+                if !jobs.iter().any(|j|j.relative==relative) {jobs.push(CopyJob{source,relative:relative.clone(),size:meta.len()});}
+            } else {missing.push(format!("{} — appearance image unavailable",source.display()));}
+            *text=relative;
+        },
+        serde_json::Value::Array(values)=>for v in values {pack_assets(v,data,jobs,missing)?;},
+        serde_json::Value::Object(values)=>for v in values.values_mut(){pack_assets(v,data,jobs,missing)?;},
+        _=>{}
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct Verification {pub files:usize,pub missing:Vec<String>}
+pub fn verify(folder:&Path)->Result<Verification>{
+    if folder.join("INCOMPLETE.txt").exists(){return Err("This backup is incomplete. Keep your originals and create a new backup.".into());}
+    let manifest:serde_json::Value=serde_json::from_slice(&fs::read(folder.join("manifest.json")).map_err(err)?).map_err(err)?;
+    let entries:Vec<Entry>=serde_json::from_value(manifest["files"].clone()).map_err(err)?;
+    if !folder.join("library.json").is_file(){return Err("The library metadata is missing.".into());}
+    for entry in &entries {
+        let path=PathBuf::from(resolve_relative(folder,&entry.path)?);
+        if !path.is_file() || fs::metadata(&path).map_err(err)?.len()!=entry.bytes || checksum(&path)?!=entry.sha256 {
+            return Err(format!("Backup file is missing or changed: {}",entry.path));
+        }
+    }
+    Ok(Verification{files:entries.len(),missing:serde_json::from_value(manifest["missing"].clone()).map_err(err)?})
+}
+
+pub fn restore_preferences(folder:&Path, db_path:&Path)->Result<serde_json::Value>{
+    let file=folder.join("preferences.json");
+    if !file.exists(){return Ok(serde_json::json!({}));}
+    let mut value:serde_json::Value=serde_json::from_slice(&fs::read(file).map_err(err)?).map_err(err)?;
+    let backup:Backup=serde_json::from_slice(&fs::read(folder.join("library.json")).map_err(err)?).map_err(err)?;
+    let current=db::load(db_path,false)?;
+    let projects:std::collections::HashMap<String,String>=backup.library.projects.iter().filter_map(|old|current.projects.iter().find(|p|p.name==old.name).map(|new|(old.id.to_string(),new.id.to_string()))).collect();
+    fn rewrite(value:&mut serde_json::Value,folder:&Path,data:&Path,projects:&std::collections::HashMap<String,String>)->Result<()> {
+        match value {
+            serde_json::Value::String(s) if s.starts_with("Appearance/")=>{
+                let source=PathBuf::from(resolve_relative(folder,s)?);
+                if source.is_file(){
+                    let target=data.join("home-covers").join(format!("restored-{}.{}",checksum(&source)?,source.extension().and_then(|s|s.to_str()).unwrap_or("png")));
+                    fs::create_dir_all(target.parent().unwrap()).map_err(err)?;
+                    if !target.exists(){fs::copy(&source,&target).map_err(err)?;}
+                    if checksum(&source)?!=checksum(&target)?{return Err("Restored appearance image failed verification.".into());}
+                    *s=target.to_string_lossy().into_owned();
+                } else {*s=source.to_string_lossy().into_owned();}
+            },
+            serde_json::Value::String(s) if s.starts_with("project:")=>{if let Some(id)=projects.get(&s[8..]){*s=format!("project:{id}");}},
+            serde_json::Value::Array(values)=>for v in values{rewrite(v,folder,data,projects)?;},
+            serde_json::Value::Object(values)=>{
+                if values.get("kind").and_then(|v|v.as_str())==Some("project") {
+                    if let Some(id)=values.get("value").and_then(|v|v.as_str()).and_then(|id|projects.get(id)).cloned(){values.insert("value".into(),id.into());}
+                }
+                let old=std::mem::take(values);
+                for (mut key,mut v) in old {if let Some(id)=key.strip_prefix("project:").and_then(|id|projects.get(id)){key=format!("project:{id}");}rewrite(&mut v,folder,data,projects)?;values.insert(key,v);}
+            },_=>{}
+        }Ok(())
+    }
+    rewrite(&mut value,folder,db_path.parent().ok_or("Missing app data folder")?,&projects)?;
+    Ok(value)
+}
 
 fn safe_name(name: &str) -> String {
     let value: String = name.chars().map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) {'_'} else {c}).take(110).collect();
@@ -49,7 +126,12 @@ pub fn resolve_relative(base: &Path, value: &str) -> Result<String> {
     Ok(joined.to_string_lossy().into_owned())
 }
 
+#[cfg(test)]
 pub fn export(db_path: &Path, destination: &Path, name: &str, cancel: &AtomicBool, progress: &mut impl FnMut(Progress)) -> Result<ExportResult> {
+    export_with_preferences(db_path,destination,name,serde_json::json!({}),cancel,progress)
+}
+
+pub fn export_with_preferences(db_path: &Path, destination: &Path, name: &str, mut preferences: serde_json::Value, cancel: &AtomicBool, progress: &mut impl FnMut(Progress)) -> Result<ExportResult> {
     let destination=destination.canonicalize().map_err(err)?;
     if !destination.is_dir() {return Err("Choose a backup folder.".into());}
     let conn=db::connect(db_path)?;
@@ -62,11 +144,11 @@ pub fn export(db_path: &Path, destination: &Path, name: &str, cancel: &AtomicBoo
     let output=destination.join(format!("{}-{}",safe_name(name),db::now()));
     fs::create_dir(&output).map_err(err)?;
     fs::write(output.join("INCOMPLETE.txt"),"This backup did not finish. Keep your originals. A complete backup has library.json and manifest.json.\n").map_err(err)?;
-    let result=run(&conn,&output,cancel,progress);
+    let result=run(&conn,&output,db_path.parent().unwrap(),&mut preferences,cancel,progress);
     result.map_err(|e|format!("{e}\nPartial backup: {}",output.display()))
 }
 
-fn run(conn: &rusqlite::Connection, output: &Path, cancel: &AtomicBool, progress: &mut impl FnMut(Progress)) -> Result<ExportResult> {
+fn run(conn: &rusqlite::Connection, output: &Path, data: &Path, preferences: &mut serde_json::Value, cancel: &AtomicBool, progress: &mut impl FnMut(Progress)) -> Result<ExportResult> {
     let mut status=Progress{phase:"preparing",copied_bytes:0,total_bytes:0,completed_files:0,total_files:0,current:String::new()};
     progress(status.clone());
     // SQLite's backup API takes a consistent snapshot, including live WAL data.
@@ -77,6 +159,7 @@ fn run(conn: &rusqlite::Connection, output: &Path, cancel: &AtomicBool, progress
     let mut jobs=vec![];
     let mut missing=vec![];
     let mut links=0;
+    pack_assets(preferences,data,&mut jobs,&mut missing)?;
     for item in &mut library.items {
         if cancel.load(Ordering::SeqCst) {return Ok(ExportResult{path:output.to_string_lossy().into_owned(),files:0,links,missing,cancelled:true});}
         if item.kind=="link" {links+=1;} else {
@@ -136,7 +219,9 @@ fn run(conn: &rusqlite::Connection, output: &Path, cancel: &AtomicBool, progress
         if bytes!=job.size || before.len()!=after.len() || before.modified().ok()!=after.modified().ok() {return Err(format!("{} changed during export. Try again.",status.current));}
         writer.sync_all().map_err(err)?;drop(writer);
         fs::rename(&temporary,&target).map_err(err)?;
-        entries.push(Entry{path:job.relative,bytes,sha256:format!("{:x}",hash.finalize())});
+        let expected=format!("{:x}",hash.finalize());
+        if checksum(&target)? != expected {return Err(format!("Backup verification failed: {}",job.relative));}
+        entries.push(Entry{path:job.relative,bytes,sha256:expected});
         status.completed_files+=1;progress(status.clone());
     }
     if cancel.load(Ordering::SeqCst) {
@@ -155,13 +240,21 @@ fn run(conn: &rusqlite::Connection, output: &Path, cancel: &AtomicBool, progress
     html.push_str("</ul></html>");
     fs::write(output.join("links.html"),html).map_err(err)?;
     fs::write(output.join("links.csv"),table).map_err(err)?;
-    fs::write(output.join("manifest.json"),serde_json::to_vec_pretty(&serde_json::json!({"version":1,"files":entries,"missing":missing,"links":links})).map_err(err)?).map_err(err)?;
-    fs::write(output.join("README.txt"),"DESIGN BACKUP\n\nMedia/ contains your original images, animations and videos.\nThumbnails/ contains saved link thumbnails.\nOpen links.html in any browser, or links.csv in a spreadsheet.\nlibrary.json retains projects, tags, categories and pins.\nmanifest.json lists SHA-256 checksums and unavailable files.\n\nCopy this entire folder to your external drive or another PC.\nTo restore in Design, keep the folder in its permanent location, then use Settings > Import metadata and choose library.json. Media stays in this folder.\n\nA backup with INCOMPLETE.txt did not finish. Review missing entries in manifest.json before deleting any originals.\n").map_err(err)?;
+
+    fs::write(output.join("README.txt"),"DESIGN BACKUP\n\nMedia/ contains your original images, animations and videos.\nThumbnails/ contains saved link thumbnails.\nOpen links.html in any browser, or links.csv in a spreadsheet.\nlibrary.json retains projects, tags, categories, every component-folder membership and pins.\npreferences.json and Appearance/ retain Home tiles, custom icons and sidebar settings.\nmanifest.json lists SHA-256 checksums and unavailable files.\n\nCopy this entire folder to your external drive or another PC.\nTo restore in Design, keep the folder in its permanent location, then use Storage > Restore backup and choose library.json. Media stays in this folder.\n\nA backup with INCOMPLETE.txt did not finish. Review missing entries in manifest.json before relying on this backup. Removed references, undo history, temporary downloads, browser sessions and regenerable caches are excluded.\n\nAfter copying, use Storage > Verify backup on the external-drive copy. Keep another copy on a separate drive or location. Never delete your only working copy.\n").map_err(err)?;
     fs::write(output.join("library.json.part"),serde_json::to_vec_pretty(&Backup{version:1,portable:true,library}).map_err(err)?).map_err(err)?;
     fs::rename(output.join("library.json.part"),output.join("library.json")).map_err(err)?;
+    fs::write(output.join("preferences.json"),serde_json::to_vec_pretty(preferences).map_err(err)?).map_err(err)?;
+    for name in ["library.json","preferences.json","links.html","links.csv","README.txt"] {
+        let path=output.join(name);
+        fs::OpenOptions::new().write(true).open(&path).map_err(err)?.sync_all().map_err(err)?;
+        entries.push(Entry{path:name.into(),bytes:fs::metadata(&path).map_err(err)?.len(),sha256:checksum(&path)?});
+    }
+    fs::write(output.join("manifest.json"),serde_json::to_vec_pretty(&serde_json::json!({"version":2,"files":entries,"missing":missing,"links":links})).map_err(err)?).map_err(err)?;
+    fs::OpenOptions::new().write(true).open(output.join("manifest.json")).map_err(err)?.sync_all().map_err(err)?;
     fs::remove_file(output.join("INCOMPLETE.txt")).map_err(err)?;
-    status.phase="complete";progress(status);
-    Ok(ExportResult{path:output.to_string_lossy().into_owned(),files:entries.len(),links,missing,cancelled:false})
+    status.phase="complete";progress(status.clone());
+    Ok(ExportResult{path:output.to_string_lossy().into_owned(),files:status.completed_files,links,missing,cancelled:false})
 }
 
 #[cfg(test)]
@@ -220,6 +313,31 @@ mod tests {
         let result=export(&path,&destination,"Cancelled",&cancel,&mut |p|{if p.phase=="copying" {cancel.store(true,Ordering::SeqCst);}}).unwrap();
         assert!(result.cancelled);assert!(Path::new(&result.path).join("INCOMPLETE.txt").exists());assert!(!Path::new(&result.path).join("library.json").exists());
         for item in db::load(&path,false).unwrap().items.iter().filter(|i|i.kind!="link"&&!i.missing) {assert!(Path::new(&item.path).exists());}
+    }
+
+    #[test]
+    fn portable_backup_restores_all_memberships_and_appearance_and_detects_corruption() {
+        let (temp,path,destination)=fixture();
+        let conn=db::connect(&path).unwrap();
+        conn.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=1",[]).unwrap();
+        conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
+        let cover=path.parent().unwrap().join("home-covers/cover.png");fs::create_dir_all(cover.parent().unwrap()).unwrap();fs::write(&cover,b"cover bytes").unwrap();
+        let prefs=serde_json::json!({"home-tiles":[{"id":"project:7","cover":{"path":cover,"width":10,"height":10}}],"app-icons":{"overrides":{"project:7":{"kind":"asset","value":cover}}},"folder-labels":{"Mobile":"iOS & Android"},"collection-shortcuts":[{"target":{"kind":"project","value":"7"}}]});
+        let result=export_with_preferences(&path,&destination,"Complete",prefs,&AtomicBool::new(false),&mut |_|{}).unwrap();
+        let moved=temp.path().join("external drive copy");fs::rename(result.path,&moved).unwrap();
+        let checked=verify(&moved).unwrap();assert_eq!(checked.missing.len(),1);
+        let restored=temp.path().join("new app");fs::create_dir(&restored).unwrap();let restored=restored.join("library.sqlite");db::init(&restored).unwrap();
+        let db2=db::connect(&restored).unwrap();db2.execute("INSERT INTO projects(id,name) VALUES(7,'Unrelated project')",[]).unwrap();
+        db::import(&restored,moved.join("library.json")).unwrap();
+        let lib=db::load(&restored,false).unwrap();let item=lib.items.iter().find(|i|i.name=="Reference 1").unwrap();
+        assert_eq!(item.component_folders,vec!["Components / Headers","Components / Navbars"]);
+        let settings=restore_preferences(&moved,&restored).unwrap();let project=lib.projects.iter().find(|p|p.name=="Keep project").unwrap();
+        assert_eq!(settings["home-tiles"][0]["id"],format!("project:{}",project.id));
+        assert_eq!(settings["collection-shortcuts"][0]["target"]["value"],project.id.to_string());
+        assert_eq!(fs::read(settings["home-tiles"][0]["cover"]["path"].as_str().unwrap()).unwrap(),b"cover bytes");
+        let again=export_with_preferences(&restored,&destination,"Again",settings,&AtomicBool::new(false),&mut |_|{}).unwrap();
+        assert!(Path::new(&again.path).join("Appearance").is_dir());
+        fs::write(moved.join("preferences.json"),b"{}").unwrap();assert!(verify(&moved).unwrap_err().contains("preferences.json"));
     }
     #[test]
     fn library_export_rejects_nested_destinations_and_portable_path_traversal() {

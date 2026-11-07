@@ -1,3 +1,4 @@
+import {collectBackupPreferences} from "./backupPreferences";
 import { useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -24,7 +25,7 @@ export default function LibraryExport({ close }: { close: () => void }) {
       const onProgress = new Channel<Progress>(); onProgress.onmessage = setProgress;
       const today = new Date();
       const name = `Design Backup ${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      setResult(await invoke<Result>("export_library", { path, name, onProgress }));
+      setResult(await invoke<Result>("export_library", { path, name, onProgress, preferences:collectBackupPreferences() }));
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); setChoosing(false); pending.current = false; }
   };
@@ -47,14 +48,14 @@ export default function LibraryExport({ close }: { close: () => void }) {
       }}>
       <div className="modal-heading"><h2 id="export-title">Export full library</h2><button className="icon-button" aria-label="Close library export" disabled={busy || choosing} onClick={close}><X size={17}/></button></div>
       <p className="export-description">Save your images, videos, links and organisation in one portable folder. Choose a folder on your PC or an external drive.</p>
-      <small>Includes original media, link thumbnails, projects, tags, categories and pins. Removed references are excluded.</small>
+      <small>Includes original media, link thumbnails, projects, tags, every component-folder membership, Home tiles and appearance settings. Removed references, undo history and temporary caches are excluded.</small>
       {busy && <div className="export-progress" role="status" aria-live="polite">
         <div><span><LoaderCircle size={14} className="spin"/> {cancelling ? "Cancelling…" : progress?.phase === "finishing" ? "Finishing backup…" : progress?.phase === "copying" ? "Copying files…" : "Preparing library…"}</span><strong>{Math.round(percent)}%</strong></div>
         <progress aria-label="Library export progress" max={100} value={progress?.phase === "preparing" || !progress ? undefined : percent}/>
         {progress && <><small>{bytes(progress.copied_bytes)} of {bytes(progress.total_bytes)} · {progress.completed_files} of {progress.total_files} files</small><p className="export-current" title={progress.current}>{progress.current}</p></>}
       </div>}
       {result && <div className="export-result" role="status">
-        <strong>{result.cancelled ? "Export cancelled" : "Backup ready"}</strong>
+        <strong>{result.cancelled ? "Export cancelled" : result.missing.length ? "Backup needs attention" : "Backup ready"}</strong>
         <p>{result.cancelled ? "The partial folder is marked incomplete. Your originals are unchanged." : `${result.files} files and ${result.links} links exported. You can copy this entire folder to an external drive.`}</p>
         <code>{result.path}</code>
         {!!result.missing.length && <details><summary>{result.missing.length} unavailable files — review before relying on this backup</summary><ul>{result.missing.map((value, index) => <li key={index}>{value}</li>)}</ul></details>}

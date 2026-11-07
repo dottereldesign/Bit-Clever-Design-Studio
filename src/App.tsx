@@ -2,6 +2,8 @@ import { readViewSession, useViewSession, type ViewState } from "./viewSession";
 import { copyImageToClipboard, readClipboard } from "./clipboard";
 import { acceptsExternalDrop, readWebDrop } from './webDrop';
 import StorageBar from './StorageBar';
+import StoragePanel from './StoragePanel';
+import {applyBackupPreferences} from './backupPreferences';
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
 import {
@@ -299,6 +301,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     return () => query.removeEventListener("change", update);
   }, []);
   const [libraryExportOpen,setLibraryExportOpen]=useState(false);
+  const [storageOpen,setStorageOpen]=useState(false);
   const [quickPreview,setQuickPreview]=useState<number|null>(null);
   const [thumbnailEnlarged,setThumbnailEnlarged]=useState(false);
   const previewCandidate=useRef<number|null>(null);
@@ -870,7 +873,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         !(e.target as HTMLElement).closest(
           "input,textarea,select,[contenteditable=true]",
         ) &&
-        quickPreview === null && !libraryExportOpen && !extraDialog && !capture &&
+        quickPreview === null && !libraryExportOpen && !storageOpen && !extraDialog && !capture &&
         !videoDialog &&
         !duplicatesOpen &&
         !removedOpen &&
@@ -882,7 +885,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     };
     const over = (e: DragEvent) => {
       if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop")){setDropActive(false);return;}
-      if (!extraDialog && e.dataTransfer && acceptsExternalDrop(e.dataTransfer)) {
+      if (!extraDialog && !storageOpen && e.dataTransfer && acceptsExternalDrop(e.dataTransfer)) {
         e.preventDefault();
         setDropActive(true);
       }
@@ -893,7 +896,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     const drop = (e: DragEvent) => {
       setDropActive(false);
       if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop"))return;
-      if(extraDialog)return;
+      if(extraDialog||storageOpen)return;
       if(e.dataTransfer && acceptsExternalDrop(e.dataTransfer) && !resourcesView && !boardView && !videoView && !linksOnly){
         e.preventDefault();
         queueImageDrop(e.dataTransfer,category);
@@ -926,7 +929,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,boardView,linksOnly]);
+  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,boardView,linksOnly,storageOpen]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
     if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
@@ -975,6 +978,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       const path = restore
         ? await open({
             multiple: false,
+            title: "Choose library.json inside your backup folder",
             filters: [{ name: "Design backup", extensions: ["json"] }],
           })
         : await save({
@@ -983,7 +987,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           });
       if (typeof path === "string") {
         await invoke("backup", { path, restore });
-        if (restore) {appHistory.clearLibrary();await refresh();}
+        if (restore) {
+          appHistory.clearLibrary();await refresh();setStorageOpen(false);
+          const preferences=await invoke<Record<string,unknown>>('backup_preferences',{path:path.replace(/[\\/][^\\/]+$/,'')});
+          if(preferences&&Object.keys(preferences).length){applyBackupPreferences(preferences);localStorage.removeItem('last-workspace-view');window.location.reload();return;}
+        }
         setUndoIds([]);
         setNotice(restore ? "Backup imported" : "Backup exported");
       }
@@ -1052,13 +1060,13 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     >
       <aside
         className="sidebar"
-        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </button>
-        <StorageBar revision={lib} report={report}/>
+        <StorageBar revision={lib} onOpen={()=>setStorageOpen(true)}/>
         <SidebarNavigation order={navLayout.order}>
         <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><AppIcon value={icons.overrides.home} fallback={<House size={16}/>}/><span>Home</span></button>
         <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
@@ -1184,7 +1192,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           aria-orientation="vertical"
         />
       </aside>
-      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
+      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
         {homeView?<HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
         <header className="topbar">
           <div className="view-title">
@@ -1497,7 +1505,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         <Viewer
           key={activeItem.id}
           docked={dockedPreview}
-          blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+          blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
           item={activeItem}
           items={images}
           tags={lib.tags}
@@ -1564,6 +1572,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       }}/>}
 
       {extraDialog==="sheet"&&<ContactSheet title={title} items={sheetItems} initial={selected} close={()=>setExtraDialog(null)}/>}
+      {storageOpen&&<StoragePanel lib={lib} close={()=>setStorageOpen(false)} backup={()=>{setStorageOpen(false);setLibraryExportOpen(true);}} restore={()=>void backup(true)}/>}
       {libraryExportOpen && <LibraryExport close={()=>setLibraryExportOpen(false)}/>}
       {capture && (
         <CaptureDialog

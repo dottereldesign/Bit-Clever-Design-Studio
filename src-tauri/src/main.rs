@@ -50,6 +50,12 @@ fn open_data_folder(state:tauri::State<'_,State>)->Result<()>{
  tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
 }
 #[tauri::command]
+fn open_storage_folder(name:String,state:tauri::State<'_,State>)->Result<()>{
+    let db=db::connect(&state.db)?;
+    let (_,folder)=sources::roots(&db).into_iter().find(|(label,_)|label==&name).ok_or("Storage folder is not configured")?;
+    tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
+}
+#[tauri::command]
 async fn save_home_cover(bytes:Vec<u8>,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<home_covers::Cover>{
     let data=state.db.parent().ok_or("Library folder unavailable")?.to_path_buf();
     let cover=tauri::async_runtime::spawn_blocking(move||home_covers::save(&data,&bytes)).await.map_err(err)??;
@@ -58,14 +64,25 @@ async fn save_home_cover(bytes:Vec<u8>,app:tauri::AppHandle,state:tauri::State<'
 #[tauri::command]
 fn app_version() -> &'static str { env!("CARGO_PKG_VERSION") }
 #[tauri::command]
-async fn export_library(path: String, name: String, on_progress: tauri::ipc::Channel<library_export::Progress>, state: tauri::State<'_, State>) -> Result<library_export::ExportResult> {
+async fn export_library(path: String, name: String, preferences: Option<serde_json::Value>, on_progress: tauri::ipc::Channel<library_export::Progress>, state: tauri::State<'_, State>) -> Result<library_export::ExportResult> {
     let s=state.inner().clone();
     if s.exporting.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() {return Err("A library export is already running.".into());}
     s.export_cancel.store(false,Ordering::SeqCst);
     let active=s.exporting.clone();
-    let result=tauri::async_runtime::spawn_blocking(move || library_export::export(&s.db,std::path::Path::new(&path),&name,&s.export_cancel,&mut |progress|{let _=on_progress.send(progress);})).await.map_err(err);
+    let result=tauri::async_runtime::spawn_blocking(move || library_export::export_with_preferences(&s.db,std::path::Path::new(&path),&name,preferences.unwrap_or(serde_json::json!({})),&s.export_cancel,&mut |progress|{let _=on_progress.send(progress);})).await.map_err(err);
     active.store(false,Ordering::SeqCst);
     result?
+}
+#[tauri::command]
+async fn verify_library_backup(path:String)->Result<library_export::Verification>{
+    tauri::async_runtime::spawn_blocking(move||library_export::verify(std::path::Path::new(&path))).await.map_err(err)?
+}
+#[tauri::command]
+async fn backup_preferences(path:String, app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<serde_json::Value>{
+    let folder=PathBuf::from(path);let db=state.db.clone();let assets=db.parent().unwrap().join("home-covers");
+    std::fs::create_dir_all(&assets).map_err(err)?;
+    if assets.is_dir(){app.asset_protocol_scope().allow_directory(&assets,true).map_err(err)?;}
+    tauri::async_runtime::spawn_blocking(move||library_export::restore_preferences(&folder,&db)).await.map_err(err)?
 }
 #[tauri::command]
 fn cancel_library_export(state: tauri::State<'_, State>) {state.export_cancel.store(true,Ordering::SeqCst);}
@@ -160,7 +177,9 @@ async fn backup(
     let db_path = db.clone();
     tauri::async_runtime::spawn_blocking(move || {
         if restore {
-            db::import(&db, PathBuf::from(path))
+            let source=PathBuf::from(path);
+            if let Some(folder)=source.parent(){if folder.join("manifest.json").exists(){library_export::verify(folder)?;}}
+            db::import(&db, source)
         } else {
             db::export(&db, PathBuf::from(path))
         }
@@ -511,12 +530,15 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             storage_usage,
+            open_storage_folder,
             open_data_folder,
             save_home_cover,
             open_external_url,
             app_version,
             save_contact_sheet,
             export_library,
+            verify_library_backup,
+            backup_preferences,
             cancel_library_export,
             get_library,
             update,
