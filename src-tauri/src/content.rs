@@ -499,7 +499,8 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
     let root = crate::sources::root(&db, &c.source)?
         .canonicalize()
         .map_err(err)?;
-    let destination = root.join("Captures");
+    let managed=db::setting(&db,"managed_root").is_some();
+    let destination = if managed {root.clone()}else{root.join("Captures")};
     fs::create_dir_all(&destination).map_err(err)?;
     let destination = destination.canonicalize().map_err(err)?;
     if !destination.starts_with(&root) {
@@ -523,7 +524,10 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("Capture.png");
-        let target = destination.join(format!("{}-{original}", nonce()));
+        let target = if managed {
+            let mut used=fs::read_dir(&destination).map_err(err)?.filter_map(|e|e.ok()).map(|e|format!("/{0}",e.file_name().to_string_lossy()).to_lowercase()).collect();
+            destination.join(crate::library_export::allocate_filename(if c.name.trim().is_empty(){Path::new(original).file_stem().and_then(|s|s.to_str()).unwrap_or("Saved Image")}else{&c.name},Path::new(original),"",&mut used))
+        }else{destination.join(format!("{}-{original}", nonce()))};
         let temporary = target.with_extension("pending");
         fs::copy(&path, &temporary).map_err(err)?;
         if hash_file(&temporary)? != fp.file {

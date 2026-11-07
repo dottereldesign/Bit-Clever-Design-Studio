@@ -12,7 +12,7 @@ pub fn save(data:&Path,bytes:&[u8])->Result<Cover>{
     let mut limits=image::Limits::default();limits.max_image_width=Some(4096);limits.max_image_height=Some(4096);limits.max_alloc=Some(64*1024*1024);reader.limits(limits);
     let image=reader.decode().map_err(|_|"This file could not be read as an image.".to_string())?.thumbnail(1600,1600);
     let (width,height)=(image.width(),image.height());let mut encoded=Cursor::new(Vec::new());image.write_to(&mut encoded,image::ImageFormat::Png).map_err(err)?;let encoded=encoded.into_inner();
-    let directory=data.join("home-covers");std::fs::create_dir_all(&directory).map_err(err)?;
+    let directory=crate::managed_library::appearance(data);std::fs::create_dir_all(&directory).map_err(err)?;
     let path=directory.join(format!("{:x}.png",Sha256::digest(&encoded)));
     if !path.exists(){let mut temp=tempfile::NamedTempFile::new_in(&directory).map_err(err)?;temp.write_all(&encoded).map_err(err)?;if let Err(error)=temp.persist_noclobber(&path){if !path.is_file(){return Err(err(error));}}}
     Ok(Cover{path:path.to_string_lossy().into_owned(),width,height})

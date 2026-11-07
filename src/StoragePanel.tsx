@@ -1,24 +1,25 @@
 import {useEffect,useState} from 'react';
 import {invoke} from '@tauri-apps/api/core';
 import {open} from '@tauri-apps/plugin-dialog';
-import {FolderOpen,Download,ShieldCheck,Upload} from 'lucide-react';
+import {FolderOpen,Download,ShieldCheck,Upload,Layers,Palette,Folder} from 'lucide-react';
 import {StudioDialog} from './Shortcuts';
+import {storageSize} from './StorageBar';
 import type {Library} from './model';
-
-export default function StoragePanel({lib,close,backup,restore}:{lib:Library;close:()=>void;backup:()=>void;restore:()=>void}){
- const [data,setData]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
- useEffect(()=>{invoke<string>('data_folder').then(setData).catch(e=>setError(String(e)));},[]);
- const verify=async()=>{setError('');setStatus('');setBusy(true);try{const path=await open({directory:true,multiple:false,title:'Choose the backup folder to verify'});if(typeof path!=='string')return;const result=await invoke<{files:number;missing:string[]}>('verify_library_backup',{path});setStatus(result.missing.length?`${result.files} files verified, but ${result.missing.length} originals were unavailable when this backup was created. Review manifest.json.`:`Verified ${result.files} files. This copy matches the backup checksums.`);}catch(e){setError(String(e));}finally{setBusy(false);}};
- const location=(name:string,path:string,description:string)=><div className="storage-location" key={name}><div><strong>{name}</strong><p>{description}</p><code>{path.replace(/^\\\\\?\\/,'')||'Not configured'}</code></div><button className="text-button" disabled={!path} onClick={()=>void invoke(name==='App data'?'open_data_folder':'open_storage_folder',{name}).catch(e=>setError(String(e)))}><FolderOpen size={15}/> Open folder</button></div>;
- return <StudioDialog title="Storage & backup" close={close}><div className="storage-panel">
-  <p>Your library has two parts: original files and the information that organises them. A portable backup gathers both into one folder.</p>
-  <h3>Your files</h3>
-  {(lib.source_paths?.length?lib.source_paths:[['Design',lib.root]]).map(([name,path])=>location(name,path,'Original images, animations and videos. Imported references can also live outside these folders; the backup includes their tracked files too.'))}
-  {location('App data',data,'library.sqlite stores names, links, tags, projects and every component-folder assignment. Home images and custom icons live here too. Cache and staging are temporary; this folder alone is not a full backup.')}
-  <h3>One folder to take with you</h3>
-  <p>Create a portable backup, then copy that entire dated folder to your external drive. Verify the copy before relying on it. Create a fresh backup when your library changes.</p>
-  <div className="storage-actions"><button className="primary" onClick={backup}><Download size={15}/> Create backup</button><button className="subtle-button" disabled={busy} onClick={()=>void verify()}><ShieldCheck size={15}/>{busy?'Verifying…':'Verify backup'}</button><button className="subtle-button" onClick={restore}><Upload size={15}/> Restore backup</button></div>
-  <p className="storage-note">Includes media, saved links, thumbnails, all folder memberships, projects, tags, Home tiles and appearance settings. Removed items, undo history, browser sessions and temporary caches are excluded. Restore merges library records and restores saved appearance; keep the restored folder in its permanent location.</p>
+type Overview={root:string|null;collections:{name:string;count:number;bytes:number;path:string|null}[];last_backup:string|null};
+export default function StoragePanel({lib,close,backup,restore,migrate}:{lib:Library;close:()=>void;backup:()=>void;restore:()=>void;migrate:()=>void}){
+ const [overview,setOverview]=useState<Overview|null>(null),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{invoke<Overview>('library_overview').then(setOverview).catch(e=>setError(String(e)));},[lib]);
+ const run=async(action:()=>Promise<void>)=>{setBusy(true);setError('');setStatus('');try{await action();}catch(e){setError(String(e));}finally{setBusy(false);}};
+ const verify=()=>run(async()=>{const path=await open({directory:true,multiple:false,title:'Choose the library or backup folder to verify'});if(typeof path!=='string')return;const result=await invoke<{files:number;missing:string[]}>('verify_library_backup',{path});setStatus(result.missing.length?`${result.files} files verified; ${result.missing.length} originals were unavailable when this backup was made.`:`Verified ${result.files} files. No missing or changed files found.`);});
+ const openExisting=()=>run(async()=>{const path=await open({directory:true,multiple:false,title:'Open an existing BitClever Library or complete backup'});if(typeof path==='string')await invoke('open_library',{path});});
+ const reveal=(name:string)=>void run(()=>invoke('open_library_location',{name}));
+ return <StudioDialog title="Storage & Backup" close={close} busy={busy}><div className="storage-panel">
+  {overview?.root?<div className="storage-library-root"><div><strong>BitClever Library</strong><code>{overview.root.replace(/^\\\\\?\\/,'')}</code></div><button className="text-button" disabled={busy} onClick={()=>reveal('')}><FolderOpen size={15}/> Open Library Folder</button></div>:<div className="storage-library-root"><div><strong>Bring Your Library Together</strong><p>Your files currently use the older shared storage layout.</p></div><button className="primary" disabled={busy||!overview} onClick={migrate}>Create Library</button></div>}
+  <div className="storage-collections">{overview?.collections.map((collection,index)=>{const Icon=[Palette,Layers,Folder][index];return <div className="storage-collection" key={collection.name}><Icon size={20}/><div><strong>{collection.name}</strong><small>{collection.count.toLocaleString()} items · {storageSize(collection.bytes)}</small></div>{collection.path&&<button className="text-button" aria-label={`Open ${collection.name} folder`} disabled={busy} onClick={()=>reveal(collection.name)}><FolderOpen size={15}/></button>}</div>;})}</div>
+  <details className="storage-details"><summary>Appearance & Library Data</summary><p>Home tiles, icons, saved links, projects, tags and every folder assignment are included. Each image is stored once, even when it belongs to several component folders.</p>{overview?.root?<div className="storage-actions"><button onClick={()=>reveal('Appearance')}>Open Appearance</button><button onClick={()=>reveal('Library Data')}>Open Library Data</button></div>:<div>{lib.source_paths?.map(([name,path])=><p key={name}><strong>{name}</strong><code>{path}</code></p>)}<button onClick={()=>void run(()=>invoke('open_data_folder'))}>Open Legacy App Data</button></div>}</details>
+  <div className="storage-backup"><div><strong>Backup</strong><small>{overview?.last_backup?`Last completed: ${new Date(Number(overview.last_backup)).toLocaleString()}`:'No completed backup recorded'}</small></div><div className="storage-actions"><button className="primary" disabled={busy} onClick={backup}><Download size={15}/> Back Up Now</button><button className="subtle-button" disabled={busy} onClick={()=>void verify()}><ShieldCheck size={15}/>{busy?'Working…':'Verify Backup'}</button></div></div>
+  <p className="storage-note">Copy the whole library with BitClever closed, or use Back Up Now while it is running. Verify the copy on your external drive.</p>
+  <details className="storage-details"><summary><Upload size={14}/> Restore or Open a Library</summary><p>Open a separate library to switch to it and restart the app. Merge adds backup records to this library. Keep the selected folder in its permanent location.</p><div className="storage-actions"><button className="subtle-button" disabled={busy} onClick={()=>void openExisting()}>Open Existing Library</button><button className="subtle-button" disabled={busy} onClick={restore}>Merge Backup</button></div><p className="storage-note">Backups exclude removed items, undo history and temporary caches.</p></details>
   {status&&<p role="status">{status}</p>}{error&&<p role="alert" className="form-error">{error}</p>}
  </div></StudioDialog>;
 }

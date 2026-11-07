@@ -3,7 +3,7 @@ import { copyImageToClipboard, readClipboard } from "./clipboard";
 import { acceptsExternalDrop, readWebDrop } from './webDrop';
 import StorageBar from './StorageBar';
 import StoragePanel from './StoragePanel';
-import {applyBackupPreferences} from './backupPreferences';
+import {applyBackupPreferences,trackLibraryPreferences} from './backupPreferences';
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
 import {
@@ -302,6 +302,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   }, []);
   const [libraryExportOpen,setLibraryExportOpen]=useState(false);
   const [storageOpen,setStorageOpen]=useState(false);
+  const [libraryMigration,setLibraryMigration]=useState(false);
   const [quickPreview,setQuickPreview]=useState<number|null>(null);
   const [thumbnailEnlarged,setThumbnailEnlarged]=useState(false);
   const previewCandidate=useRef<number|null>(null);
@@ -363,6 +364,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     return next;
   }, []);
   const report = useCallback((e: unknown) => setError(tidyError(e)), []);
+  useEffect(()=>trackLibraryPreferences(report),[report]);
   const videoQueue = useVideoQueue(ready && isTauri(), refresh, report);
   useEffect(() => {
     if (!isTauri()) {
@@ -989,7 +991,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         await invoke("backup", { path, restore });
         if (restore) {
           appHistory.clearLibrary();await refresh();setStorageOpen(false);
-          const preferences=await invoke<Record<string,unknown>>('backup_preferences',{path:path.replace(/[\\/][^\\/]+$/,'')});
+          const preferences=await invoke<Record<string,unknown>>('backup_preferences',{path:path.replace(/[\\/][^\\/]+$/,'').replace(/[\\/]Library Data$/,'')});
           if(preferences&&Object.keys(preferences).length){applyBackupPreferences(preferences);localStorage.removeItem('last-workspace-view');window.location.reload();return;}
         }
         setUndoIds([]);
@@ -1553,7 +1555,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           report={report}
           project={project}
           chooseRoot={chooseRoot}
-          exportLibrary={()=>{setModal(null);setLibraryExportOpen(true);}}
+          exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
           backup={backup}
           duplicates={() => {
             setModal(null);
@@ -1572,8 +1574,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       }}/>}
 
       {extraDialog==="sheet"&&<ContactSheet title={title} items={sheetItems} initial={selected} close={()=>setExtraDialog(null)}/>}
-      {storageOpen&&<StoragePanel lib={lib} close={()=>setStorageOpen(false)} backup={()=>{setStorageOpen(false);setLibraryExportOpen(true);}} restore={()=>void backup(true)}/>}
-      {libraryExportOpen && <LibraryExport close={()=>setLibraryExportOpen(false)}/>}
+      {storageOpen&&<StoragePanel lib={lib} close={()=>setStorageOpen(false)} backup={()=>{setStorageOpen(false);setLibraryMigration(false);setLibraryExportOpen(true);}} migrate={()=>{setStorageOpen(false);setLibraryMigration(true);setLibraryExportOpen(true);}} restore={()=>void backup(true)}/>}
+      {libraryExportOpen && <LibraryExport migration={libraryMigration} close={()=>setLibraryExportOpen(false)}/>}
       {capture && (
         <CaptureDialog
           draft={capture}

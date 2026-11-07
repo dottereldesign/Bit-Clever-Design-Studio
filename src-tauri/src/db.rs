@@ -598,7 +598,8 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         return Err("Unsupported backup version".into());
     }
     if backup.portable {
-        let base=source.parent().ok_or("Missing backup folder")?.canonicalize().map_err(err)?;
+        let parent=source.parent().ok_or("Missing backup folder")?;
+        let base=if parent.file_name().is_some_and(|n|n=="Library Data"){parent.parent().ok_or("Missing library folder")?}else{parent}.canonicalize().map_err(err)?;
         for item in &mut backup.library.items {
             if item.kind!="link" {item.path=crate::library_export::resolve_relative(&base,&item.path)?;}
             if !item.thumbnail.is_empty() {item.thumbnail=crate::library_export::resolve_relative(&base,&item.thumbnail)?;}
@@ -606,6 +607,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         backup.library.root=crate::library_export::resolve_relative(&base,&backup.library.root)?;
         for (_,path) in &mut backup.library.source_paths {*path=crate::library_export::resolve_relative(&base,path)?;}
     }
+    if let Some(folder)=crate::managed_library::root(path)?{crate::managed_library::own_import(&folder,&mut backup.library.items)?;}
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
     if backup.portable && setting(&tx,"root").is_none() {

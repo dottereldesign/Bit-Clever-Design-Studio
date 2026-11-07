@@ -28,7 +28,7 @@ pub fn usage(db_path:&Path,app_files:Vec<PathBuf>)->Result<Usage>{
  let rows=statement.query_map([],|row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?))).map_err(err)?;
  for row in rows {let (path,thumbnail,kind)=row.map_err(err)?;if kind!="link"{library.push(path.into());}if !thumbnail.is_empty(){library.push(thumbnail.into());}}
  let mut seen=HashSet::new();let mut partial=false;
- let data_bytes=measure(vec![data.into()],&mut seen,&mut partial);
+ let data_bytes=measure(vec![data.into(),crate::managed_library::appearance(data)],&mut seen,&mut partial);
  let library_bytes=measure(library,&mut seen,&mut partial);
  let app_bytes=measure(app_files,&mut seen,&mut partial);
  Ok(Usage{bytes:data_bytes.saturating_add(library_bytes).saturating_add(app_bytes),data_bytes,library_bytes,app_bytes,partial})

@@ -81,9 +81,13 @@ fn scan_named(db_path: &Path, root: &Path, prefix: &str) -> Result<usize> {
         ));
     }
     let mut db = db::connect(db_path)?;
+    let managed=db::setting(&db,"managed_root").is_some();
     let tx = db.transaction().map_err(err)?;
     for (path, name, kind, source, modified) in &records {
-        tx.execute("INSERT INTO items(path,name,kind,source,modified,added,missing) VALUES(?,?,?,?,?,?,0) ON CONFLICT(path) DO UPDATE SET kind=excluded.kind,source=excluded.source,modified=excluded.modified,missing=0",params![path,name,kind,source,modified,db::now()]).map_err(err)?;
+        tx.execute("INSERT INTO items(path,name,kind,source,modified,added,missing) VALUES(?,?,?,?,?,?,0) ON CONFLICT(path) DO UPDATE SET kind=excluded.kind,source=CASE WHEN ? THEN items.source ELSE excluded.source END,modified=excluded.modified,missing=0",params![path,name,kind,source,modified,db::now(),managed]).map_err(err)?;
+    }
+    if managed && prefix=="App Components" {
+        tx.execute("INSERT OR IGNORE INTO item_categories(item_id,name) SELECT id,'Components / Uncategorised' FROM items WHERE source='App Components'",[]).map_err(err)?;
     }
     let existing: Vec<(i64, String)> = {
         let mut stmt = tx
