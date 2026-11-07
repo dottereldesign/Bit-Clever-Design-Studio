@@ -1787,3 +1787,7 @@ main {
 .sidebar-footer { padding:13px 0;gap:5px; }
 
 .app[data-sidebar-compact="true"] .sidebar-footer > button:nth-child(2) > span { display:none; }
+
+.source-item { position:relative; }
+.folder-row-icon { display:inline-flex; flex:none; }
+.source-item .folder-star { position:absolute; left:6px; color:#bd8b31; pointer-events:none; }

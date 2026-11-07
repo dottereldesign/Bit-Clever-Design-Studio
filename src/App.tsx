@@ -20,6 +20,7 @@ import { openUrl } from "./api";
 import appLogo from "./assets/app-logo.png";
 import { arrangeMasonry } from "./masonry";
 import {
+  Star,
   ArrowDownUp,
   ArrowLeft,
   ArrowRight,
@@ -272,6 +273,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [sidebarLayout,setSidebarLayout]=useHistoryState('sidebar-layout',readSidebarLayout,'Sidebar layout');
   const [icons,setIcons]=useHistoryState('app-icons',readIcons,'App icons');
   const [folderLabels,setFolderLabels]=useHistoryState<Record<string,string>>('folder-labels',readFolderLabels,'Rename folder');
+  const [folderAppearance,setFolderAppearance]=useHistoryState<Record<string,{color?:string;starred?:boolean}>>('folder-appearance',()=>{try{return JSON.parse(localStorage.getItem('folder-appearance')??'{}');}catch{return {}; }},'Folder appearance');
   const [folderMenu,setFolderMenu]=useState<{name:string;x:number;y:number}|null>(null);
   const [folderOrder,setFolderOrder]=useHistoryState<Record<string,string[]>>('sidebar-folder-order',()=>{try{return JSON.parse(localStorage.getItem('sidebar-folder-order')??'{}');}catch{return {}; }},'Folder order');
   const sortedFolders=(folders:string[],group:string)=>{const saved=folderOrder[group]??[];return [...folders].sort((a,b)=>{const ai=saved.indexOf(a),bi=saved.indexOf(b);return (ai<0?Infinity:ai)-(bi<0?Infinity:bi)||categoryLabel(a).localeCompare(categoryLabel(b),undefined,{numeric:true,sensitivity:'base'});});};
@@ -606,7 +608,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       title={`Open ${categoryLabel(s)}; drop references here to ${isComponent(s)&&s!==componentInbox?"add to this folder":"change category"}`}
       onClick={() => { navigate(null); setCategory(s); }}
     >
-      <FolderIcon preferences={icons} id={`category:${s}`} size={14}/>
+      {isComponent(s)&&folderAppearance[s]?.starred&&<Star className="folder-star" size={11} fill="currentColor" aria-label="Starred folder"/>}
+      <i className="folder-row-icon" style={{color:folderAppearance[s]?.color}}><FolderIcon preferences={icons} id={`category:${s}`} size={14}/></i>
       <span>{isComponent(s) ? categoryLabel(s).slice("Components / ".length) : categoryLabel(s)}</span>
       <small>{categoryCounts.get(s)||""}</small>
     </button>
@@ -1561,7 +1564,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       )}
       {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Reorder folders or drop on Home</small></div>}
-      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
+      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
       {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
