@@ -243,7 +243,7 @@ kbd {
   padding-bottom: 15px;
   scrollbar-width: thin;
 }
-.source-item {
+.source-item:not(.source-parent) {
   padding-left: 33px;
   min-height: 27px;
   padding-top: 5px;

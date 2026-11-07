@@ -604,7 +604,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   });
   const folderRow = (s: string) => (
     <button
-      className={`nav-item source-item ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
+      className={`nav-item source-item ${s===allComponents?"source-parent":""} ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
       {...homeDrag(`category:${s}`)}
       onContextMenu={e=>{if(s===allComponents||s===componentInbox||!s)return;e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
       data-folder-order={s===allComponents?undefined:isComponent(s)?'components':'design'}
