@@ -1,5 +1,6 @@
 import { readViewSession, useViewSession, type ViewState } from "./viewSession";
 import { copyImageToClipboard, readClipboard } from "./clipboard";
+import { acceptsExternalDrop, readWebDrop } from './webDrop';
 import StorageBar from './StorageBar';
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
@@ -592,9 +593,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     } catch(error){report(error);}
   };
   const categoryDropProps = (name:string) => ({
-    onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes("application/design-items")){e.preventDefault();e.dataTransfer.dropEffect="move";setCategoryDrop(name);}},
+    onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes("application/design-items")||acceptsExternalDrop(e.dataTransfer)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect=acceptsExternalDrop(e.dataTransfer)?"copy":"move";setCategoryDrop(name);}},
     onDragLeave:(e:React.DragEvent)=>{if(!(e.relatedTarget instanceof Node)||!e.currentTarget.contains(e.relatedTarget))setCategoryDrop(null);},
-    onDrop:(e:React.DragEvent)=>{e.preventDefault();e.stopPropagation();setCategoryDrop(null);try{const ids=JSON.parse(e.dataTransfer.getData("application/design-items"));if(Array.isArray(ids)&&ids.every(Number.isInteger))void changeCategory(ids,name).catch(report);}catch{/* Unrelated drag. */}}
+    onDrop:(e:React.DragEvent)=>{e.preventDefault();e.stopPropagation();setCategoryDrop(null);setDropActive(false);if(acceptsExternalDrop(e.dataTransfer)){queueImageDrop(e.dataTransfer,name);return;}try{const ids=JSON.parse(e.dataTransfer.getData("application/design-items"));if(Array.isArray(ids)&&ids.every(Number.isInteger))void changeCategory(ids,name).catch(report);}catch{/* Unrelated drag. */}}
   });
   const folderRow = (s: string) => (
     <button
@@ -763,6 +764,31 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setUndoIds([]);setCategoryUndo(null);setNoticeText(message);
     setReceipt({ids:saved.map(i=>i.id),existing:already&&!result.moved_from,undo:result.move_label});
   },[lib.items]);
+  const dropQueue = useRef(Promise.resolve());
+  const queueImageDrop = useCallback((data:DataTransfer, destination:string|null) => {
+    // Read immediately: browser drag data is unavailable after the drop event returns.
+    const payload = readWebDrop(data);
+    dropQueue.current = dropQueue.current.then(async () => {
+      let files:CaptureDraft['files'] = [];
+      try {
+        setReadingCapture(true);
+        if(payload.files.length) files = (await stageFiles(payload.files)).files;
+        else if(payload.imageUrl) files = [await invoke('stage_web_image',{url:payload.imageUrl})];
+        else if(!payload.sourceUrl) throw new Error('Drag the image itself, or copy and paste it into this folder.');
+        const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{
+          files,url:files.length?'':payload.sourceUrl,name:files.length===1?files[0].name.replace(/\.[^.]+$/,''):'',
+          source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:payload.sourceUrl,resource:false,
+        }}));
+        recordCapture(result);
+        if(destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+        showCaptureReceipt(result,await refresh(),destination);
+      } catch(error){report(error);}
+      finally {
+        await invoke('discard_capture',{paths:files.map(file=>file.path)}).catch(report);
+        setReadingCapture(false);
+      }
+    });
+  },[mutate,recordCapture,refresh,report,showCaptureReceipt]);
   const pasteCapture = useCallback(async () => {
     if(pasteBusy.current)return;
     pasteBusy.current=true;
@@ -856,7 +882,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     };
     const over = (e: DragEvent) => {
       if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop")){setDropActive(false);return;}
-      if (!extraDialog && e.dataTransfer?.types.includes("Files")) {
+      if (!extraDialog && e.dataTransfer && acceptsExternalDrop(e.dataTransfer)) {
         e.preventDefault();
         setDropActive(true);
       }
@@ -868,6 +894,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       setDropActive(false);
       if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop"))return;
       if(extraDialog)return;
+      if(e.dataTransfer && acceptsExternalDrop(e.dataTransfer) && !resourcesView && !boardView && !videoView && !linksOnly){
+        e.preventDefault();
+        queueImageDrop(e.dataTransfer,category);
+        return;
+      }
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length) {
         e.preventDefault();
@@ -895,7 +926,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog]);
+  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,boardView,linksOnly]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
     if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});

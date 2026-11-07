@@ -271,6 +271,11 @@ async fn copy_image(id: i64, state: tauri::State<'_, State>) -> Result<()> {
     .map_err(err)?
 }
 #[tauri::command]
+async fn stage_web_image(url: String, state: tauri::State<'_, State>) -> Result<content::CaptureFile> {
+    let data = state.db.parent().unwrap().to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || content::stage_web_image(&data, &url)).await.map_err(err)?
+}
+#[tauri::command]
 fn stage_begin(name: String, app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<content::CaptureFile> {
     let file = content::stage_begin(state.db.parent().unwrap(), &name)?;
     app.asset_protocol_scope().allow_file(&file.path).map_err(err)?;
@@ -530,6 +535,7 @@ fn main() {
             read_clipboard,
             copy_image,
             stage_begin,
+            stage_web_image,
             stage_chunk,
             discard_capture,
             find_duplicates,

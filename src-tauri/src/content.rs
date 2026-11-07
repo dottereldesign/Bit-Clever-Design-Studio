@@ -589,6 +589,43 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
     result.ids.dedup();
     Ok(result)
 }
+pub fn stage_web_image(data: &Path, address: &str) -> Result<CaptureFile> {
+    let url = url::Url::parse(address).map_err(err)?;
+    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
+        return Err("Drop a public HTTP or HTTPS image.".into());
+    }
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build().map_err(err)?
+        .get(url).send().map_err(err)?.error_for_status().map_err(err)?;
+    const LIMIT: u64 = 40 * 1024 * 1024;
+    if response.content_length().is_some_and(|size| size > LIMIT) {
+        return Err("This image exceeds the 40 MB download limit.".into());
+    }
+    let mut bytes = Vec::new();
+    response.take(LIMIT + 1).read_to_end(&mut bytes).map_err(err)?;
+    if bytes.len() as u64 > LIMIT { return Err("This image exceeds the 40 MB download limit.".into()); }
+    stage_image_bytes(data, &bytes)
+}
+
+pub(crate) fn stage_image_bytes(data: &Path, bytes: &[u8]) -> Result<CaptureFile> {
+    let format = image::guess_format(bytes).map_err(|_| "The website did not provide an image. Try copying the image instead.".to_string())?;
+    let extension = match format {
+        image::ImageFormat::Jpeg => "jpg", image::ImageFormat::Png => "png",
+        image::ImageFormat::Gif => "gif", image::ImageFormat::WebP => "webp",
+        image::ImageFormat::Bmp => "bmp", image::ImageFormat::Tiff => "tif",
+        image::ImageFormat::Ico => "ico", image::ImageFormat::Avif => "avif",
+        _ => return Err("This image format is not supported.".into()),
+    };
+    let staged = stage_begin(data, &format!("Web image-{}.{}", db::now(), extension))?;
+    if let Err(error) = fs::write(&staged.path, bytes) {
+        let _ = fs::remove_file(&staged.path);
+        return Err(err(error));
+    }
+    Ok(staged)
+}
+
 pub fn stage_begin(data: &Path, name: &str) -> Result<CaptureFile> {
     let name = Path::new(name)
         .file_name()

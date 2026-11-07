@@ -900,6 +900,34 @@ fn chunked_capture_stays_in_staging_and_preserves_bytes() {
 }
 
 #[test]
+fn web_image_staging_preserves_original_and_rejects_pages() {
+    let temp = tempfile::tempdir().unwrap();
+    let original = temp.path().join("original.png");
+    image::RgbaImage::from_pixel(4, 3, image::Rgba([12,34,56,255])).save(&original).unwrap();
+    let bytes = fs::read(original).unwrap();
+    let staged = content::stage_image_bytes(temp.path(), &bytes).unwrap();
+    assert!(staged.name.ends_with(".png"));
+    assert_eq!(fs::read(staged.path).unwrap(), bytes);
+    assert!(content::stage_image_bytes(temp.path(), b"<html>Access denied</html>").is_err());
+    assert!(content::stage_web_image(temp.path(), "file:///private/image.png").is_err());
+    // Exercise HTTP without depending on a public website.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/image", listener.local_addr().unwrap());
+    let served = bytes.clone();
+    let server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 4096];
+        stream.read(&mut request).unwrap();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", served.len()).unwrap();
+        stream.write_all(&served).unwrap();
+    });
+    let downloaded = content::stage_web_image(temp.path(), &address).unwrap();
+    server.join().unwrap();
+    assert_eq!(fs::read(downloaded.path).unwrap(), bytes);
+}
+
+#[test]
 fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("boards.sqlite");
