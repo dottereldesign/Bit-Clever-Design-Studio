@@ -437,7 +437,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         sort:recent?"recent":sort, seed,
       });
       if(generalMissing)return [];
-      if(allCategoriesView)return matches.filter(i=>!isComponent(categoryOf(i)));
+      if(allCategoriesView)return matches.filter(i=>designFoldersOf(i).length>0);
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
@@ -454,7 +454,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     [filtered],
   );
   const links = useMemo(
-    () => filtered.filter((i) => i.kind === "link" && (isComponent(categoryOf(i)) || !isBoardLink(i) || isTableLink(i))),
+    () => filtered.filter((i) => i.kind === "link" && (componentFoldersOf(i).length>0 || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
   const viewState=useMemo<ViewState>(()=>({homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
@@ -524,15 +524,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of lib.items) {
-      if (item.kind === "link" && !isComponent(categoryOf(item))) continue;
-      const name = categoryOf(item);
-      for (const folder of isComponent(name)?componentFoldersOf(item):designFoldersOf(item)) counts.set(folder, (counts.get(folder) ?? 0) + 1);
-      if (isComponent(name)) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
+      if (item.kind === "link" && !componentFoldersOf(item).length) continue;
+      for (const folder of [...componentFoldersOf(item),...designFoldersOf(item)]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
+      if (componentFoldersOf(item).length) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
     }
     return counts;
   }, [lib.items]);
   const homeDestinations:HomeDestination[]=[
-    {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&!isComponent(categoryOf(i))).length},
+    {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&designFoldersOf(i).length>0).length},
     {id:"group:general",label:"General",kind:"group",value:"general",group:"general"},
     {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
@@ -580,7 +579,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop,(id,target,after)=>{const from=id.slice(9),to=target.slice(9),group=isComponent(from)?'components':'design';if(isComponent(from)!==isComponent(to)||from===to)return;const rows=sortedFolders(group==='components'?componentFolders:[...categories,''],group).filter(name=>name!==from),index=rows.indexOf(to);if(index<0)return;rows.splice(index+(after?1:0),0,from);setFolderOrder(previous=>({...previous,[group]:rows}));});
   const homeDrag=(id:string)=>homeShortcutDrag.props(id,homeDestinations.find(d=>d.id===id)?.label??"Destination");
   const changeCategory = async (ids:number[],name:string) => {
-    const items=lib.items.filter(i=>ids.includes(i.id)&&(i.kind!=="link"||isComponent(name)||isComponent(categoryOf(i))));
+    const items=lib.items.filter(i=>ids.includes(i.id)&&(i.kind!=="link"||isComponent(name)||componentFoldersOf(i).length>0));
     if(!items.length)throw Error("Select images or videos to change category.");
     name = filingCategory(name);
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
@@ -1498,7 +1497,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                   setHoverId={setHoverId}
                 />
               )}
-              {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)&&!isComponent(categoryOf(i))) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i)&&!isComponent(categoryOf(i)))} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
+              {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length)} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
               {links.length > 0 && (
                 linkTable(links)
               )}

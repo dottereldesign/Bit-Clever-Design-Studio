@@ -1233,7 +1233,7 @@ fn component_folders_add_remove_undo_and_category_moves_are_atomic() {
     apply("remove_component_folder",vec![1],Some("Components / Navbars")).unwrap();assert!(folders().is_empty());
     assert_eq!(db::load(&path,false).unwrap().items[0].category.as_deref(),Some("Components / Uncategorised"));
     apply("undo_organisation",vec![],None).unwrap();
-    apply("set_category",vec![1],Some("branding")).unwrap();assert!(folders().is_empty());
+    apply("set_category",vec![1],Some("branding")).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
     apply("set_category",vec![1],Some("photography")).unwrap();
     assert_eq!(db::load(&path,false).unwrap().items[0].category.as_deref(),Some("photography"));
     apply("undo_organisation",vec![],None).unwrap();

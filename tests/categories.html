@@ -7,9 +7,12 @@ const history=[];const calls=[];let callback=0;window.isTauri=true;window.__TAUR
  calls.push({command,args});if(command==='save_library_preferences')return;if(command==='storage_usage')return {bytes:100,data_bytes:10,library_bytes:80,app_bytes:10,partial:false};if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Change category':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';
  if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){library.items=history.pop();return;}if(c.action==='set_category'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id))){
  i.category_added={...i.category_added,[c.value]:Date.now()};if(c.value.startsWith('Components / '))i.category_added['All Components']=Date.now();
- const previous=categoryOf(i),designs=new Set(i.design_folders??[]);if(previous&&!previous.startsWith('Components / '))designs.add(previous);if(!c.value||c.value.startsWith('Components / '))designs.clear();else designs.add(c.value);i.design_folders=[...designs];
- const folders=new Set(i.component_folders??[]);if(i.category?.startsWith('Components / ')&&i.category!=='Components / Uncategorised')folders.add(i.category);
- if(c.value.startsWith('Components / ')&&c.value!=='Components / Uncategorised'){folders.add(c.value);i.component_folders=[...folders];i.category='Components / Uncategorised';}else{i.category=c.value;i.component_folders=[];}
+ const previous=categoryOf(i),designs=new Set(i.design_folders??[]),folders=new Set(i.component_folders??[]);
+ if(!previous.startsWith('Components / ')&&(previous||!designs.size))designs.add(previous);
+ if(previous.startsWith('Components / ')&&(previous!=='Components / Uncategorised'||!folders.size))folders.add(previous);
+ if(c.value.startsWith('Components / ')){if(c.value==='Components / Uncategorised')folders.clear();else folders.delete('Components / Uncategorised');folders.add(c.value);i.category='Components / Uncategorised';}
+ else {if(!c.value)designs.clear();else designs.delete('');designs.add(c.value);i.category=c.value;}
+ i.design_folders=[...designs];i.component_folders=[...folders];
  }if(c.value&&!library.categories.includes(c.value))library.categories.push(c.value);}else if(c.action==='remove_component_folder'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.component_folders=i.component_folders.filter(n=>n!==c.value);}else if(c.action==='remove_design_folder'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id))){i.design_folders=[...new Set([...(i.design_folders??[]),categoryOf(i)])].filter(n=>n&&n!==c.value);if(categoryOf(i)===c.value)i.category=i.design_folders[0]??'';}}else if(c.action==='restore_categories'){for(const [id,name]of JSON.parse(c.value))library.items.find(i=>i.id===id).category=name;}else if(c.action==='create_category')library.categories.push(c.name);else throw Error('Unexpected change '+c.action);return;}
  throw Error('Unexpected '+command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
@@ -19,7 +22,7 @@ async function until(test,label){const start=performance.now();while(!test()){if
 const category=name=>document.querySelector(`.source-item[data-category="${name}"]`);const cards=()=>[...document.querySelectorAll('.card')];
 const button=text=>[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')===text||(text==='Undo'&&b.getAttribute('aria-label')==='Undo organisation change')||b.textContent.trim()===text));
 const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')].find(b=>b.querySelector('span')?.textContent===name).click();
-const choose=name=>[...document.querySelectorAll('.category-picker button')].find(b=>b.textContent.trim().replace(/^[☐☑⊟]\s*/,'').toLowerCase()===(name==='Uncategorised'?'Move to Design Inspo / Uncategorised':name).toLowerCase()).click();
+const choose=name=>[...document.querySelectorAll('.category-picker button')].find(b=>b.textContent.trim().replace(/^[☐☑⊟]\s*/,'').toLowerCase()===(name==='Uncategorised'?'Set Design Inspo / Uncategorised':name).toLowerCase()).click();
 const checks=[];
 try{
  await until(()=>category('3d')&&cards().length===5,'initial media');
@@ -79,7 +82,7 @@ try{
  assert(document.querySelector('.item-drag-badge b').textContent==='2','Badge lost selection count');
  const destination=category('branding').getBoundingClientRect();category('branding').querySelector('span').dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:data,clientX:destination.left+40,clientY:destination.top+12}));await pause(30);
  assert(category('branding').classList.contains('drop-target'),'Drop destination not highlighted');
- assert(document.querySelector('.item-drag-badge').textContent==='2Move to Branding','Badge does not confirm destination');
+ assert(document.querySelector('.item-drag-badge').textContent==='2Add to Branding','Badge does not confirm destination');
  assert(document.querySelector('.item-drag-badge').getBoundingClientRect().left>document.querySelector('.sidebar').getBoundingClientRect().right,'Badge covers sidebar destinations');
  assert(getComputedStyle(document.querySelector('.item-drag-badge')).pointerEvents==='none','Badge intercepts drop');
  category('branding').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));
@@ -109,27 +112,26 @@ try{
 
  category('Photography').click();await until(()=>cards().length===1,'Prepare section transfer');
  const context=id=>document.querySelector(`[data-item-id="${id}"]`).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:350,clientY:300}));
- context(4);await until(()=>button('Send to App Components'),'Send menu');
- assert(!button('Send to Design Inspo'),'Wrong destination offered for design reference');
+ context(4);await until(()=>button('Add to App Components'),'Send menu');
+ assert(!button('Add to Design Inspo'),'Wrong destination offered for design reference');
  window.__screenshotReady=true;await pause(700);
- button('Send to App Components').click();await until(()=>cards().length===0,'Send out of Design Inspo');
+ button('Add to App Components').click();await until(()=>library.items.find(i=>i.id===4).component_folders?.includes('Components / Uncategorised'),'Add to components');assert(cards().length===1,'Adding to components removed Photography');
  category('Components / Uncategorised').click();await until(()=>document.querySelector('[data-item-id="4"]'),'Arrives in component inbox');
- context(4);await until(()=>button('Send to Design Inspo'),'Reverse send menu');button('Send to Design Inspo').click();
- await until(()=>library.items.find(i=>i.id===4).category==='','Arrives in Design Inspo inbox');
- assert(library.items.find(i=>i.id===4).projects.includes(7)&&library.items.find(i=>i.id===4).tags.includes(1),'Section transfer lost curation');
- button('Undo').click();await until(()=>library.items.find(i=>i.id===4).category==='Components / Uncategorised','Undo section transfer');
+ context(4);await until(()=>button('Organise folders…'),'Shared context menu');assert(!button('Add to Design Inspo'),'Already-shared item offered a redundant section add');document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ assert(library.items.find(i=>i.id===4).design_folders.includes('Photography'),'Component add lost design membership');
+ button('Undo').click();await until(()=>library.items.find(i=>i.id===4).category==='Photography','Undo section addition');
  const heading=name=>document.querySelector(`[data-section-label="${name}"]`);
  await pause(150);button('Design Inspo').click();await until(()=>button('Design Inspo').getAttribute('aria-expanded')==='false','Collapse destination');
  const sectionDrag=new DataTransfer();sectionDrag.setData('application/design-items','[6]');
  heading('Design Inspo').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));
  await until(()=>library.items.find(i=>i.id===6).category==='','Drop on collapsed Design Inspo');
- assert(!library.items.find(i=>i.id===6).component_folders.length,'Transfer retained old component memberships');
+ assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Heroes'),'Shared addition lost Hero membership');
  await until(()=>button('Undo'),'Transfer Undo available');button('Undo').click();await until(()=>library.items.find(i=>i.id===6).component_folders?.includes('Components / Headers'),'Undo restores multiple component memberships');
  await pause(150);button('App Components').click();await until(()=>button('App Components').getAttribute('aria-expanded')==='false','Collapse components');
  sectionDrag.setData('application/design-items','[1,2]');heading('App Components').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));
  await until(()=>[1,2].every(id=>library.items.find(i=>i.id===id).category==='Components / Uncategorised'),'Bulk drop on collapsed App Components');
- assert(library.items.filter(i=>[1,2].includes(i.id)).every(i=>!i.component_folders.length),'Dropped references not uncategorised');
- checks.push('Right-click transfers in both directions use destination inboxes; collapsed section headings accept bulk drops; Undo restores original memberships');
+ assert(library.items.filter(i=>[1,2].includes(i.id)).every(i=>i.component_folders.includes('Components / Uncategorised')),'Dropped references not uncategorised');
+ checks.push('Right-click and collapsed section drops preserve existing folders across sections; Undo restores original memberships');
  for(const name of ['App Components','Design Inspo']){if(button(name).getAttribute('aria-expanded')==='false'){button(name).click();await pause(180);}}
  sectionDrag.setData('application/design-items','[1]');category('Components / Headers').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));await until(()=>library.items.find(i=>i.id===1).component_folders.includes('Components / Headers'),'File older item in Headers');category('Components / Headers').click();await until(()=>document.querySelector('[data-item-id="1"]'),'Show destination');assert(document.querySelector('.card[data-item-id]').dataset.itemId==='1','Newly filed component is not first');
  sectionDrag.setData('application/design-items','[2]');category('branding').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));await until(()=>library.items.find(i=>i.id===2).category==='branding','File older item in Branding');category('branding').click();await until(()=>document.querySelector('[data-item-id="2"]'),'Show Branding');assert(document.querySelector('.card[data-item-id]').dataset.itemId==='2','Newly filed design is not first');checks.push('Older items dragged into Design Inspo and component folders appear first in Recently added');

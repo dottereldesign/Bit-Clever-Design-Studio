@@ -53,18 +53,23 @@ fn display_folder(name:&str,preferences:&serde_json::Value)->String{
 pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::Value)->Result<()> {
     let mut html=String::from(r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BitClever Library</title><style>body{margin:32px;background:#f6f7f3;color:#26352b;font:15px system-ui}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}h1{font-size:24px;margin-right:auto}input,select{padding:10px;border:1px solid #d3d9ce;border-radius:8px;background:white}main{columns:280px;column-gap:16px;margin-top:24px}article{break-inside:avoid;background:white;border-radius:10px;margin-bottom:16px;padding:12px}article[hidden]{display:none}img,video{width:100%;max-height:500px;object-fit:contain;border-radius:6px}a{color:inherit;overflow-wrap:anywhere}small{display:block;color:#657263;margin-top:6px}button{border:0;border-radius:5px;margin:4px 4px 0 0;padding:5px;background:#e7ecdf;cursor:pointer}</style><header><h1>BitClever Library</h1><input id="search" aria-label="Search library" placeholder="Search library"><select id="section" aria-label="Collection"><option value="">All Collections</option><option>Design Inspo</option><option>App Components</option><option>General</option></select><select id="folder" aria-label="Folder"><option value="">All Folders</option></select></header><main>"#);
     for item in &library.items {
-        let mut folders=if collection(item)=="App Components"{item.component_folders.clone()}else{item.design_folders.clone()};
-        if let Some(c)=&item.category {if c.starts_with("Components / ")&&c!="Components / Uncategorised"&&!folders.contains(c){folders.push(c.clone());}else if folders.is_empty(){folders.push(c.clone());}}
+        let mut sections=vec![collection(item)];
+        if item.kind!="link"&&(!item.design_folders.is_empty()||item.category.as_deref().is_some_and(|c|!c.starts_with("Components / ")))&& !sections.contains(&"Design Inspo"){sections.push("Design Inspo");}
+        for section in sections {
+        let mut folders=if section=="App Components"{item.component_folders.clone()}else{item.design_folders.clone()};
+        if let Some(c)=&item.category {if (c.starts_with("Components / ")== (section=="App Components"))&&c!="Components / Uncategorised"&&!folders.contains(c){folders.push(c.clone());}}
+        if folders.iter().any(|f|!f.is_empty()&&f!="Components / Uncategorised"){folders.retain(|f|!f.is_empty()&&f!="Components / Uncategorised");}
         if folders.is_empty(){folders.push(String::new());}
         let labels:Vec<String>=folders.iter().map(|f|if f.is_empty()||f=="Components / Uncategorised"{"Uncategorised".into()}else{display_folder(f,preferences)}).collect();
         let names=serde_json::to_string(&labels).map_err(err)?;
         let url=if item.kind=="link" {if db::valid_url(&item.path).is_err(){continue;}item.path.clone()}else{item.path.split('/').map(|s|url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>().replace('+',"%20")).collect::<Vec<_>>().join("/")};
-        html.push_str(&format!("<article data-section=\"{}\" data-folders=\"{}\"><a href=\"{}\">",collection(item),escape(&names),escape(&url)));
+        html.push_str(&format!("<article data-section=\"{}\" data-folders=\"{}\"><a href=\"{}\">",section,escape(&names),escape(&url)));
         if item.kind=="video"{html.push_str(&format!("<video controls preload=\"none\" src=\"{}\"></video>",escape(&url)));}
         else if item.kind!="link"&&!item.missing{html.push_str(&format!("<img loading=\"lazy\" src=\"{}\" alt=\"{}\">",escape(&url),escape(&item.name)));}
-        html.push_str(&format!("<div>{}</div></a><small>{}</small>",escape(&item.name),collection(item)));
+        html.push_str(&format!("<div>{}</div></a><small>{}</small>",escape(&item.name),section));
         for label in labels{html.push_str(&format!("<button type=\"button\">{}</button>",escape(&label)));}
         html.push_str("</article>");
+        }
     }
     html.push_str(r#"</main><script>const cards=[...document.querySelectorAll('article')],search=document.getElementById('search'),section=document.getElementById('section'),folder=document.getElementById('folder');function folders(){const previous=folder.value;folder.replaceChildren(new Option('All Folders',''));[...new Set(cards.filter(c=>!section.value||c.dataset.section===section.value).flatMap(c=>JSON.parse(c.dataset.folders)))].sort((a,b)=>a.localeCompare(b)).forEach(f=>folder.add(new Option(f,f)));folder.value=[...folder.options].some(o=>o.value===previous)?previous:'';}function filter(){cards.forEach(c=>c.hidden=!!((section.value&&c.dataset.section!==section.value)||(folder.value&&!JSON.parse(c.dataset.folders).includes(folder.value))||!c.textContent.toLowerCase().includes(search.value.toLowerCase())));}section.onchange=()=>{folders();filter()};folder.onchange=filter;search.oninput=filter;document.querySelectorAll('article button').forEach(b=>b.onclick=()=>{section.value=b.closest('article').dataset.section;folders();folder.value=b.textContent;filter()});folders();</script></html>"#);
     fs::write(output.join("Browse Library.html"),html).map_err(err)
@@ -420,7 +425,9 @@ mod tests {
         assert_eq!(item.component_folders.len(),2);assert!(item.path.contains("App Components"));assert!(folder.join("Browse Library.html").exists());
         for item in db::load(&path,false).unwrap().items.iter().filter(|i|i.kind!="link"){assert!(Path::new(&item.path).is_file());}
         let id=item.id;db::change(&managed,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[id],"value":"Branding"})).unwrap()).unwrap();crate::managed_library::organise(&managed).unwrap();
-        assert!(db::load(&managed,false).unwrap().items.iter().find(|i|i.id==id).unwrap().path.contains("Design Inspo"));
+        assert!(db::load(&managed,false).unwrap().items.iter().find(|i|i.id==id).unwrap().path.contains("App Components"));
+        let shared=db::load(&managed,false).unwrap();assert_eq!(shared.items.iter().find(|i|i.id==id).unwrap().component_folders.len(),2);assert!(shared.items.iter().find(|i|i.id==id).unwrap().design_folders.contains(&"Branding".into()));
+        write_browser(&folder,&shared,&serde_json::json!({})).unwrap();let browser=fs::read_to_string(folder.join("Browse Library.html")).unwrap();assert!(browser.contains("data-section=\"Design Inspo\" data-folders=\"[&quot;Branding&quot;]\""));
         db::change(&managed,serde_json::from_value(serde_json::json!({"action":"undo_organisation"})).unwrap()).unwrap();crate::managed_library::organise(&managed).unwrap();
         assert_eq!(db::load(&managed,false).unwrap().items.iter().find(|i|i.id==id).unwrap().component_folders.len(),2);
         let moved=temp.path().join("External Drive Library");fs::rename(&folder,&moved).unwrap();

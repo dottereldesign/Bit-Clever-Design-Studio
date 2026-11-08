@@ -27,7 +27,7 @@ export const isBoardDestination = (destination: string): destination is BoardKey
 export const isBoardLink = (item: Item) => item.kind === "link" && Object.values(boardNames).includes(item.source);
 export const isTableCollection = (destination: string | null) => destination === "fonts" || destination === "brand-guidelines";
 export const isTableLink = (item: Item) => item.kind === "link" && (item.source === "Fonts" || item.source === "Brand Guidelines");
-export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && isComponent(categoryOf(item)));
+export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
   undo_entries?: {id:number;label:string}[];
@@ -71,7 +71,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
       (!f.project || i.projects.includes(f.project)) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
-      (f.category == null || ((i.kind !== "link" || isComponent(categoryOf(i))) && (f.category === allComponents ? isComponent(categoryOf(i)) : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
+      (f.category == null || ((i.kind !== "link" || componentFoldersOf(i).length>0) && (f.category === allComponents ? componentFoldersOf(i).length>0 : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&
@@ -114,19 +114,18 @@ export const categoryLabel = (name: string): string => {
   /^(2d|3d|ui|ux|ai|ar|vr|css|html)$/i.test(word)?word.toUpperCase():word===word.toLocaleLowerCase()?word.charAt(0).toLocaleUpperCase()+word.slice(1):word
 ) || "Uncategorised";
 };
-export const libraryCategories = (lib: Library): string[] => [...new Set([...(lib.categories ?? []), ...lib.sources.filter(s=>s.startsWith("Design/")).map(s=>s.slice(7).split('/')[0]), ...lib.items.filter(i=>i.kind!=="link").flatMap(i=>isComponent(categoryOf(i))?[categoryOf(i)]:designFoldersOf(i))].filter(name=>!!name&&!isWebDesign(name)&&!isComponent(name)&&name!==allComponents&&name.toLowerCase()!=="captures"))].sort((a,b)=>a.localeCompare(b));
+export const libraryCategories = (lib: Library): string[] => [...new Set([...(lib.categories ?? []), ...lib.sources.filter(s=>s.startsWith("Design/")).map(s=>s.slice(7).split('/')[0]), ...lib.items.filter(i=>i.kind!=="link").flatMap(i=>designFoldersOf(i))].filter(name=>!!name&&!isWebDesign(name)&&!isComponent(name)&&name!==allComponents&&name.toLowerCase()!=="captures"))].sort((a,b)=>a.localeCompare(b));
 
 
 export const designFoldersOf=(item:Item):string[]=>{
- const category=categoryOf(item);if(isComponent(category))return [];
+ const category=categoryOf(item);
  const folders=[...new Set([...(item.design_folders??[]),...(category?[category]:[])])].filter(n=>n&&!isComponent(n)&&!isWebDesign(n));
- return folders.length?folders:[''];
+ return folders.length?folders:(!isComponent(category)||(item.design_folders??[]).includes('')?['']:[]);
 };
 
 // Legacy single-folder components remain visible until their first membership edit.
 export const componentFoldersOf = (item: Item): string[] => {
   const category=categoryOf(item);
-  if (!isComponent(category)) return [];
   const folders=[...new Set([...(item.component_folders ?? []), ...(category!==componentInbox?[category]:[])])].filter(n=>isComponent(n)&&n!==componentInbox);
-  return folders.length?folders:[componentInbox];
+  return folders.length?folders:(isComponent(category)||(item.component_folders??[]).includes(componentInbox)?[componentInbox]:[]);
 };

@@ -179,10 +179,10 @@ describe("component folder memberships",()=>{
     equal(filterItems([item],{...defaults,category:"Components / Uncategorised"}),[]);
     equal(filterItems([{...item,component_folders:[]}],{...defaults,category:"Components / Uncategorised"}).length,1);
   });
-  it("keeps legacy component folders visible and ordinary categories single-valued",()=>{
+  it("keeps legacy and cross-section folder memberships visible",()=>{
     equal(filterItems([{...items[0],category:"Components / Navbars"}],{...defaults,category:"Components / Navbars"}).length,1);
     const regular={...items[0],category:"branding",component_folders:["Components / Navbars"]};
-    equal(filterItems([regular],{...defaults,category:"Components / Navbars"}),[]);
+    equal(filterItems([regular],{...defaults,category:"Components / Navbars"}).length,1);
     equal(filterItems([regular],{...defaults,category:"branding"}).length,1);
   });
 });
@@ -211,4 +211,16 @@ it("design folders filter independently and Uncategorised excludes filed designs
  equal(filterItems([design],{...defaults,category:""}).length,0);
  equal(filterItems([{...design,category:"",design_folders:[]}],{...defaults,category:""}).length,1);
  equal(filterItems([{...design,category:"Components / Uncategorised",design_folders:[]}],{...defaults,category:""}).length,0);
+});
+
+it("shared references appear in both sections with independent inboxes",()=>{
+ const shared={...items[0],category:"Illustration",design_folders:["Illustration"],component_folders:["Components / Heroes"]};
+ for(const category of ["Illustration","Components / Heroes","All Components"])equal(filterItems([shared],{...defaults,category}).length,1);
+ for(const category of ["","Components / Uncategorised"])equal(filterItems([shared],{...defaults,category}).length,0);
+ const designInbox={...shared,category:"Components / Uncategorised",design_folders:[""]};
+ equal(filterItems([designInbox],{...defaults,category:""}).length,1);
+ equal(filterItems([designInbox],{...defaults,category:"Components / Heroes"}).length,1);
+ const componentInbox={...shared,component_folders:["Components / Uncategorised"]};
+ equal(filterItems([componentInbox],{...defaults,category:"Components / Uncategorised"}).length,1);
+ equal(filterItems([componentInbox],{...defaults,category:"Illustration"}).length,1);
 });
