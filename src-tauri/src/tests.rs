@@ -934,7 +934,7 @@ fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
     db::init(&path).unwrap();
     assert!(db::load(&path, false).unwrap().items.is_empty());
     let original = temp.path().join("pasted.png");
-    image::RgbaImage::from_pixel(1600, 1000, image::Rgba([12,34,56,78])).save(&original).unwrap();
+    image::RgbaImage::from_pixel(1600, 4200, image::Rgba([12,34,56,78])).save(&original).unwrap();
     db::change(&path, change("create_project",vec![],None,Some("Website"),None)).unwrap();
     let lib=db::load(&path,false).unwrap();
     let project=lib.projects[0].id;
@@ -950,7 +950,7 @@ fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
         assert_eq!(item.source,source);assert_eq!(item.kind,"link");
         assert_eq!(item.projects,vec![project]);assert_eq!(item.tags,vec![tag]);
         let thumbnail=image::open(&item.thumbnail).unwrap();
-        assert_eq!((thumbnail.width(),thumbnail.height()),(1600,1000));
+        assert_eq!((thumbnail.width(),thumbnail.height()),if destination=="websites"{(1600,4200)}else{(610,1600)});
         assert_eq!(thumbnail.to_rgba8().get_pixel(0,0).0,[12,34,56,78]);
         assert!(std::path::Path::new(&item.thumbnail).starts_with(temp.path().join("link-thumbnails")));
         let mut c=capture_request(&original,vec![],vec![]);c.files.clear();c.source_url.clear();c.url=url.into();c.destination=destination.into();
@@ -971,6 +971,15 @@ fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
     let mut missing_image=capture_request(temp.path(),vec![],vec![]);missing_image.files.clear();missing_image.url="https://new.example/".into();missing_image.destination="websites".into();assert!(content::capture(&path,missing_image).is_err());
     let mut invalid_url=capture_request(temp.path(),vec![],vec![]);invalid_url.files.clear();invalid_url.url="not a URL".into();invalid_url.destination="websites".into();assert!(content::capture(&path,invalid_url).is_err());
     assert!(lib.items.iter().any(|i|i.source=="Websites"));
+    let drive=tempfile::tempdir().unwrap();
+    let exported=crate::library_export::export(&path,drive.path(),"Websites",&std::sync::atomic::AtomicBool::new(false),&mut |_|{}).unwrap();
+    let moved=drive.path().join("External Drive");fs::rename(exported.path,&moved).unwrap();
+    crate::library_export::verify(&moved).unwrap();
+    let portable=temp.path().join("portable.sqlite");db::init(&portable).unwrap();db::import(&portable,crate::library_export::metadata_path(&moved)).unwrap();
+    let lib=db::load(&portable,false).unwrap();let website=lib.items.iter().find(|i|i.source=="Websites").unwrap();
+    let image=image::open(&website.thumbnail).unwrap();assert_eq!((image.width(),image.height()),(1600,4200));
+    assert!(std::path::Path::new(&website.thumbnail).starts_with(moved.canonicalize().unwrap()));
+    assert_eq!(website.tags.len(),1);assert_eq!(website.projects.len(),1);
 }
 
 #[test]

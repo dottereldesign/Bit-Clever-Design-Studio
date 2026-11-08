@@ -1,0 +1,11 @@
+# Website capture
+
+Paste a URL in Websites, then choose an installed Chrome or Edge browser. Remembering the browser lets subsequent URL pastes start capture automatically. Cancel returns to the draft; a manually pasted or dropped image remains available as a fallback. A successful capture saves the card without another confirmation.
+
+Capture opens a separate browser window and profile, leaving ordinary browser tabs alone. Its content viewport is 1440 × 900 CSS pixels at scale 1. The engine waits for loading, scrolls to activate lazy content, waits for fonts and images, settles animations, returns to the top, and requests a single full-page PNG through Chrome DevTools Protocol. It does not stitch viewport screenshots or include browser chrome.
+
+Detected login forms, cookie dialogs and verification screens pause capture. Handle them in the capture window and select Continue capture in BitClever. Detection is best effort; unfamiliar overlays, virtualised content and scroll-dependent effects may still require a manual image. Infinite pages, horizontal overflow and pages taller than 40,000 pixels fail explicitly rather than silently saving a partial result. Capture and attention waits have time limits.
+
+Website images retain their full resolution in the library's thumbnail assets. Cards use a separate, regenerable 600 × 450 maximum preview of the top of the page. Right-click a card and choose Open full-page screenshot to view the original. Portable backup includes the full image, URL, tags and project assignments. Browser profiles and preview caches are excluded; browser choice is a local preference.
+
+Validation: `npm run test:boards` covers the capture UI and automatic saving. `npm run test:native` includes full-resolution storage and portable backup relocation. To test the real browser renderer against an isolated local fixture, run `node scripts/desktop.mjs test website_capture::tests::full_page_has_consistent_width_and_no_scroll_seams -- --ignored --nocapture`.

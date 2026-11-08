@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod browser;
+mod website_capture;
 mod storage;
 mod clipboard;
 mod content;
@@ -42,6 +43,32 @@ struct State {
     exporting: Arc<AtomicBool>,
     export_cancel: Arc<AtomicBool>,
 }
+#[tauri::command]
+fn website_capture_browsers()->Vec<website_capture::Browser>{website_capture::browsers()}
+#[tauri::command]
+fn website_capture_control(action:String,jobs:tauri::State<'_,website_capture::Jobs>)->Result<()>{
+ if let Some(job)=jobs.0.lock().map_err(err)?.as_ref(){match action.as_str(){"cancel"=>job.cancel.store(true,Ordering::SeqCst),"continue"=>job.resume.store(true,Ordering::SeqCst),_=>return Err("Unknown capture action".into())}}Ok(())
+}
+#[tauri::command]
+async fn capture_website(app:tauri::AppHandle,url:String,browser:String,on_progress:tauri::ipc::Channel<website_capture::Progress>,state:tauri::State<'_,State>,jobs:tauri::State<'_,website_capture::Jobs>)->Result<content::CaptureFile>{
+ let data=state.db.parent().ok_or("Data folder unavailable")?.to_owned();
+ let job=Arc::new(website_capture::Job::default());{let mut active=jobs.0.lock().map_err(err)?;if active.is_some(){return Err("A website capture is already running.".into());}*active=Some(job.clone());}
+ let result=tauri::async_runtime::spawn_blocking(move||website_capture::capture(&data,&browser,&url,&job,false,&mut |p|{let _=on_progress.send(p);})).await.map_err(err);
+ *jobs.0.lock().map_err(err)?=None;let file=result??;
+ app.asset_protocol_scope().allow_file(&file.path).map_err(err)?;Ok(file)
+}
+#[tauri::command]
+async fn website_thumbnail(id:i64,state:tauri::State<'_,State>)->Result<String>{
+ let _permit=state.media_slots.clone().acquire_owned().await.map_err(err)?;
+ let db=state.db.clone();let cache=state.cache.clone();tauri::async_runtime::spawn_blocking(move||{
+  let conn=db::connect(&db)?;let path:String=conn.query_row("SELECT thumbnail FROM items WHERE id=? AND source='Websites' AND archived=0",[id],|r|r.get(0)).map_err(err)?;
+  use sha2::{Digest,Sha256};let key=format!("{:x}",Sha256::digest(path.as_bytes()));let folder=cache.join("website-previews");std::fs::create_dir_all(&folder).map_err(err)?;let target=folder.join(format!("{key}.png"));
+  if !target.is_file(){let img=image::open(&path).map_err(err)?;let height=img.height().min(img.width()*3/4).max(1);img.crop_imm(0,0,img.width(),height).thumbnail(600,450).save(&target).map_err(err)?;}
+  Ok(target.to_string_lossy().into_owned())
+ }).await.map_err(err)?
+}
+#[tauri::command]
+fn open_website_screenshot(id:i64,state:tauri::State<'_,State>)->Result<()>{let db=db::connect(&state.db)?;let path:String=db.query_row("SELECT thumbnail FROM items WHERE id=? AND source='Websites' AND archived=0",[id],|r|r.get(0)).map_err(err)?;tauri_plugin_opener::open_path(path,None::<&str>).map_err(err)}
 #[tauri::command]
 async fn library_overview(state:tauri::State<'_,State>)->Result<managed_library::Overview>{let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::overview(&db)).await.map_err(err)?}
 #[tauri::command]
@@ -464,6 +491,7 @@ fn open_external_url(url: String) -> Result<()> {
 
 fn main() {
     tauri::Builder::default()
+        .manage(website_capture::Jobs::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -579,6 +607,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
             library_overview,
             library_preferences,
             save_library_preferences,

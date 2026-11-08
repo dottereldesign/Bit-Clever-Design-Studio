@@ -415,7 +415,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             fs::create_dir_all(&directory).map_err(err)?;
             let path = directory.join(format!("{}.png", nonce()));
             thumbnail.0 = Some(path.clone());
-            image.thumbnail(image.width().min(1600), image.height().min(1600)).save(&path).map_err(err)?;
+            if destination=="websites"{image.save(&path).map_err(err)?;}else{image.thumbnail(image.width().min(1600), image.height().min(1600)).save(&path).map_err(err)?;}
         }
         let mut stmt = db
             .prepare("SELECT id,path FROM items WHERE kind='link'")

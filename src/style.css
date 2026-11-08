@@ -1825,3 +1825,10 @@ main {
 .website-thumbnail-drop img { max-width:100%;max-height:180px;object-fit:contain;border-radius:6px; }
 .website-thumbnail-drop .subtle-button { position:relative;margin-left:8px;overflow:hidden;cursor:pointer; }
 .website-thumbnail-drop input[type=file] { position:absolute;inset:0;opacity:0;cursor:pointer;width:100%; }
+
+.website-auto-capture { padding:14px 0 18px; }
+.website-auto-capture p { font-size:13px;line-height:1.5;margin:0 0 12px; }
+.website-auto-capture label { display:flex;align-items:center;gap:7px;font-size:11px;margin-top:12px;color:#727d68; }
+.website-capture-stages { display:flex;gap:6px;margin-bottom:14px; }
+.website-capture-stages span { flex:1;padding:5px 2px;text-align:center;border-radius:4px;background:#e9ede3;font-size:10px;color:#7c8871; }
+.website-capture-stages span[data-active=true] { background:#dde8d4;color:#415a32; }

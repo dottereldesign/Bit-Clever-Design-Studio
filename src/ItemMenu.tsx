@@ -1,3 +1,4 @@
+import {invoke} from '@tauri-apps/api/core';
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ClipboardCopy, ExternalLink, Tag, Trash2 } from "lucide-react";
@@ -6,7 +7,7 @@ import { componentFoldersOf, designFoldersOf, canCopyImage, isResource, isTableL
 
 
 export type ItemMenuTarget = { x: number; y: number; ids: number[] };
-export default function ItemMenu({ target, lib, close, add, tags, reveal, remove, copy, copying, moveLink, editLink, editThumbnail, category, sendToSection }: {
+export default function ItemMenu({ target, lib, close, add, tags, reveal, remove, copy, copying, moveLink, editLink, editThumbnail, category, sendToSection, report }: {
   target: ItemMenuTarget; lib: Library; close: () => void;
   add: (project: number) => void; tags: () => void;
   reveal: (item: Item) => void; remove: () => void;
@@ -15,6 +16,7 @@ export default function ItemMenu({ target, lib, close, add, tags, reveal, remove
   editLink: (item: Item) => void;
   editThumbnail: (item: Item) => void;
   category: () => void;
+  report: (error:unknown) => void;
   sendToSection: (ids:number[],components:boolean)=>void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -75,6 +77,7 @@ export default function ItemMenu({ target, lib, close, add, tags, reveal, remove
     {items.length === 1 && items[0].kind === "link" && !isTableLink(items[0]) && <button role="menuitem" onClick={() => { close(); editThumbnail(items[0]); }}>Edit thumbnail</button>}
     {items.length === 1 && items[0].kind === "link" && <button role="menuitem" onClick={() => { close(); moveLink(items[0]); }}>Move to {isResource(items[0]) ? "Links" : "Resources"}</button>}
     {items.length === 1 && <button role="menuitem" onClick={() => { close(); reveal(items[0]); }}><ExternalLink size={13} />{items[0].kind === "link" ? "Open website" : "Reveal in Explorer"}</button>}
+    {items.length===1&&items[0].source==="Websites"&&items[0].thumbnail&&<button role="menuitem" onClick={()=>{close();void invoke("open_website_screenshot",{id:items[0].id}).catch(report);}}>Open full-page screenshot</button>}
     <button role="menuitem" className="danger" onClick={() => { close(); remove(); }}><Trash2 size={13} /> Remove from library</button>
   </div>, document.body);
 }

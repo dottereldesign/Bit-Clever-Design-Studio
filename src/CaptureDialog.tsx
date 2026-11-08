@@ -1,3 +1,4 @@
+import WebsiteAutoCapture from './WebsiteAutoCapture';
 import {stageFiles} from "./captureImport";
 import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
 import { readClipboard } from "./clipboard";
@@ -48,6 +49,8 @@ export default function CaptureDialog({
   const pending = useRef(false);
   const saving = useRef(false);
   const website = linkDestination === "websites";
+  const websiteUrl=useRef<HTMLInputElement>(null);
+  useEffect(()=>{if(website&&!reading&&!thumbnail)websiteUrl.current?.focus();},[website,reading,thumbnail]);
   const validWebsiteUrl = (()=>{try{return ["https:","http:"].includes(new URL(url).protocol);}catch{return false;}})();
   const saveAfterPaste = useRef(false);
   const form = useRef<HTMLFormElement>(null);
@@ -68,7 +71,7 @@ export default function CaptureDialog({
     if (incoming.url) setUrl(incoming.url);
   };
   const paste = async () => {
-    if (pending.current || busy) return;
+    if (pending.current || busy || reading) return;
     pending.current = true; setReading(true); setError("");
     try { receive(await readClipboard<CaptureDraft>()); }
     catch (error) { saveAfterPaste.current = false; setError(String(error)); }
@@ -122,7 +125,7 @@ export default function CaptureDialog({
     if(website&&validWebsiteUrl&&thumbnail&&!reading&&!error&&!saving.current)void save(thumbnail);
   },[website,validWebsiteUrl,thumbnail,reading,url]);
   const receiveWebsiteFiles=async(files:File[])=>{
-    if(pending.current||busy)return;
+    if(pending.current||busy||reading)return;
     pending.current=true;setReading(true);setError("");
     try{const images=files.filter(f=>f.type.startsWith("image/"));if(!images.length)throw Error("Choose an image for the thumbnail.");receive(await stageFiles(images.slice(0,1)));}
     catch(e){setError(String(e));}finally{pending.current=false;setReading(false);}
@@ -133,11 +136,12 @@ export default function CaptureDialog({
       onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();void receiveWebsiteFiles(Array.from(e.clipboardData.files));}}}
       onDragOver={e=>{e.preventDefault();e.stopPropagation();}}
       onDrop={e=>{e.preventDefault();e.stopPropagation();void receiveWebsiteFiles(Array.from(e.dataTransfer.files));}}>
-      <div className="modal-heading"><h2>{validWebsiteUrl?'Add a thumbnail':'Add website'}</h2><button className="icon-button" aria-label="Close capture" disabled={busy||reading} onClick={close}><X size={17}/></button></div>
-      <label className="field">Website URL<input autoFocus type="url" required aria-label="Website URL" placeholder="https://" value={url} disabled={busy||reading} onChange={e=>{setError('');setUrl(e.target.value);}}/></label>
+      <div className="modal-heading"><h2>{validWebsiteUrl?'Capture website':'Add website'}</h2><button className="icon-button" aria-label="Close capture" disabled={busy||reading} onClick={close}><X size={17}/></button></div>
+      <label className="field">Website URL<input ref={websiteUrl} autoFocus type="url" required aria-label="Website URL" placeholder="https://" value={url} disabled={busy||reading} onChange={e=>{setError('');setUrl(e.target.value);}}/></label>
+      {validWebsiteUrl&&!thumbnail&&<WebsiteAutoCapture url={url} autoStart={!!draft.url&&draft.url===url} busy={setReading} image={file=>{staged.current.push(file.path);setThumbnail(file);}}/>}
       <div className="website-thumbnail-drop">
         {thumbnail?<img src={convertFileSrc(thumbnail.path)} alt="Website thumbnail"/>:<FileImage size={28}/>}
-        <p>{busy?'Saving website…':reading?'Reading image…':validWebsiteUrl?'Paste or drop an image. It saves automatically.':'Paste a website URL, then its image.'}</p>
+        <p>{busy?'Saving website…':reading?'Working…':validWebsiteUrl?'Or paste or drop an image. It saves automatically.':'Paste a website URL, then its image.'}</p>
         <button className="primary" disabled={!validWebsiteUrl||busy||reading} onClick={()=>void paste()}>Paste image</button>
         <label className="subtle-button">Choose image<input type="file" accept="image/*" disabled={!validWebsiteUrl||busy||reading} onChange={e=>void receiveWebsiteFiles(Array.from(e.target.files??[]))}/></label>
       </div>
@@ -163,7 +167,7 @@ export default function CaptureDialog({
           if(e.key==='Escape'&&(busy||reading)){e.preventDefault();e.stopPropagation();}
           if(board&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v') {e.preventDefault();e.stopPropagation();void paste();}
         }}
-        onPaste={e=>{ if(board&&e.clipboardData.files.length){e.preventDefault(); if(pending.current||busy)return; pending.current=true;setReading(true);void stageFiles(Array.from(e.clipboardData.files)).then(receive).catch(e=>setError(String(e))).finally(()=>{pending.current=false;setReading(false);});} }}
+        onPaste={e=>{ if(board&&e.clipboardData.files.length){e.preventDefault(); if(pending.current||busy||reading)return; pending.current=true;setReading(true);void stageFiles(Array.from(e.clipboardData.files)).then(receive).catch(e=>setError(String(e))).finally(()=>{pending.current=false;setReading(false);});} }}
       >
         <div className="modal-heading">
           <h2>{isBoardDestination(linkDestination) ? boardNames[linkDestination] : "Capture"}</h2>
