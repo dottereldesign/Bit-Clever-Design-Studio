@@ -17,6 +17,7 @@ window.isTauri = true;
 window.__TAURI_INTERNALS__ = {
   transformCallback: () => ++callbackId, convertFileSrc: () => image,
   invoke: async (command, args) => {
+ if(command==="capture_items_progress")command="capture_items";
     calls.push({ command, args });
     if (command === 'get_library') return structuredClone(library);
     if (command === 'get_media') return 'mock.png';

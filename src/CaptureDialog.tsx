@@ -1,6 +1,8 @@
+import {stageFiles} from "./captureImport";
+import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
 import { readClipboard } from "./clipboard";
 import { useEffect, useRef, useState } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Check, FileImage, LoaderCircle, X } from "lucide-react";
 import { boardNames, isBoardDestination, isTableCollection, type Library, type LinkDestination } from "./model";
 import { RatioSelect, ThumbnailCrop } from "./ThumbnailEditor";
@@ -9,32 +11,6 @@ import { appHistory } from "./appHistory";
 export type CaptureFile = { path: string; name: string };
 export type CaptureDraft = { files: CaptureFile[]; url: string; thumbnail?: CaptureFile; destination?: LinkDestination };
 export type CaptureResult = { history_labels?: string[]; move_label?: string; moved_from?: string | null; ids: number[]; added: number; reused: number; destination?: LinkDestination | null };
-export async function stageFiles(files: File[]): Promise<CaptureDraft> {
-  const staged: CaptureFile[] = [];
-  try {
-    for (const file of files) {
-      const entry = await invoke<CaptureFile>("stage_begin", {
-        name: file.name,
-      });
-      staged.push(entry);
-      const token = entry.path.replace(/\\/g, "/").split("/").pop()!;
-      for (let offset = 0; offset < file.size; offset += 2 * 1024 * 1024) {
-        const bytes = new Uint8Array(
-          await file.slice(offset, offset + 2 * 1024 * 1024).arrayBuffer(),
-        );
-        await invoke("stage_chunk", bytes, {
-          headers: { "x-capture-token": token },
-        });
-      }
-    }
-    return { files: staged, url: "" };
-  } catch (error) {
-    await invoke("discard_capture", { paths: staged.map((f) => f.path) }).catch(
-      () => {},
-    );
-    throw error;
-  }
-}
 export default function CaptureDialog({
   draft,
   lib,
@@ -50,6 +26,7 @@ export default function CaptureDialog({
   close: () => void;
   complete: (result: CaptureResult) => Promise<void>;
 }) {
+  const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
   const [name, setName] = useState(
       draft.files.length === 1
         ? draft.files[0].name.replace(/\.[^.]+$/, "")
@@ -102,7 +79,9 @@ export default function CaptureDialog({
     setBusy(true);
     setError("");
     try {
-      const result = await appHistory.perform(()=>invoke<CaptureResult>("capture_items", {
+      const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+      const result = await appHistory.perform(()=>invoke<CaptureResult>("capture_items_progress", {
+        onProgress,
         input: {
           files: draft.files,
           thumbnail: image,
@@ -117,9 +96,10 @@ export default function CaptureDialog({
         },
       }));
       await complete(result);
+      setImportProgress(null);
     } catch (e) {
       setError(String(e));
-      setBusy(false);
+      setImportProgress(null);setBusy(false);
     }
   };
   const submit = async (e: React.FormEvent) => { e.preventDefault(); await save(); };
@@ -262,7 +242,8 @@ export default function CaptureDialog({
               ))}
             </div>
           </div>
-          {error && (
+          {busy&&<CaptureProgress progress={importProgress}/>}
+      {error && (
             <div className="form-error" role="alert">
               {error}
             </div>

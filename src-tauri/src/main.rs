@@ -247,14 +247,20 @@ fn removed_items(state: tauri::State<'_, State>) -> Result<Vec<db::RemovedItem>>
     db::removed_items(&state.db)
 }
 #[tauri::command]
-async fn capture_items(
-    input: content::Capture,
-    state: tauri::State<'_, State>,
-) -> Result<content::CaptureResult> {
-    let s = state.inner().clone();
+async fn capture_items(input:content::Capture,state:tauri::State<'_,State>)->Result<content::CaptureResult>{
+    perform_capture(input,None,state.inner().clone()).await
+}
+#[tauri::command]
+async fn capture_items_progress(input:content::Capture,on_progress:tauri::ipc::Channel<content::DuplicateProgress>,state:tauri::State<'_,State>)->Result<content::CaptureResult>{
+    perform_capture(input,Some(on_progress),state.inner().clone()).await
+}
+async fn perform_capture(input:content::Capture,on_progress:Option<tauri::ipc::Channel<content::DuplicateProgress>>,s:State)->Result<content::CaptureResult>{
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = s.content_lock.lock().map_err(err)?;
-        let result=content::capture(&s.db, input)?;managed_library::organise(&s.db)?;Ok(result)
+        let mut send=|p|{if let Some(channel)=&on_progress{let _=channel.send(p);}};
+        let result=content::capture_with_progress(&s.db, input,&mut send)?;
+        let mut finishing=content::DuplicateProgress::waiting();finishing.phase="finishing";send(finishing);
+        managed_library::organise(&s.db)?;Ok(result)
     })
     .await
     .map_err(err)?
@@ -599,6 +605,7 @@ fn main() {
             data_folder,
             removed_items,
             capture_items,
+            capture_items_progress,
             capture_screen,
             crop_thumbnail,
             replace_thumbnail,

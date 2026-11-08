@@ -72,10 +72,6 @@ fn store(db: &Connection, id: i64, fp: &Fingerprint) -> Result<()> {
     db.execute("INSERT INTO fingerprints VALUES(?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET size=excluded.size,modified=excluded.modified,file_hash=excluded.file_hash,pixel_hash=excluded.pixel_hash",params![id,fp.size,fp.modified,fp.file,fp.pixels]).map_err(err)?;
     Ok(())
 }
-pub fn index(db_path: &Path) -> Result<usize> {
-    index_with_progress(db_path, &mut |_| {})
-}
-
 #[derive(Clone, Serialize, Debug)]
 pub struct DuplicateProgress {
     pub phase: &'static str,
@@ -362,6 +358,9 @@ impl Drop for PendingThumbnail {
     fn drop(&mut self) { if let Some(path) = &self.0 { let _ = fs::remove_file(path); } }
 }
 pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
+    capture_with_progress(db_path,c,&mut |_|{})
+}
+pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMut(DuplicateProgress)) -> Result<CaptureResult> {
     if !c.source_url.trim().is_empty() {
         db::valid_url(&c.source_url)?;
     }
@@ -495,7 +494,9 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         result.ids.push(id);
         return Ok(result);
     }
-    index(db_path)?;
+    index_with_progress(db_path,&mut |mut p|{p.phase="checking";progress(p);})?;
+    let started=Instant::now();
+    let mut report=|checked:usize,current:String|{let elapsed=started.elapsed().as_millis() as u64;progress(DuplicateProgress{phase:"saving",checked,total:c.files.len(),current,elapsed_ms:elapsed,remaining_seconds:if checked>0&&elapsed>=2000{Some(((c.files.len()-checked) as u64*elapsed/checked as u64).div_ceil(1000))}else{None}});};
     let root = crate::sources::root(&db, &c.source)?
         .canonicalize()
         .map_err(err)?;
@@ -506,7 +507,8 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
     if !destination.starts_with(&root) {
         return Err("Captures must be inside your source folder.".into());
     }
-    for input in &c.files {
+    for (position,input) in c.files.iter().enumerate() {
+        report(position,input.name.clone());
         let path = PathBuf::from(&input.path).canonicalize().map_err(err)?;
         let kind = library::kind(&path).ok_or("Unsupported file type")?;
         let fp = fingerprint(&path)?;
@@ -518,6 +520,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             tx.commit().map_err(err)?;
             result.ids.push(id);
             result.reused += 1;
+            report(position+1,input.name.clone());
             continue;
         }
         let original = Path::new(&input.name)
@@ -588,6 +591,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         tx.commit().map_err(err)?;
         result.ids.push(id);
         result.added += 1;
+        report(position+1,input.name.clone());
     }
     result.ids.sort();
     result.ids.dedup();
@@ -879,4 +883,20 @@ pub fn restore(db_path: &Path, id: i64) -> Result<()> {
         return Err(err(e));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod capture_progress_tests {
+    use super::*;
+    #[test]
+    fn progress_counts_saved_and_reused_files_to_completion(){
+        let temp=tempfile::tempdir().unwrap();let db_path=temp.path().join("library.sqlite");db::init(&db_path).unwrap();
+        let root=temp.path().join("Design");fs::create_dir(&root).unwrap();db::set_setting(&db::connect(&db_path).unwrap(),"root",root.to_str().unwrap()).unwrap();
+        let source=temp.path().join("image.png");image::RgbaImage::from_pixel(2,2,image::Rgba([10,20,30,255])).save(&source).unwrap();
+        let input:Capture=serde_json::from_value(serde_json::json!({"files":[{"path":source,"name":"First.png"},{"path":source,"name":"Duplicate.png"}]})).unwrap();
+        let mut events=vec![];let result=capture_with_progress(&db_path,input,&mut |p|events.push(p)).unwrap();
+        assert_eq!((result.added,result.reused),(1,1));let saving:Vec<_>=events.iter().filter(|p|p.phase=="saving").collect();
+        assert_eq!(saving.first().unwrap().checked,0);assert_eq!(saving.last().unwrap().checked,2);assert_eq!(saving.last().unwrap().total,2);
+        assert!(saving.windows(2).all(|p|p[0].checked<=p[1].checked));assert_eq!(saving.last().unwrap().current,"Duplicate.png");
+    }
 }

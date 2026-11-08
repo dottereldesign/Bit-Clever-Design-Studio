@@ -6,6 +6,7 @@ const library={items:Array.from({length:150},(_,n)=>({id:n+1,name:`Reference ${n
 if(!phase)localStorage.setItem('last-workspace-view',JSON.stringify({version:1,view:{homeView:false,generalKey:null,project:null,category:'Poster',linksOnly:false,resourcesView:false,boardView:null,videoView:false,recent:null,search:'',type:'all',tags:[],tagMode:'any',source:'',sort:'recent',seed:1,viewer:null},scroll:{top:0}}));
 let callback=0;const calls=[];let releaseThumbnail;let clipboardMode='unavailable',finishCopy,failCopy;
 window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ if(command==="capture_items_progress")command="capture_items";
  calls.push(command);if(command==='get_library')return structuredClone(library);if(command.startsWith('plugin:event|'))return ++callback;
  if(command==='get_media'){if(phase&&args.id===150)await new Promise(resolve=>{releaseThumbnail=resolve;});return 'mock.png';}
  if(command==='copy_image'&&clipboardMode==='overlap'){await new Promise((resolve,reject)=>{finishCopy=resolve;failCopy=reject;});return;}

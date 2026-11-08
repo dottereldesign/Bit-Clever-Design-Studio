@@ -8,6 +8,7 @@ const library={items:[],projects:[{id:7,name:'Website',count:0}],tags:[{id:1,nam
 const history=[];const calls=[],removedIds=new Set();let clipboard={files:[],url:''},callbackId=0,screenResult={path:'C:/staging/screen.png',name:'Screenshot.png'};
 window.isTauri=true;
 window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ if(command==="capture_items_progress")command="capture_items";
   calls.push({command,args});
   if(command==='get_library')return {...structuredClone(library),items:structuredClone(library.items.filter(i=>!removedIds.has(i.id))),undo_label:history.length?'Remove from library':null};
   if(command==='update'){if(args.change.action==='undo_organisation'){removedIds.clear();for(const id of history.pop())removedIds.add(id);return;}if(args.change.action==='remove_items')history.push([...removedIds]);for(const id of args.change.ids??[]){if(args.change.action==='remove_items')removedIds.add(id);else if(args.change.action==='restore_items')removedIds.delete(id);}return;}

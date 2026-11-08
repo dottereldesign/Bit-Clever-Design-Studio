@@ -1,3 +1,6 @@
+import {stageFiles} from "./captureImport";
+import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
+import {Channel} from "@tauri-apps/api/core";
 import { readViewSession, useViewSession, type ViewState } from "./viewSession";
 import { copyImageToClipboard, readClipboard } from "./clipboard";
 import { acceptsExternalDrop, readWebDrop } from './webDrop';
@@ -75,7 +78,6 @@ import Resources from "./Resources";
 import LinkBoard from "./LinkBoard";
 import ThumbnailEditor from "./ThumbnailEditor";
 import CaptureDialog, {
-  stageFiles,
   type CaptureDraft,
   type CaptureResult,
 } from "./CaptureDialog";
@@ -769,6 +771,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setUndoIds([]);setCategoryUndo(null);setNoticeText(message);
     setReceipt({ids:saved.map(i=>i.id),existing:already&&!result.moved_from,undo:result.move_label});
   },[lib.items]);
+  const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
   const dropQueue = useRef(Promise.resolve());
   const queueImageDrop = useCallback((data:DataTransfer, destination:string|null) => {
     // Read immediately: browser drag data is unavailable after the drop event returns.
@@ -777,20 +780,24 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       let files:CaptureDraft['files'] = [];
       try {
         setReadingCapture(true);
-        if(payload.files.length) files = (await stageFiles(payload.files)).files;
+        setImportProgress(null);
+        if(payload.files.length) files = (await stageFiles(payload.files,setImportProgress)).files;
         else if(payload.imageUrl) files = [await invoke('stage_web_image',{url:payload.imageUrl})];
         else if(!payload.sourceUrl) throw new Error('Drag the image itself, or copy and paste it into this folder.');
-        const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{
+        const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+        setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
+        const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
           files,url:files.length?'':payload.sourceUrl,name:files.length===1?files[0].name.replace(/\.[^.]+$/,''):'',
           source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:payload.sourceUrl,resource:false,
         }}));
+        setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
         recordCapture(result);
         if(destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
         showCaptureReceipt(result,await refresh(),destination);
       } catch(error){report(error);}
       finally {
         await invoke('discard_capture',{paths:files.map(file=>file.path)}).catch(report);
-        setReadingCapture(false);
+        setReadingCapture(false);setImportProgress(null);
       }
     });
   },[mutate,recordCapture,refresh,report,showCaptureReceipt]);
@@ -908,10 +915,10 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       if (files.length) {
         e.preventDefault();
         setReadingCapture(true);
-        stageFiles(files)
+        stageFiles(files,setImportProgress)
           .then(setCapture)
           .catch(report)
-          .finally(() => setReadingCapture(false));
+          .finally(() => {setReadingCapture(false);setImportProgress(null);});
         return;
       }
       const url = e.dataTransfer?.getData("text/uri-list") || "";
@@ -1346,7 +1353,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         )}
         {readingCapture && (
           <div className="capture-reading">
-            <LoaderCircle className="spin" size={13} /> Reading files…
+            <CaptureProgress progress={importProgress}/>
           </div>
         )}
         {selected.size > 0 && !originalResources && (
