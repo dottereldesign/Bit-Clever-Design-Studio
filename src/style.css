@@ -1832,3 +1832,7 @@ main {
 .website-capture-stages { display:flex;gap:6px;margin-bottom:14px; }
 .website-capture-stages span { flex:1;padding:5px 2px;text-align:center;border-radius:4px;background:#e9ede3;font-size:10px;color:#7c8871; }
 .website-capture-stages span[data-active=true] { background:#dde8d4;color:#415a32; }
+
+.website-card-actions { display:flex;align-items:center;justify-content:space-between;padding:0 10px 10px;gap:12px; }
+.website-card-actions .subtle-button { display:inline-flex;align-items:center;gap:6px;font-size:11px; }
+.website-card-external { margin-left:auto;flex-shrink:0; }

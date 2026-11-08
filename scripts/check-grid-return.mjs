@@ -22,7 +22,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!started) throw Error('Test server did not start');
-  for (const dimensions of (fixture === 'home-styles' ? ['1440,2000', '960,700'] : fixture === 'performance' ? ['1920,1080'] : fixture === 'wide-preview' ? ['3440,1440', '1920,1080', '1600,940', '1599,940'] : ['1440,940', '960,700'])) {
+  for (const dimensions of (fixture === 'link-boards' ? ['1920,1080', '1440,940', '960,700'] : fixture === 'home-styles' ? ['1440,2000', '960,700'] : fixture === 'performance' ? ['1920,1080'] : fixture === 'wide-preview' ? ['3440,1440', '1920,1080', '1600,940', '1599,940'] : ['1440,940', '960,700'])) {
     const profile = await mkdtemp(join(tmpdir(), 'design-grid-check-'));
     try {
       // An isolated headless process uses real browser frames and keyboard events.

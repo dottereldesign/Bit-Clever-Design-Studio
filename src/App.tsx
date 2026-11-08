@@ -337,7 +337,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const copyBusy = useRef(false);
   const finishGridReturn = useCallback(() => setGridReturn(null), []);
   const closeViewer = useCallback(() => {
-    if (viewer !== null && !widePreview) setGridReturn({ id: viewer });
+    if (viewer !== null && libRef.current.items.some(i=>i.id===viewer&&i.kind==='link')) {
+      requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(`.link-card[data-item-id="${viewer}"] .link-card-open`)?.focus({preventScroll:true}));
+    } else if (viewer !== null && !widePreview) setGridReturn({ id: viewer });
     setViewer(null);
   }, [viewer, widePreview]);
   const closeItemMenu = useCallback(() => setItemMenu(null), []);
@@ -454,6 +456,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     () => filtered.filter((i) => i.kind !== "link"),
     [filtered],
   );
+  const previewItems = useMemo(()=>filtered.filter(i=>i.kind!=="link"||(i.source==="Websites"&&!!i.thumbnail)),[filtered]);
   const links = useMemo(
     () => filtered.filter((i) => i.kind === "link" && (componentFoldersOf(i).length>0 || !isBoardLink(i) || isTableLink(i))),
     [filtered],
@@ -654,7 +657,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       select(item.id, e.shiftKey);
       return;
     }
-    if (item.kind === "link") {
+    if (item.kind === "link" && !(item.source === "Websites" && item.thumbnail)) {
       void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
       setGridReturn(null);
@@ -684,11 +687,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const moveViewer = useCallback(
     (delta: number) => {
       setViewer((id) => {
-        const n = images.findIndex((i) => i.id === id);
-        return images[(n + delta + images.length) % images.length]?.id ?? null;
+        const n = previewItems.findIndex((i) => i.id === id);
+        return previewItems[(n + delta + previewItems.length) % previewItems.length]?.id ?? null;
       });
     },
-    [images],
+    [previewItems],
   );
   useLayoutEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -1533,7 +1536,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           docked={dockedPreview}
           blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
           item={activeItem}
-          items={images}
+          items={previewItems}
           tags={lib.tags}
           projects={lib.projects}
           close={closeViewer}
@@ -1641,7 +1644,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         moveLink={(item) => void mutate({ action: "set_link_destination", target: item.id, value: isResource(item) ? "links" : "resources" }).then(() => { setUndoIds([]); setNotice(`Moved to ${isResource(item) ? "Links" : "Resources"}`); }).catch(report)}
         add={(target) => { void mutate({ action: "add_project", target, ids: itemMenu.ids }).then(() => { setUndoIds([]); setNotice(`Added to ${lib.projects.find((p) => p.id === target)?.name}`); }).catch(report); }}
         tags={() => setModal({ kind: "tags", ids: itemMenu.ids })}
-        reveal={item => item.kind === "link" ? openItem(item) : void revealItemInDir(item.path).catch(report)}
+        reveal={item => item.kind === "link" ? void openUrl(item.path).then(()=>track(item)).catch(report) : void revealItemInDir(item.path).catch(report)}
         remove={() => void removeItems(itemMenu.ids)} />}
       {notice && (
         <div className="toast" role="status">
@@ -2142,7 +2145,7 @@ function Viewer({
       },
     );
     return () => abort.abort();
-  }, [item.id, item.modified]);
+  }, [item.id, item.modified, item.thumbnail]);
   const fallback = () => {
     if (compatible) {
       setError("Could not play this file.");
@@ -2207,8 +2210,8 @@ function Viewer({
           {canCopyImage(item) && <button className="icon-button" aria-label="Copy image" title={item.kind === "animation" ? "Copy image (first frame) · Ctrl+C" : "Copy image · Ctrl+C"} disabled={copying} onClick={copy}><ClipboardCopy size={16} /></button>}
           <IconButton title="Remove from library" onClick={remove}><Trash2 size={16} /></IconButton>
           <IconButton
-            title="Reveal in Explorer"
-            onClick={() => void revealItemInDir(item.path).catch(report)}
+            title={item.kind==="link"?"Open website":"Reveal in Explorer"}
+            onClick={() => void (item.kind==="link"?openUrl(item.path):revealItemInDir(item.path)).catch(report)}
           >
             <ExternalLink size={16} />
           </IconButton>
@@ -2230,7 +2233,7 @@ function Viewer({
             <ImageOff size={26} />
             <span>{error}</span>
             <button
-              onClick={() => void revealItemInDir(item.path).catch(report)}
+              onClick={() => void revealItemInDir(item.kind==="link"?item.thumbnail!:item.path).catch(report)}
             >
               Reveal original
             </button>

@@ -5,10 +5,10 @@ import App from '/src/App.tsx';
 import '/src/style.css';
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
 const library={items:[],projects:[{id:7,name:'Website',count:0}],tags:[{id:1,name:'Sports',count:0}],sources:['Design'],root:'C:/mock',scanning:false};
-const history=[];const calls=[],removedIds=new Set();let clipboard={files:[],url:''},callbackId=0,screenResult={path:'C:/staging/screen.png',name:'Screenshot.png'};
+const converted=[];const history=[];const calls=[],removedIds=new Set();let clipboard={files:[],url:''},callbackId=0,screenResult={path:'C:/staging/screen.png',name:'Screenshot.png'};
 let capturePending;
 window.isTauri=true;
-window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()=>image,invoke:async(command,args)=>{
+window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:path=>{converted.push(path);return image;},invoke:async(command,args)=>{
  if(command==="capture_items_progress")command="capture_items";
   calls.push({command,args});
   if(command==='website_capture_browsers')return [{id:'chrome',name:'Chrome'},{id:'edge',name:'Edge'}];
@@ -160,14 +160,25 @@ try{
   assert(names[0]==='Websites'&&names[1]==='Links','Websites should lead General');
   nav('Websites');await until(()=>!document.querySelector('.link-card'),'Empty Websites');
   clipboard={files:[],url:'https://inspiring.example/'};document.querySelector('.link-board').tabIndex=-1;document.querySelector('.link-board').focus();paste();
-  await until(()=>document.querySelector('[aria-label="Website URL"]')?.value===clipboard.url,'Website URL prompt');window.__screenshotReady=true;await pause(700);
+  await until(()=>document.querySelector('[aria-label="Website URL"]')?.value===clipboard.url,'Website URL prompt');
   assert(!document.querySelector('.website-capture [type=submit]'),'Website flow requires confirmation');
   const before=library.items.length;clipboard={files:[{path:'C:/staging/website.png',name:'Website.png'}],url:''};paste();
   await until(()=>!document.querySelector('.website-capture')&&library.items.length===before+1,'Image paste auto saves website');
   const website=library.items.at(-1);assert(website.source==='Websites'&&website.path==='https://inspiring.example/'&&website.thumbnail,'Website metadata incorrect');
-  document.querySelector('.link-card-open').click();await until(()=>calls.some(c=>c.command==='open_external_url'&&c.args.url===website.path),'Website opens in browser');
+  const externalBefore=calls.filter(c=>c.command==='open_external_url').length;converted.length=0;
+  document.querySelector('.link-card-open').click();await until(()=>document.querySelector('.viewer .zoom-image img'),'Full screenshot preview');
+  assert(calls.filter(c=>c.command==='open_external_url').length===externalBefore,'Thumbnail opened browser');
+  assert(converted.includes(website.thumbnail),'Preview did not use full-resolution image');
+  assert(!!document.querySelector('.viewer-docked')===(innerWidth>=1600),'Preview did not use standard responsive side layout');
+  assert(document.querySelector('.viewer header small').textContent==='1 / 1','Website preview count incorrect');window.__screenshotReady=true;await pause(700);
+  document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close preview');await pause(100);
+  document.querySelector('.website-card-actions .subtle-button').click();await until(()=>document.querySelector('.viewer'),'Preview button');
+  document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close button preview');await pause(100);
+  document.querySelector('.website-card-external').click();await until(()=>calls.some(c=>c.command==='open_external_url'&&c.args.url===website.path),'External icon opens browser');
+  assert(!document.querySelector('.viewer'),'External icon opened preview');
+  checks.push('Website thumbnail and Preview button open the full-resolution viewer; external icon alone opens the browser');
   document.querySelector('.link-card-menu').click();await until(()=>button('Tags'),'Website tags action');button('Tags').click();await until(()=>button('Sports'),'Tag picker');button('Sports').click();await until(()=>library.items.at(-1).tags.includes(1),'Website tag persisted');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
-  checks.push('Websites leads General; URL then image paste saves once without confirmation; cards open externally and offer tags');
+  checks.push('Websites leads General; URL then image paste saves once without confirmation; cards preview screenshots and offer tags');
   document.querySelector('.link-card-menu').click();await until(()=>button('Open full-page screenshot'),'Screenshot action');button('Open full-page screenshot').click();await until(()=>calls.some(c=>c.command==='open_website_screenshot'),'Screenshot opens');
   clipboard={files:[],url:'https://capture.example/'};document.querySelector('.link-board').focus();paste();
   await until(()=>button('Capture with Chrome'),'Browser choice');button('Capture with Chrome').click();await until(()=>button('Continue capture'),'Attention pause');
@@ -183,6 +194,11 @@ try{
   button('Cancel capture').click();await until(()=>button('Capture with Chrome'),'Cancel remembered capture');
   const checkbox=document.querySelector('.website-auto-capture input');checkbox.click();assert(!localStorage.getItem('website-capture-browser'),'Remember preference not cleared');
   clipboard={files:[{path:'C:/staging/manual.png',name:'Manual.png'}],url:''};paste();await until(()=>!document.querySelector('.website-capture')&&library.items.length===count+2,'Manual fallback after cancel');
+  await pause(100);const cards=[...document.querySelectorAll('.link-card')];cards[0].querySelector('.link-card-open').click();await until(()=>document.querySelector('.viewer'),'Multiple website preview');
+  const first=document.querySelector('.viewer').dataset.itemId;document.querySelector('[aria-label="Next image"]').click();await until(()=>document.querySelector('.viewer')?.dataset.itemId!==first,'Next website screenshot');
+  document.querySelector('[aria-label="Previous image"]').click();await until(()=>document.querySelector('.viewer')?.dataset.itemId===first,'Previous website screenshot');
+  document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close navigation preview');
+  checks.push('Next and previous navigate website screenshots without leaving the app');
   checks.push('Automatic capture supports browser choice, progress, attention/continue, cancel without saving, retry, remembered browser, full-page action and manual fallback');
   document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,checks,error:String(error),calls:calls.slice(-6)});}
