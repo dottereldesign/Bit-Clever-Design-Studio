@@ -46,6 +46,9 @@ export default function CaptureDialog({
   const [ratio, setRatio] = useState(4/3);
   const [adjusting, setAdjusting] = useState(false);
   const pending = useRef(false);
+  const saving = useRef(false);
+  const website = linkDestination === "websites";
+  const validWebsiteUrl = (()=>{try{return ["https:","http:"].includes(new URL(url).protocol);}catch{return false;}})();
   const saveAfterPaste = useRef(false);
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -74,9 +77,10 @@ export default function CaptureDialog({
   const toggle = (ids: number[], id: number) =>
     ids.includes(id) ? ids.filter((n) => n !== id) : [...ids, id];
   const save = async (image = thumbnail) => {
-    if (busy || pending.current) return;
+    if (busy || pending.current || saving.current) return;
+    if (website && !validWebsiteUrl) {setError("Paste a valid http or https URL first.");return;}
     if (board && !isTableCollection(linkDestination) && !image) { setError("Capture or paste a thumbnail first."); return; }
-    setBusy(true);
+    saving.current=true;setBusy(true);
     setError("");
     try {
       const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
@@ -99,7 +103,7 @@ export default function CaptureDialog({
       setImportProgress(null);
     } catch (e) {
       setError(String(e));
-      setImportProgress(null);setBusy(false);
+      setImportProgress(null);setBusy(false);saving.current=false;
     }
   };
   const submit = async (e: React.FormEvent) => { e.preventDefault(); await save(); };
@@ -114,6 +118,33 @@ export default function CaptureDialog({
     finally { pending.current = false; setReading(false); }
     if(file) await save(file);
   };
+  useEffect(()=>{
+    if(website&&validWebsiteUrl&&thumbnail&&!reading&&!error&&!saving.current)void save(thumbnail);
+  },[website,validWebsiteUrl,thumbnail,reading,url]);
+  const receiveWebsiteFiles=async(files:File[])=>{
+    if(pending.current||busy)return;
+    pending.current=true;setReading(true);setError("");
+    try{const images=files.filter(f=>f.type.startsWith("image/"));if(!images.length)throw Error("Choose an image for the thumbnail.");receive(await stageFiles(images.slice(0,1)));}
+    catch(e){setError(String(e));}finally{pending.current=false;setReading(false);}
+  };
+  if(website)return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy&&!reading)close();}}>
+    <div className="modal capture-modal website-capture" role="dialog" aria-modal="true" aria-label="Add website"
+      onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'){e.preventDefault();e.stopPropagation();void paste();}if(e.key==='Escape'&&(busy||reading)){e.preventDefault();e.stopPropagation();}}}
+      onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();void receiveWebsiteFiles(Array.from(e.clipboardData.files));}}}
+      onDragOver={e=>{e.preventDefault();e.stopPropagation();}}
+      onDrop={e=>{e.preventDefault();e.stopPropagation();void receiveWebsiteFiles(Array.from(e.dataTransfer.files));}}>
+      <div className="modal-heading"><h2>{validWebsiteUrl?'Add a thumbnail':'Add website'}</h2><button className="icon-button" aria-label="Close capture" disabled={busy||reading} onClick={close}><X size={17}/></button></div>
+      <label className="field">Website URL<input autoFocus type="url" required aria-label="Website URL" placeholder="https://" value={url} disabled={busy||reading} onChange={e=>{setError('');setUrl(e.target.value);}}/></label>
+      <div className="website-thumbnail-drop">
+        {thumbnail?<img src={convertFileSrc(thumbnail.path)} alt="Website thumbnail"/>:<FileImage size={28}/>}
+        <p>{busy?'Saving website…':reading?'Reading image…':validWebsiteUrl?'Paste or drop an image. It saves automatically.':'Paste a website URL, then its image.'}</p>
+        <button className="primary" disabled={!validWebsiteUrl||busy||reading} onClick={()=>void paste()}>Paste image</button>
+        <label className="subtle-button">Choose image<input type="file" accept="image/*" disabled={!validWebsiteUrl||busy||reading} onChange={e=>void receiveWebsiteFiles(Array.from(e.target.files??[]))}/></label>
+      </div>
+      {busy&&<CaptureProgress progress={importProgress}/>}
+      {error&&<div className="form-error" role="alert">{error}{thumbnail&&validWebsiteUrl&&<button className="subtle-button" onClick={()=>void save()}>Retry save</button>}</div>}
+    </div>
+  </div>;
   return (
     <><div
       className="modal-backdrop"

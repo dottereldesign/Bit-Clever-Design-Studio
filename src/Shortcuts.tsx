@@ -4,9 +4,12 @@ import type { CollectionLayout } from './appearance';
 export type GeneralTarget={kind:'view'|'project'|'category'|'website';value:string};
 
 export const collectionNames = {
+  websites: "Websites",
   links: "Links",
   resources: "Resources",
-  ...boardNames,
+  fonts: boardNames.fonts,
+  codepen: boardNames.codepen,
+  "brand-guidelines": boardNames["brand-guidelines"],
   facebook: "Facebook Videos",
   added: "Recently added",
   viewed: "Recently viewed",
@@ -30,6 +33,9 @@ export const sites: Shortcut[] = [
   { key: "awwwards", name: "Awwwards", url: "https://www.awwwards.com/" },
   { key: "codepen", name: "CodePen", url: "https://codepen.io/" },
 ];
+export function withWebsites(list:Shortcut[]):Shortcut[]{
+ return list.some(entry=>entry.key==='websites')?list:[{key:'websites',name:'Websites',pinned:!!list[0]?.pinned},...list];
+}
 export function withCodePen(list:Shortcut[]):Shortcut[]{
  if(list.some(site=>site.key==='codepen'||site.url?.replace(/\/$/,'')==='https://codepen.io'))return list;
  const index=list.findIndex(site=>site.key==='awwwards'),next=[...list];

@@ -939,7 +939,7 @@ fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
     let lib=db::load(&path,false).unwrap();
     let project=lib.projects[0].id;
     let tag=lib.tags[0].id;
-    for (destination, source, url) in [("fonts","Fonts","https://fonts.example/typeface"),("codepen","CodePen","https://codepen.io/example/pen/123"),("brand-guidelines","Brand Guidelines","https://brand.example/guidelines")] {
+    for (destination, source, url) in [("websites","Websites","https://inspiring.example/"),("fonts","Fonts","https://fonts.example/typeface"),("codepen","CodePen","https://codepen.io/example/pen/123"),("brand-guidelines","Brand Guidelines","https://brand.example/guidelines")] {
         let mut c=capture_request(&original,vec![project],vec![tag]);
         c.files.clear();c.source_url.clear();c.url=url.into();c.destination=destination.into();
         c.thumbnail=Some(content::CaptureFile{path:original.to_string_lossy().into_owned(),name:"pasted.png".into()});
@@ -954,19 +954,23 @@ fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
         assert_eq!(thumbnail.to_rgba8().get_pixel(0,0).0,[12,34,56,78]);
         assert!(std::path::Path::new(&item.thumbnail).starts_with(temp.path().join("link-thumbnails")));
         let mut c=capture_request(&original,vec![],vec![]);c.files.clear();c.source_url.clear();c.url=url.into();c.destination=destination.into();
+        if destination=="websites"{c.thumbnail=Some(content::CaptureFile{path:original.to_string_lossy().into_owned(),name:"pasted.png".into()});}
         assert_eq!(content::capture(&path,c).unwrap().reused,1);
     }
-    assert_eq!(db::load(&path,false).unwrap().items.len(),3);
+    assert_eq!(db::load(&path,false).unwrap().items.len(),4);
     fs::remove_file(&original).unwrap();
     let backup=temp.path().join("boards-backup.json");db::export(&path,backup.clone()).unwrap();
     let restored=temp.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();
     let lib=db::load(&restored,false).unwrap();
-    assert_eq!(lib.items.len(),3);
+    assert_eq!(lib.items.len(),4);
     assert!(lib.items.iter().any(|i|i.source=="Fonts"));
     for item in &lib.items {assert!(!item.thumbnail.is_empty());assert!(std::path::Path::new(&item.thumbnail).is_file());assert_eq!(item.projects.len(),1);assert_eq!(item.tags.len(),1);}
     assert!(lib.items.iter().any(|i|i.source=="CodePen"));assert!(lib.items.iter().any(|i|i.source=="Brand Guidelines"));
     let mut invalid=capture_request(temp.path(),vec![],vec![]);invalid.files.clear();invalid.url="https://valid.example/".into();invalid.destination="unknown".into();
     assert!(content::capture(&path,invalid).is_err());
+    let mut missing_image=capture_request(temp.path(),vec![],vec![]);missing_image.files.clear();missing_image.url="https://new.example/".into();missing_image.destination="websites".into();assert!(content::capture(&path,missing_image).is_err());
+    let mut invalid_url=capture_request(temp.path(),vec![],vec![]);invalid_url.files.clear();invalid_url.url="not a URL".into();invalid_url.destination="websites".into();assert!(content::capture(&path,invalid_url).is_err());
+    assert!(lib.items.iter().any(|i|i.source=="Websites"));
 }
 
 #[test]

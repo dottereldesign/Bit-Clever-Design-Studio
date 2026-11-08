@@ -21,7 +21,7 @@ export function AppIcon({value,fallback=<Folder size={15}/>,size=16}:{value?:Ico
 export function FolderIcon({preferences,id,size=15}:{preferences:IconPreferences;id:string;size?:number}){return <AppIcon value={preferences.overrides[id]??preferences.overrides.folders??{kind:'symbol',value:preferences.folder}} size={size}/>;}
 export function GeneralEntryIcon({entry,preferences}:{entry:Shortcut;preferences:IconPreferences}){
  const target=entry.target??{kind:'view',value:entry.key},view=target.kind==='view'?target.value:'';
- const fallback=isBoardDestination(view)||view==='facebook'||view==='resources'?<SidebarIcon name={view}/>:view==='links'?<Link size={15}/>:target.kind==='website'?<Globe size={15}/>:target.kind==='project'||target.kind==='category'?<FolderIcon preferences={preferences} id={`collection:${entry.key}`}/>:<Grid2X2 size={15}/>;
+ const fallback=view==='websites'?<Globe size={16} color="#527da8"/>:isBoardDestination(view)||view==='facebook'||view==='resources'?<SidebarIcon name={view}/>:view==='links'?<Link size={15}/>:target.kind==='website'?<Globe size={15}/>:target.kind==='project'||target.kind==='category'?<FolderIcon preferences={preferences} id={`collection:${entry.key}`}/>:<Grid2X2 size={15}/>;
  return <AppIcon value={preferences.overrides[`collection:${entry.key}`]} fallback={fallback}/>;
 }
 export async function readCustomIcon(file:File):Promise<IconValue>{

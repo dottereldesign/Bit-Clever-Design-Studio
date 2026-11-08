@@ -20,7 +20,7 @@ export type Item = {
 };
 export type Label = { id: number; name: string; count: number };
 export const isResource = (item: Item) => item.kind === "link" && (item.source === "Resources" || item.source.startsWith("Resources/"));
-export const boardNames = { fonts: "Fonts", codepen: "CodePen", "brand-guidelines": "Brand Guidelines" };
+export const boardNames = { websites: "Websites", fonts: "Fonts", codepen: "CodePen", "brand-guidelines": "Brand Guidelines" };
 export type BoardKey = keyof typeof boardNames;
 export type LinkDestination = "links" | "resources" | BoardKey;
 export const isBoardDestination = (destination: string): destination is BoardKey => Object.hasOwn(boardNames, destination);

@@ -604,6 +604,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         "set_link_destination" => {
             let source = match value {
                 "resources" => "Resources",
+                "websites" => "Websites",
                 "fonts" => "Fonts",
                 "codepen" => "CodePen",
                 "brand-guidelines" => "Brand Guidelines",
@@ -764,7 +765,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             }
         }
         if item.kind == "link"
-            && (["Resources", "Fonts", "CodePen", "Brand Guidelines"].contains(&item.source.as_str()) || item.source.starts_with("Resources/"))
+            && (["Resources", "Websites", "Fonts", "CodePen", "Brand Guidelines"].contains(&item.source.as_str()) || item.source.starts_with("Resources/"))
         {
             tx.execute(
                 "UPDATE items SET source=? WHERE id=? AND kind='link'",

@@ -240,3 +240,10 @@ it("stale inbox markers cannot keep a moved reference in the previous section",(
  equal(filterItems([design],{...defaults,category:"Components / Uncategorised"}).length,0);
  equal(filterItems([design],{...defaults,category:"Illustration"}).length,1);
 });
+
+it("Websites stays separate from Links and filters by existing tags",()=>{
+ const website={...items[0],kind:'link' as const,path:'https://inspiring.example/',source:'Websites',thumbnail:'thumb.png',tags:[4]};
+ equal(filterItems([website],{...defaults,collection:'Websites',tags:[4]}).length,1);
+ equal(filterItems([website],{...defaults,collection:'Websites',tags:[5]}).length,0);
+ equal(filterItems([website],{...defaults,linksOnly:true}).length,0);
+});

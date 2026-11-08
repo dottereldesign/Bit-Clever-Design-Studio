@@ -11,7 +11,7 @@ window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()
  if(command==="capture_items_progress")command="capture_items";
   calls.push({command,args});
   if(command==='get_library')return {...structuredClone(library),items:structuredClone(library.items.filter(i=>!removedIds.has(i.id))),undo_label:history.length?'Remove from library':null};
-  if(command==='update'){if(args.change.action==='undo_organisation'){removedIds.clear();for(const id of history.pop())removedIds.add(id);return;}if(args.change.action==='remove_items')history.push([...removedIds]);for(const id of args.change.ids??[]){if(args.change.action==='remove_items')removedIds.add(id);else if(args.change.action==='restore_items')removedIds.delete(id);}return;}
+  if(command==='update'){if(args.change.action==='add_tag'){for(const id of args.change.ids)library.items.find(i=>i.id===id).tags.push(args.change.target);return;}if(args.change.action==='undo_organisation'){removedIds.clear();for(const id of history.pop())removedIds.add(id);return;}if(args.change.action==='remove_items')history.push([...removedIds]);for(const id of args.change.ids??[]){if(args.change.action==='remove_items')removedIds.add(id);else if(args.change.action==='restore_items')removedIds.delete(id);}return;}
   if(command.startsWith('plugin:event|'))return ++callbackId;
   if(command==='read_clipboard'){await new Promise(r=>setTimeout(r,40));return structuredClone(clipboard);}
   if(command==='capture_screen')return screenResult;
@@ -20,7 +20,7 @@ window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()
   if(command==='discard_capture'||command==='open_external_url')return;
   if(command==='capture_items'){
     const c=args.input,id=library.items.length+1;
-    library.items.push({id,path:c.url,name:c.name||'Reference',kind:'link',source:({fonts:'Fonts',codepen:'CodePen','brand-guidelines':'Brand Guidelines'})[c.destination],thumbnail:'C:/saved/thumb.png',modified:0,added:id,missing:false,tags:c.tags,projects:c.projects});
+    library.items.push({id,path:c.url,name:c.name||'Reference',kind:'link',source:({websites:'Websites',fonts:'Fonts',codepen:'CodePen','brand-guidelines':'Brand Guidelines'})[c.destination],thumbnail:'C:/saved/thumb.png',modified:0,added:id,missing:false,tags:c.tags,projects:c.projects});
     return {ids:[id],added:1,reused:0,destination:c.destination};
   }
   throw Error(`Unexpected ${command}`);
@@ -149,6 +149,17 @@ try{
   assert(crop.width===400&&crop.height===300&&crop.x===0&&crop.y===0,'Whole image should not crop');
   assert(library.items[3].path==='https://codepen.io/example/pen/captured'&&library.items[3].thumbnail==='C:/staging/cropped.png','Editing thumbnail changed URL or failed to persist');
   checks.push('Edit thumbnail opens the crop directly; whole-image save replaces only the thumbnail');
+  assert(names[0]==='Websites'&&names[1]==='Links','Websites should lead General');
+  nav('Websites');await until(()=>!document.querySelector('.link-card'),'Empty Websites');
+  clipboard={files:[],url:'https://inspiring.example/'};document.querySelector('.link-board').tabIndex=-1;document.querySelector('.link-board').focus();paste();
+  await until(()=>document.querySelector('[aria-label="Website URL"]')?.value===clipboard.url,'Website URL prompt');window.__screenshotReady=true;await pause(700);
+  assert(!document.querySelector('.website-capture [type=submit]'),'Website flow requires confirmation');
+  const before=library.items.length;clipboard={files:[{path:'C:/staging/website.png',name:'Website.png'}],url:''};paste();
+  await until(()=>!document.querySelector('.website-capture')&&library.items.length===before+1,'Image paste auto saves website');
+  const website=library.items.at(-1);assert(website.source==='Websites'&&website.path==='https://inspiring.example/'&&website.thumbnail,'Website metadata incorrect');
+  document.querySelector('.link-card-open').click();await until(()=>calls.some(c=>c.command==='open_external_url'&&c.args.url===website.path),'Website opens in browser');
+  document.querySelector('.link-card-menu').click();await until(()=>button('Tags'),'Website tags action');button('Tags').click();await until(()=>button('Sports'),'Tag picker');button('Sports').click();await until(()=>library.items.at(-1).tags.includes(1),'Website tag persisted');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  checks.push('Websites leads General; URL then image paste saves once without confirmation; cards open externally and offer tags');
   document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,checks,error:String(error),calls:calls.slice(-6)});}
 </script></body></html>

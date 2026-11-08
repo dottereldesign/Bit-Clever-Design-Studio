@@ -391,6 +391,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
     };
     if c.files.is_empty() {
         let (destination, collection) = match c.destination.as_str() {
+            "websites" => ("websites", "Websites"),
             "fonts" => ("fonts", "Fonts"),
             "codepen" => ("codepen", "CodePen"),
             "brand-guidelines" => ("brand-guidelines", "Brand Guidelines"),
@@ -398,6 +399,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             "links" | "" => if c.resource { ("resources", "Resources") } else { ("links", "") },
             _ => return Err("Unknown link collection".into()),
         };
+        if destination=="websites"&&c.thumbnail.is_none(){return Err("Add an image for this website.".into());}
         result.destination = Some(destination);
         let url = url::Url::parse(db::valid_url(&c.url)?)
             .map_err(err)?

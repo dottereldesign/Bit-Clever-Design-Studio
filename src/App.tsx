@@ -64,7 +64,7 @@ import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
 import RecentReferences from "./RecentReferences";
-import { collections, sites, withCodePen, ordered, useLocalList, type Shortcut, type GeneralTarget } from "./Shortcuts";
+import { collections, sites, withWebsites, withCodePen, ordered, useLocalList, type Shortcut, type GeneralTarget } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
@@ -252,7 +252,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [tagMode,setTagMode]=useState<"any"|"all">(savedView?.tagMode??"any");
   const [recent,setRecent]=useState<"added"|"viewed"|null>(savedView?.recent??null);
   const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
-  const [collectionPrefs,setCollectionPrefs]=useHistoryState<Shortcut[]>("collection-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("collection-shortcuts")??"null");return Array.isArray(value)?value:collections;}catch{return collections;}},"Sidebar shortcuts");
+  const [collectionPrefs,setCollectionPrefs,setCollectionPrefsRaw]=useHistoryState<Shortcut[]>("collection-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("collection-shortcuts")??"null");return withWebsites(Array.isArray(value)?value:collections);}catch{return collections;}},"Sidebar shortcuts");
+  useEffect(()=>{const next=withWebsites(collectionPrefs);if(next!==collectionPrefs)setCollectionPrefsRaw(next);},[collectionPrefs,setCollectionPrefsRaw]);
   const [sitePrefs,setSitePrefs,setSitePrefsRaw]=useHistoryState<Shortcut[]>("site-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("site-shortcuts")??"null");return Array.isArray(value)?value:sites;}catch{return sites;}},"Favourite websites");
   useEffect(()=>{const next=withCodePen(sitePrefs);if(next!==sitePrefs)setSitePrefsRaw(next);},[sitePrefs,setSitePrefsRaw]);
   const [extraDialog,setExtraDialog]=useState<"sheet"|null>(null);
@@ -883,7 +884,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           path,
           name: path.replace(/\\/g, "/").split("/").pop()!,
         }));
-        setCapture({ files, url: "" });
+        setCapture(boardView==="websites"?{files:[],url:"",thumbnail:files[0],destination:"websites"}:{ files, url: "" });
       }
     } catch (e) {
       report(e);
@@ -931,7 +932,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         e.preventDefault();
         setReadingCapture(true);
         stageFiles(files,setImportProgress)
-          .then(setCapture)
+          .then(draft=>setCapture(boardView==="websites"?{...draft,files:[],thumbnail:draft.files[0],destination:"websites"}:draft))
           .catch(report)
           .finally(() => {setReadingCapture(false);setImportProgress(null);});
         return;
