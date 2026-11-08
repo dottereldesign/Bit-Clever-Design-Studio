@@ -363,6 +363,11 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
         db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;
         if !name.is_empty(){db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;}
     }
+    // Filing in a named folder consumes either inbox, but never other named folders.
+    if !name.is_empty() && name != "Components / Uncategorised" {
+        db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;
+        db.execute("DELETE FROM item_component_folders WHERE item_id=? AND name='Components / Uncategorised'",[id]).map_err(err)?;
+    }
     let name=if name.starts_with("Components / ") {"Components / Uncategorised"} else {name};
     if !name.is_empty() { db.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[name]).map_err(err)?; }
     db.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,name]).map_err(err)?;
@@ -819,6 +824,20 @@ mod arrival_tests {
         change_to("Branding");let design=load(&path,false).unwrap().items[0].clone();assert!(design.category_added["Branding"]>10);assert_eq!(design.added,10);
     }
     #[test]
+    fn filing_from_either_inbox_consumes_inbox_but_preserves_named_folders(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("inbox.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'one.png','One','image','',10);INSERT INTO item_categories VALUES(1,'');INSERT INTO item_design_folders VALUES(1,'');").unwrap();
+        let apply=|action:&str,value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":action,"ids":[1],"value":if action.ends_with("organisation"){None}else{Some(value)}})).unwrap()).unwrap();
+        let read=||load(&path,false).unwrap().items.remove(0);
+        apply("set_category","Components / Templates");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders,vec!["Components / Templates"]);
+        apply("undo_organisation","");assert_eq!(read().design_folders,vec![""]);assert_eq!(read().category.as_deref(),Some(""));
+        apply("redo_organisation","");assert!(read().design_folders.is_empty());
+        apply("set_category","Components / Uncategorised");apply("set_category","Data");assert!(read().component_folders.is_empty());assert_eq!(read().category.as_deref(),Some("Data"));
+        apply("undo_organisation","");assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);apply("redo_organisation","");assert!(read().component_folders.is_empty());
+        apply("set_category","Components / Templates");assert_eq!(read().design_folders,vec!["Data"]);assert_eq!(read().component_folders,vec!["Components / Templates"]);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();let saved=load(&restored,false).unwrap().items.remove(0);assert_eq!(saved.design_folders,read().design_folders);assert_eq!(saved.component_folders,read().component_folders);
+    }
+    #[test]
     fn shared_sections_preserve_folders_removal_history_and_backup(){
         let temp=tempfile::tempdir().unwrap();let path=temp.path().join("shared.sqlite");init(&path).unwrap();
         connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'hero.png','Hero','image','',10);INSERT INTO item_categories VALUES(1,'Components / Heroes');").unwrap();
@@ -831,7 +850,7 @@ mod arrival_tests {
         apply("remove_component_folder","Components / Heroes");assert_eq!(read().design_folders,vec!["Illustration"]);assert!(read().component_folders.is_empty());
         apply("set_category","Components / Headers");assert_eq!(read().design_folders,vec!["Illustration"]);assert_eq!(read().component_folders,vec!["Components / Headers"]);
         apply("set_category","");assert_eq!(read().component_folders,vec!["Components / Headers"]);assert_eq!(read().design_folders,vec![""]);
-        apply("set_category","Components / Footers");assert_eq!(read().design_folders,vec![""]);assert_eq!(read().component_folders.len(),2);
+        apply("set_category","Components / Footers");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders.len(),2);
         apply("set_category","Illustration");apply("set_category","Components / Uncategorised");assert_eq!(read().design_folders,vec!["Illustration"]);assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);
     }
     #[test]

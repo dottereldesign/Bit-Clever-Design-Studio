@@ -13,7 +13,7 @@ BitClever Library/
   Read Me.txt
 ```
 
-Original media uses readable, collision-safe filenames. Files belong to one physical collection; design and component folder memberships remain in the database and appear in the offline browser. Assigning an image to multiple folders does not duplicate its original. Uncategorised contains items with no folder assignments; removing the final assignment returns the item there. An item can belong to both Design Inspo and App Components. Adding to either section preserves the other section’s assignments. Uncategorised is independent in each section. Source URLs, tags, project pins, links, Home tiles, custom icons and appearance settings travel with the library.
+Original media uses readable, collision-safe filenames. Files belong to one physical collection; design and component folder memberships remain in the database and appear in the offline browser. Assigning an image to multiple folders does not duplicate its original. Uncategorised contains items with no folder assignments; removing the final assignment returns the item there. An item can belong to both Design Inspo and App Components. Adding to either section preserves the other section’s assignments. Filing in a named folder clears Uncategorised membership in both sections while preserving all named folders. Source URLs, tags, project pins, links, Home tiles, custom icons and appearance settings travel with the library.
 
 ## Copying and restoring
 
