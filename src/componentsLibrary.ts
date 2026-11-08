@@ -6,7 +6,7 @@ export const componentGroups: Record<string, string[]> = {
   "Site parts": ["Navbars", "Mega menus", "Headers", "Footers", "Banners", "404 pages", "Dashboard", "Templates"],
   "Page sections": ["Heroes", "Features", "Calls to action", "Stats", "Testimonials", "Pricing", "FAQs", "Contact", "Teams", "Careers", "Logo grids"],
   "Content & media": ["Image boxes", "Icon boxes", "Text blocks", "Galleries", "Videos", "Steps", "Timelines"],
-  "Interactive": ["Sliders", "Tabs", "Accordions"],
+  "Interactive": ["Buttons", "Sliders", "Tabs", "Accordions"],
   "Forms": ["Signups", "Logins", "Email opt-ins"],
   "Blog & portfolio": ["Blog sections", "Single posts", "Blog archives", "Portfolio headers", "Portfolio sections"],
   "Shop": ["Products", "Product grids", "Cart & checkout"],
