@@ -45,6 +45,7 @@ pub fn allocate_filename(title:&str,source:&Path,group:&str,used:&mut std::colle
 }
 fn display_folder(name:&str,preferences:&serde_json::Value)->String{
     if let Some(label)=preferences["folder-labels"][name].as_str(){return label.to_owned();}
+    if ["Components / Headers","Components / Header","Components / Heroes","Components / Hero"].contains(&name){return "Header".into();}
     name.trim_start_matches("Components / ").replace('_'," ").split_whitespace().map(|w|{
         if ["ui","ux","ai","3d","2d","html","css","faqs"].contains(&w.to_lowercase().as_str()){if w.eq_ignore_ascii_case("faqs"){"FAQs".into()}else{w.to_uppercase()}}
         else {let mut chars=w.chars();match chars.next(){Some(c)=>c.to_uppercase().collect::<String>()+chars.as_str(),None=>String::new()}}
@@ -60,7 +61,8 @@ pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::
         if let Some(c)=&item.category {if (c.starts_with("Components / ")== (section=="App Components"))&&c!="Components / Uncategorised"&&!folders.contains(c){folders.push(c.clone());}}
         if folders.iter().any(|f|!f.is_empty()&&f!="Components / Uncategorised"){folders.retain(|f|!f.is_empty()&&f!="Components / Uncategorised");}
         if folders.is_empty(){folders.push(String::new());}
-        let labels:Vec<String>=folders.iter().map(|f|if f.is_empty()||f=="Components / Uncategorised"{"Uncategorised".into()}else{display_folder(f,preferences)}).collect();
+        let mut labels:Vec<String>=folders.iter().map(|f|if f.is_empty()||f=="Components / Uncategorised"{"Uncategorised".into()}else{display_folder(f,preferences)}).collect();
+        labels.sort();labels.dedup();
         let names=serde_json::to_string(&labels).map_err(err)?;
         let url=if item.kind=="link" {if db::valid_url(&item.path).is_err(){continue;}item.path.clone()}else{item.path.split('/').map(|s|url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>().replace('+',"%20")).collect::<Vec<_>>().join("/")};
         html.push_str(&format!("<article data-section=\"{}\" data-folders=\"{}\"><a href=\"{}\">",section,escape(&names),escape(&url)));

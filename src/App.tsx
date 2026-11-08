@@ -558,7 +558,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     if(target.kind==='website'){setGeneralKey(null);void openUrl(target.value).catch(report);return;}
     generalRoute.current=JSON.stringify([entry.key,target]);
     navigate(target.kind==='project'?Number(target.value):null,target.kind==='view'&&target.value==='links');setGeneralKey(entry.key);
-    if(target.kind==='category'){if(target.value!=='__all__')setCategory(target.value);return;}
+    if(target.kind==='category'){if(target.value!=='__all__')setCategory(target.value===allComponents?allComponents:filingCategory(target.value));return;}
     if(target.kind==='project')return;
     const key=target.value;if(isBoardDestination(key))setBoardView(key);if(key==='resources')setResourcesView(true);
     if(key==='facebook'){setVideoView(true);setSource('Videos');}
@@ -569,7 +569,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     if(destination.kind==='collection'){const entry=collectionPrefs.find(s=>s.key===destination.value);if(entry)openGeneral(entry);return;}
     if(destination.kind==="project"){navigate(Number(destination.value));return;}
     navigate(null,destination.value==="links");
-    if(destination.kind==="category"){if(destination.value!=="__all__")setCategory(destination.value);return;}
+    if(destination.kind==="category"){if(destination.value!=="__all__")setCategory(destination.value===allComponents?allComponents:filingCategory(destination.value));return;}
     const key=destination.value;
     if(isBoardDestination(key))setBoardView(key);
     if(key==="resources")setResourcesView(true);

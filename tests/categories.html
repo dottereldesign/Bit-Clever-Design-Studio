@@ -37,32 +37,32 @@ try{
    assert(localStorage.getItem('sidebar-open:'+name)==='false','Remember '+name);
    toggle.click();await until(()=>toggle.getAttribute('aria-expanded')==='true','Expand '+name);
  }
- await until(()=>category('Components / Heroes'),'Open component folders');
+ await until(()=>category('Components / Footers'),'Open component folders');
  const move=new DataTransfer();move.setData('application/design-items','[6]');
- category('Components / Heroes').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:move}));
+ category('Components / Footers').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:move}));
  await until(()=>cards().length===1,'File component');
- category('Components / Heroes').click();await until(()=>cards().length===1&&document.querySelector('[data-item-id="6"]'),'Filed hero');
- category('All Components').click();await until(()=>cards().length===2,'All Components includes filed hero');
+ category('Components / Footers').click();await until(()=>cards().length===1&&document.querySelector('[data-item-id="6"]'),'Filed footer');
+ category('All Components').click();await until(()=>cards().length===2,'All Components includes filed footer');
  await until(()=>category('Components / Navbars'),'Site parts');
  category('Components / Navbars').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:move}));
  await until(()=>library.items.find(i=>i.id===6).component_folders?.length===2,'Add second folder');
- category('Components / Heroes').click();await until(()=>cards().length===1,'First folder preserved');
+ category('Components / Footers').click();await until(()=>cards().length===1,'First folder preserved');
  category('Components / Navbars').click();await until(()=>cards().length===1,'Second folder contains same item');
  document.querySelector('[data-item-id="6"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:350,clientY:300}));
  await until(()=>button('Organise folders…'),'Component context action');button('Organise folders…').click();
  const folder=name=>[...document.querySelectorAll('[role="checkbox"]')].find(b=>b.textContent.includes(name));
  await until(()=>folder('Navbars')?.getAttribute('aria-checked')==='true','Checked membership');
- folder('Headers').click();await until(()=>folder('Headers')?.getAttribute('aria-checked')==='true','Add Headers in picker');
+ folder('Header').click();await until(()=>folder('Header')?.getAttribute('aria-checked')==='true','Add Headers in picker');
  assert(folder('Navbars').getAttribute('aria-checked')==='true','Adding Headers removed Navbars');
  await pause(100);
  folder('Navbars').click();await until(()=>folder('Navbars')?.getAttribute('aria-checked')==='false'&&cards().length===0,'Remove only Navbar membership');
  button('Done').click();category('Components / Headers').click();await until(()=>cards().length===1,'Headers preserved after removal');
  assert(category('Components / Headers').querySelector('small').textContent==='1','Membership count incorrect');
  assert(category('Components / Mega menus'),'Mega menus folder missing');
- const remove=document.querySelector('[data-item-id="6"] .card-remove-folder');assert(remove&&remove.title==='Remove from Headers','Quick remove missing or wrong folder');
+ const remove=document.querySelector('[data-item-id="6"] .card-remove-folder');assert(remove&&remove.title==='Remove from Header','Quick remove missing or wrong folder');
  remove.focus();await pause(100);assert(getComputedStyle(remove.closest('.card-bottom')).opacity==='1','Quick remove inaccessible on focus');
  await pause(100);remove.click();await until(()=>cards().length===0,'Quick remove updates current folder');
- assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Heroes'),'Quick remove lost another membership');
+ assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Footers'),'Quick remove lost another membership');
  assert(library.items.some(i=>i.id===6),'Quick remove deleted reference');
  button('Undo').click();await until(()=>cards().length===1,'Undo quick remove');
  category('All Components').click();await until(()=>cards().length===2,'Aggregate deduplicated');
@@ -126,7 +126,7 @@ try{
  const sectionDrag=new DataTransfer();sectionDrag.setData('application/design-items','[6]');
  heading('Design Inspo').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));
  await until(()=>library.items.find(i=>i.id===6).category==='','Drop on collapsed Design Inspo');
- assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Heroes'),'Shared addition lost Hero membership');
+ assert(library.items.find(i=>i.id===6).component_folders.includes('Components / Footers'),'Shared addition lost Footer membership');
  await until(()=>button('Undo'),'Transfer Undo available');button('Undo').click();await until(()=>library.items.find(i=>i.id===6).component_folders?.includes('Components / Headers'),'Undo restores multiple component memberships');
  await pause(150);button('App Components').click();await until(()=>button('App Components').getAttribute('aria-expanded')==='false','Collapse components');
  sectionDrag.setData('application/design-items','[1,2]');heading('App Components').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));
@@ -144,5 +144,5 @@ try{
  hotkey(',',true);await until(()=>document.querySelector('[aria-label="Keyboard shortcuts"]'),'Settings shortcut');assert(document.querySelector('[aria-label="Keyboard shortcuts"]').textContent.includes('Ctrl K'),'Search shortcut missing in settings');hotkey('Escape');
  checks.push('Storage lives in the header; search is hidden until /, Ctrl F or Ctrl K; Ctrl comma opens Settings with keyboard shortcuts');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
-}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,checks,searchHidden:document.querySelector(".search-popup")?.hidden,focus:document.activeElement?.outerHTML,dialogs:[...document.querySelectorAll("[role=dialog],.modal,.item-menu")].map(n=>n.textContent.slice(0,100)),calls:calls.slice(-6)});}
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,checks,searchHidden:document.querySelector(".search-popup")?.hidden,focus:document.activeElement?.outerHTML.slice(0,250),dialogs:[...document.querySelectorAll("[role=dialog],.modal,.item-menu")].map(n=>n.textContent.slice(0,100)),calls:calls.slice(-6)});}
 </script></body></html>

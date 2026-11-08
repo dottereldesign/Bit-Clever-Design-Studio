@@ -1,4 +1,4 @@
-import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox } from "./componentsLibrary";
+import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox, isHeaderFolder } from "./componentsLibrary";
 export type Item = {
   id: number;
   path: string;
@@ -64,6 +64,7 @@ export type Filters = {
   seed: number;
 };
 export function filterItems(items: Item[], f: Filters): Item[] {
+  if(f.category!=null&&isHeaderFolder(f.category))f={...f,category:filingCategory(f.category)};
   const query = f.search.toLocaleLowerCase().trim();
   const result = items.filter(
     (i) =>
@@ -97,7 +98,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
         ? a.name.localeCompare(b.name, undefined, { numeric: true })
         : f.sort === "shuffle"
           ? hash(a.id) - hash(b.id)
-          : (f.category!=null?(b.category_added?.[f.category]??b.added)-(a.category_added?.[f.category]??a.added):b.added-a.added) || b.id - a.id),
+          : (f.category!=null?folderArrival(b,f.category)-folderArrival(a,f.category):b.added-a.added) || b.id - a.id),
   );
 }
 export const categoryOf = (item: Item): string => {
@@ -109,7 +110,7 @@ export const categoryLabel = (name: string): string => {
  const label=readFolderLabels()[name];if(typeof label==='string'&&label.trim())return isComponent(name)?`Components / ${label}`:label;
  if(/^business[ _-]+cards$/i.test(name.trim()))return "Cards";
  if(/^patterns[ _-]*(?:&|and)?[ _-]*textures$/i.test(name.trim()))return "Backgrounds";
- if(name==="Components / Heroes")return "Components / Hero";
+ if(isHeaderFolder(name))return "Components / Header";
  if(name==="Components / FAQs")return "Components / FAQ";
  return name.replace(/_/g," ").trim().replace(/[\p{L}\p{N}]+/gu,word=>
   /^(2d|3d|ui|ux|ai|ar|vr|css|html)$/i.test(word)?word.toUpperCase():word===word.toLocaleLowerCase()?word.charAt(0).toLocaleUpperCase()+word.slice(1):word
@@ -127,6 +128,12 @@ export const designFoldersOf=(item:Item):string[]=>{
 // Legacy single-folder components remain visible until their first membership edit.
 export const componentFoldersOf = (item: Item): string[] => {
   const category=categoryOf(item);
-  const folders=[...new Set([...(item.component_folders ?? []), ...(category!==componentInbox?[category]:[])])].filter(n=>isComponent(n)&&n!==componentInbox);
+  const folders=[...new Set([...(item.component_folders ?? []), ...(category!==componentInbox?[category]:[])].map(filingCategory))].filter(n=>isComponent(n)&&n!==componentInbox);
   return folders.length?folders:(isComponent(category)||(item.component_folders??[]).includes(componentInbox)?[componentInbox]:[]);
 };
+
+function folderArrival(item:Item,folder:string):number{
+ if(!isHeaderFolder(folder))return item.category_added?.[folder]??item.added;
+ const arrivals=Object.entries(item.category_added??{}).filter(([name])=>filingCategory(name)===folder).map(([,added])=>added);
+ return arrivals.length?Math.max(...arrivals):item.added;
+}

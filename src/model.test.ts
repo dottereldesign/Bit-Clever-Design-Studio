@@ -224,3 +224,10 @@ it("shared references appear in both sections with independent inboxes",()=>{
  equal(filterItems([componentInbox],{...defaults,category:"Components / Uncategorised"}).length,1);
  equal(filterItems([componentInbox],{...defaults,category:"Illustration"}).length,1);
 });
+
+it("Hero and Headers share one Header folder without duplicate references",()=>{
+ const hero={...items[0],id:21,category:"Components / Heroes",component_folders:["Components / Heroes","Components / Headers"],category_added:{"Components / Heroes":400}};
+ const header={...items[0],id:22,category:"Components / Headers",added:300};
+ for(const category of ["Components / Headers","Components / Heroes","Components / Header"]){equal(filterItems([header,hero],{...defaults,category}).map(i=>i.id),[21,22]);}
+ equal(filterItems([hero],{...defaults,category:"Components / Uncategorised"}),[]);
+});

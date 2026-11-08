@@ -492,7 +492,10 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
                 if category.is_none() && component_memberships(&tx,id)?.is_empty() {return Err("Select a component still in your library.".into());}
                 materialize_design_folder(&tx,id)?;
                 materialize_component_folder(&tx,id)?;
-                tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;
+                if ["Components / Headers","Components / Header","Components / Heroes","Components / Hero"].contains(&value){
+                    tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name IN ('Components / Headers','Components / Header','Components / Heroes','Components / Hero')",[id]).map_err(err)?;
+                }else{tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;}
+
                 tx.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=?",[id]).map_err(err)?;
             }
         }
@@ -822,6 +825,14 @@ mod arrival_tests {
         change(&path,serde_json::from_value(serde_json::json!({"action":"redo_organisation"})).unwrap()).unwrap();assert_eq!(load(&path,false).unwrap().items[0].category_added,after.category_added);
         let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();assert_eq!(load(&restored,false).unwrap().items[0].category_added,after.category_added);
         change_to("Branding");let design=load(&path,false).unwrap().items[0].clone();assert!(design.category_added["Branding"]>10);assert_eq!(design.added,10);
+    }
+    #[test]
+    fn header_removal_removes_both_legacy_names_and_undo_restores_them(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("headers.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'one.png','One','image','',10);INSERT INTO item_categories VALUES(1,'Components / Heroes');INSERT INTO item_component_folders VALUES(1,'Components / Headers'),(1,'Components / Navbars');INSERT INTO item_design_folders VALUES(1,'Illustration');").unwrap();
+        change(&path,serde_json::from_value(serde_json::json!({"action":"remove_component_folder","ids":[1],"value":"Components / Headers"})).unwrap()).unwrap();
+        let item=load(&path,false).unwrap().items.remove(0);assert_eq!(item.component_folders,vec!["Components / Navbars"]);assert_eq!(item.design_folders,vec!["Illustration"]);
+        change(&path,serde_json::from_value(serde_json::json!({"action":"undo_organisation"})).unwrap()).unwrap();let item=load(&path,false).unwrap().items.remove(0);assert_eq!(item.category.as_deref(),Some("Components / Heroes"));assert_eq!(item.component_folders,vec!["Components / Headers","Components / Navbars"]);
     }
     #[test]
     fn filing_from_either_inbox_consumes_inbox_but_preserves_named_folders(){
