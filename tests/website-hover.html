@@ -18,7 +18,7 @@ try{
  enter(frame);await pause(80);leave(frame);await pause(350);assert(!document.querySelector('.website-thumbnail-scroll'),'Brief hover unnecessarily loaded full image');
  enter(frame);await until(()=>frame.dataset.scrolling==='true','Hover starts');
  const full=document.querySelector('.website-thumbnail-scroll');await pause(200);const before=y(full);await pause(700);const after=y(full);
- assert(after<before-7&&after>before-35,'Scrolling must move slowly and steadily');
+ assert(after<before-30&&after>before-80,'Scrolling must move steadily at the faster speed');
  assert(frame.getBoundingClientRect().height===height,'Hover changed card height');
  window.__screenshotReady=true;await pause(700);
  leave(frame);await until(()=>!document.querySelector('.website-thumbnail-scroll'),'Hover releases full image');

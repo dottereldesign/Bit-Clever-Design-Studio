@@ -6,7 +6,7 @@ Capture opens a separate browser window and profile, leaving ordinary browser ta
 
 Detected login forms, cookie dialogs and verification screens pause capture. Handle them in the capture window and select Continue capture in BitClever. Detection is best effort; unfamiliar overlays, virtualised content and scroll-dependent effects may still require a manual image. Infinite pages, horizontal overflow and pages taller than 40,000 pixels fail explicitly rather than silently saving a partial result. Capture and attention waits have time limits.
 
-Hover over a thumbnail to scroll slowly through its screenshot. Moving away returns to the top. Full images load only after a brief hover, short screenshots remain still, and reduced-motion preferences disable scrolling.
+Hover over a thumbnail to scroll through its screenshot at 72 pixels per second. Moving away returns to the top. Full images load only after a brief hover, short screenshots remain still, and reduced-motion preferences disable scrolling.
 
 Website images retain their full resolution in the library's thumbnail assets. Cards use a separate, regenerable 600 × 450 maximum preview of the top of the page. Click a thumbnail or its Preview button to inspect the full screenshot in the normal image viewer (a side panel on wide windows), with zoom and next/previous navigation. The external-link icon at the right of the card opens the website in the browser. Right-click and choose Open full-page screenshot to open the image in the system image viewer. Portable backup includes the full image, URL, tags and project assignments. Browser profiles and preview caches are excluded; browser choice is a local preference.
 
