@@ -1,3 +1,4 @@
+import HoverPreview from "./HoverPreview";
 import {stageFiles} from "./captureImport";
 import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
 import {Channel} from "@tauri-apps/api/core";
@@ -1911,29 +1912,7 @@ function Card({
         ) : (
           <span className="skeleton" />
         )}
-        {playing &&
-          preview &&
-          !motionError &&
-          (item.kind === "animation" ? (
-            <img
-              src={preview}
-              alt=""
-              className="hover-preview"
-              draggable={false}
-              onError={() => setMotionError(true)}
-            />
-          ) : (
-            <video
-              src={preview}
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="hover-preview"
-              draggable={false}
-              onError={() => setMotionError(true)}
-            />
-          ))}
+        {playing && preview && !motionError && <HoverPreview key={`${item.id}:${preview}`} src={preview} animation={item.kind==='animation'} onError={()=>setMotionError(true)}/>}
       </button>
       <div className="card-shade" />
       {failed && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
