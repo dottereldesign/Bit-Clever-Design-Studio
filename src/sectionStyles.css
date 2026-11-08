@@ -1,9 +1,9 @@
 /* These treatments are scoped to the two library headers, never their folders. */
 .section-feature { --section-ink:#713f2c; --section-tint:#f1e4d8; --section-accent:#bd5b35; }
 .section-feature.section-components { --section-ink:#313f80; --section-tint:#e3e8f6; --section-accent:#5369c3; }
-.section-feature > .sidebar-heading { position:relative; isolation:isolate; margin:18px 4px 7px; padding:0 9px; min-height:56px; color:var(--section-ink); transition:background .2s,box-shadow .2s,transform .2s,border-color .2s; }
+.section-feature > .sidebar-heading { position:relative; isolation:isolate; margin:18px 4px 7px; padding:0 9px; min-height:44px; color:var(--section-ink); transition:background .2s,box-shadow .2s,transform .2s,border-color .2s; }
 .sidebar-scroll .section-feature > .sidebar-heading { margin:18px 4px 7px; }
-.section-feature > .sidebar-heading > .section-toggle { min-width:0; min-height:56px; gap:8px; padding:8px 0; position:relative; z-index:1; color:inherit; }
+.section-feature > .sidebar-heading > .section-toggle { min-width:0; min-height:44px; gap:8px; padding:4px 0; position:relative; z-index:1; color:inherit; }
 .section-copy { min-width:0; flex:1; display:flex; flex-direction:column; gap:4px; }
 .section-title { font-size:13px; font-weight:650; line-height:1.2; overflow-wrap:normal; }
 .section-kicker { font-size:8px; font-weight:550; text-transform:uppercase; letter-spacing:1.1px; opacity:.7; line-height:1.2; }
@@ -75,7 +75,7 @@
 .section-style-8 > .sidebar-heading:hover::after { transform:translate(-9px,6px); }
 .section-style-8 > .sidebar-heading:hover { box-shadow:0 5px 13px #13182c25; }
 /* 09 / numbered Swiss index */
-.section-style-9 > .sidebar-heading { border-bottom:1px solid var(--section-ink);padding:0 2px;min-height:65px; }
+.section-style-9 > .sidebar-heading { border-bottom:1px solid var(--section-ink);padding:0 2px;min-height:44px; }
 .section-style-9 .section-number { display:block;font-size:32px;font-weight:300;letter-spacing:-3px;line-height:1;color:var(--section-accent);margin-right:3px; }
 .section-style-9 .section-title { font-size:12px;font-weight:750;letter-spacing:-.2px; }
 .section-style-9 .section-kicker { display:none; }

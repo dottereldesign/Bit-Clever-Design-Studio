@@ -1,4 +1,4 @@
-.home-nav { margin:8px 0 5px; font-weight:550; }
+.home-nav { margin:8px 0 0; font-weight:550; }
 .home-dashboard { flex:1;min-height:0;display:flex;flex-direction:column;width:100%;overflow:hidden;background:#f7f7f5; }
 .home-toolbar { display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;flex-shrink:0; }
 .home-toolbar h1 { font-size:18px;font-weight:500;margin:0;letter-spacing:-.4px; }

@@ -1772,6 +1772,7 @@ main {
   scrollbar-width: thin;
 }
 .sidebar-scroll .sidebar-heading { margin: 12px 4px 3px; }
+.sidebar-scroll > .sidebar-section:is([data-section="General"], [data-section="Projects"]) > .sidebar-heading { margin-top:4px; }
 .sidebar-scroll .projects { max-height: none; overflow: visible; }
 .sidebar-scroll .source-list { padding-bottom: 0; }
 .section-toggle {
