@@ -23,7 +23,7 @@ createRoot(document.getElementById('root')).render(React.createElement(App));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error(label);await pause(25);}}
 const folder=name=>document.querySelector(`[data-category="Components / ${name}"]`);
-const paste=()=>document.querySelector('.home-nav').dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));
+const paste=()=>document.querySelector('[aria-label="Go to Home"]').dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));
 try{
  await until(()=>folder('404 pages'),'startup');library.items[0].category='Components / 404 pages';folder('404 pages').click();await pause(100);paste();
  await until(()=>document.querySelector('.links-table tr[data-item-id="5"]'),'pasted link row');assert(!document.querySelector('.capture-dialog'),'Unexpected capture dialog');assert(document.querySelectorAll('.card').length===1,'Missing image');assert(!!(document.querySelector('.card').compareDocumentPosition(document.querySelector('.links-table'))&Node.DOCUMENT_POSITION_FOLLOWING),'Links should follow thumbnails');

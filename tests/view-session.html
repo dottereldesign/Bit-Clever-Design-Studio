@@ -15,10 +15,10 @@ function filled(){const grid=document.querySelector('.media-grid');if(!grid)retu
 try{
  await until(()=>category('Branding'),'Sidebar library');
  if(phase===0){
-  assert(document.querySelector('.home-nav.active'),'First launch should start on Home');
+  assert(document.querySelector('.home-dashboard'),'First launch should start on Home');
   category('Branding').click();await until(()=>document.querySelector('.card img')?.naturalWidth>0,'Branding thumbnails');await pause(400);
   assert(filled(),'Grid leaves a right-hand gap after opening from Home');
-  document.querySelector('.home-nav').click();await pause(40);category('Branding').click();await pause(400);assert(filled(),'Grid fails after repeated Home navigation');
+  document.querySelector('[aria-label="Go to Home"]').click();await pause(40);category('Branding').click();await pause(400);assert(filled(),'Grid fails after repeated Home navigation');
   const width=innerWidth;window.__resizeAction={id:1,width:width-120};await until(()=>window.__resizeActionDone===1,'Resize');await pause(150);assert(filled(),'Grid does not fill resized width');window.__resizeAction={id:2,width};await until(()=>window.__resizeActionDone===2,'Restore width');await pause(150);
   checks.push('Grid fills its available width after opening from Home, repeated navigation and window resizing');
   const content=document.querySelector('.content');content.scrollTop=2100;await pause(500);content.scrollTop+=10;await pause(150);assert(storage()?.scroll.anchor,'No visible thumbnail saved');
@@ -40,9 +40,9 @@ try{
   await until(()=>document.querySelector('.topbar h1')?.textContent==='Resources','Restore General collection');assert(document.querySelector('.resource-favourites'),'Resources content missing');checks.push('General collections reopen to their own page');
   const header=document.querySelector('[data-section-label="App Components"]');if(!category('Components / Pricing'))header.querySelector('button').click();await until(()=>category('Components / Pricing'),'Pricing folder');category('Components / Pricing').click();await until(()=>document.querySelector('.topbar h1')?.textContent.includes('Pricing'),'Pricing page');await reload(4);
  }else if(phase===4){
-  await until(()=>document.querySelector('.topbar h1')?.textContent.includes('Pricing')&&document.querySelector('.card img')?.naturalWidth,'Restore component folder');checks.push('App Components folders reopen correctly');document.querySelector('.home-nav').click();await reload(5);
+  await until(()=>document.querySelector('.topbar h1')?.textContent.includes('Pricing')&&document.querySelector('.card img')?.naturalWidth,'Restore component folder');checks.push('App Components folders reopen correctly');document.querySelector('[aria-label="Go to Home"]').click();await reload(5);
  }else{
-  assert(document.querySelector('.home-nav.active'),'Home was not restored');checks.push('Home stays the starting page when it was the last page used');document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks});
+  assert(document.querySelector('.home-dashboard'),'Home was not restored');checks.push('Home stays the starting page when it was the last page used');document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks});
  }
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,phase,checks,saved:storage(),heading:document.querySelector('.topbar h1')?.textContent});}
 </script></body></html>

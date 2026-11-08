@@ -37,7 +37,6 @@ import {
   Folder,
   FolderPlus,
   FolderMinus,
-  House,
   Grid2X2,
   ImageOff,
   Link2,
@@ -1087,12 +1086,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         className="sidebar"
         inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
       >
-        <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}}>
+        <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </button>
         <SidebarNavigation order={navLayout.order}>
-        <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><AppIcon value={icons.overrides.home} fallback={<House size={16}/>}/><span>Home</span></button>
         <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
