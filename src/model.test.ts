@@ -218,10 +218,10 @@ it("shared references appear in both sections with independent inboxes",()=>{
  for(const category of ["Illustration","Components / Heroes","All Components"])equal(filterItems([shared],{...defaults,category}).length,1);
  for(const category of ["","Components / Uncategorised"])equal(filterItems([shared],{...defaults,category}).length,0);
  const designInbox={...shared,category:"Components / Uncategorised",design_folders:[""]};
- equal(filterItems([designInbox],{...defaults,category:""}).length,1);
+ equal(filterItems([designInbox],{...defaults,category:""}).length,0);
  equal(filterItems([designInbox],{...defaults,category:"Components / Heroes"}).length,1);
  const componentInbox={...shared,component_folders:["Components / Uncategorised"]};
- equal(filterItems([componentInbox],{...defaults,category:"Components / Uncategorised"}).length,1);
+ equal(filterItems([componentInbox],{...defaults,category:"Components / Uncategorised"}).length,0);
  equal(filterItems([componentInbox],{...defaults,category:"Illustration"}).length,1);
 });
 
@@ -230,4 +230,13 @@ it("Hero and Headers share one Header folder without duplicate references",()=>{
  const header={...items[0],id:22,category:"Components / Headers",added:300};
  for(const category of ["Components / Headers","Components / Heroes","Components / Header"]){equal(filterItems([header,hero],{...defaults,category}).map(i=>i.id),[21,22]);}
  equal(filterItems([hero],{...defaults,category:"Components / Uncategorised"}),[]);
+});
+
+it("stale inbox markers cannot keep a moved reference in the previous section",()=>{
+ const templates={...items[0],category:"Components / Uncategorised",component_folders:["Components / Templates"],design_folders:[""]};
+ equal(filterItems([templates],{...defaults,category:""}).length,0);
+ equal(filterItems([templates],{...defaults,category:"Components / Templates"}).length,1);
+ const design={...templates,category:"Illustration",design_folders:["Illustration"],component_folders:["Components / Uncategorised"]};
+ equal(filterItems([design],{...defaults,category:"Components / Uncategorised"}).length,0);
+ equal(filterItems([design],{...defaults,category:"Illustration"}).length,1);
 });

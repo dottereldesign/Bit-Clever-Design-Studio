@@ -12,7 +12,7 @@ const history=[];const calls=[];let callback=0;window.isTauri=true;window.__TAUR
  if(previous.startsWith('Components / ')&&(previous!=='Components / Uncategorised'||!folders.size))folders.add(previous);
  if(c.value.startsWith('Components / ')){if(c.value==='Components / Uncategorised')folders.clear();else folders.delete('Components / Uncategorised');folders.add(c.value);i.category='Components / Uncategorised';}
  else {if(!c.value)designs.clear();else designs.delete('');designs.add(c.value);i.category=c.value;}
- if(c.value&&c.value!=='Components / Uncategorised'){designs.delete('');folders.delete('Components / Uncategorised');}
+ if(c.value)designs.delete('');if(c.value!=='Components / Uncategorised')folders.delete('Components / Uncategorised');
  i.design_folders=[...designs];i.component_folders=[...folders];
  }if(c.value&&!library.categories.includes(c.value))library.categories.push(c.value);}else if(c.action==='remove_component_folder'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.component_folders=i.component_folders.filter(n=>n!==c.value);}else if(c.action==='remove_design_folder'){history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id))){i.design_folders=[...new Set([...(i.design_folders??[]),categoryOf(i)])].filter(n=>n&&n!==c.value);if(categoryOf(i)===c.value)i.category=i.design_folders[0]??'';}}else if(c.action==='restore_categories'){for(const [id,name]of JSON.parse(c.value))library.items.find(i=>i.id===id).category=name;}else if(c.action==='create_category')library.categories.push(c.name);else throw Error('Unexpected change '+c.action);return;}
  throw Error('Unexpected '+command);

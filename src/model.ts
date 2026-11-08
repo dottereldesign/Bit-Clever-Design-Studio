@@ -122,14 +122,14 @@ export const libraryCategories = (lib: Library): string[] => [...new Set([...(li
 export const designFoldersOf=(item:Item):string[]=>{
  const category=categoryOf(item);
  const folders=[...new Set([...(item.design_folders??[]),...(category?[category]:[])])].filter(n=>n&&!isComponent(n)&&!isWebDesign(n));
- return folders.length?folders:(!isComponent(category)||(item.design_folders??[]).includes('')?['']:[]);
+ return folders.length?folders:(!isComponent(category)?['']:[]);
 };
 
 // Legacy single-folder components remain visible until their first membership edit.
 export const componentFoldersOf = (item: Item): string[] => {
   const category=categoryOf(item);
   const folders=[...new Set([...(item.component_folders ?? []), ...(category!==componentInbox?[category]:[])].map(filingCategory))].filter(n=>isComponent(n)&&n!==componentInbox);
-  return folders.length?folders:(isComponent(category)||(item.component_folders??[]).includes(componentInbox)?[componentInbox]:[]);
+  return folders.length?folders:(isComponent(category)?[componentInbox]:[]);
 };
 
 function folderArrival(item:Item,folder:string):number{

@@ -363,11 +363,11 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
         db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;
         if !name.is_empty(){db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;}
     }
-    // Filing in a named folder consumes either inbox, but never other named folders.
-    if !name.is_empty() && name != "Components / Uncategorised" {
-        db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;
-        db.execute("DELETE FROM item_component_folders WHERE item_id=? AND name='Components / Uncategorised'",[id]).map_err(err)?;
-    }
+    // A destination consumes the opposite inbox, including section-to-section drops.
+    // Only named folder memberships are shared across sections.
+    if !name.is_empty(){db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;}
+    if name != "Components / Uncategorised"{db.execute("DELETE FROM item_component_folders WHERE item_id=? AND name='Components / Uncategorised'",[id]).map_err(err)?;}
+
     let name=if name.starts_with("Components / ") {"Components / Uncategorised"} else {name};
     if !name.is_empty() { db.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[name]).map_err(err)?; }
     db.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,name]).map_err(err)?;
@@ -466,8 +466,12 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
             let added=now();let folder=value.trim();
             for id in c.ids {
                 let entering=category_is_new(&tx,id,folder)?;
-                if !entering{continue;}
+                let stale_inbox=(!folder.is_empty()&&design_memberships(&tx,id)?.iter().any(|n|n.is_empty()))
+                    ||(folder!="Components / Uncategorised"&&component_memberships(&tx,id)?.iter().any(|n|n=="Components / Uncategorised"));
+                if !entering&&!stale_inbox{continue;}
                 assign_category(&tx,id,folder)?;
+                if !entering{continue;}
+
                 tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,folder,added]).map_err(err)?;
                 if folder.starts_with("Components / "){tx.execute("INSERT INTO category_arrivals VALUES(?,'All Components',?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,added]).map_err(err)?;}
             }
@@ -840,12 +844,17 @@ mod arrival_tests {
         connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'one.png','One','image','',10);INSERT INTO item_categories VALUES(1,'');INSERT INTO item_design_folders VALUES(1,'');").unwrap();
         let apply=|action:&str,value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":action,"ids":[1],"value":if action.ends_with("organisation"){None}else{Some(value)}})).unwrap()).unwrap();
         let read=||load(&path,false).unwrap().items.remove(0);
+        apply("set_category","Components / Uncategorised");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);
+        apply("set_category","");assert!(read().component_folders.is_empty());assert_eq!(read().design_folders,vec![""]);
         apply("set_category","Components / Templates");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders,vec!["Components / Templates"]);
         apply("undo_organisation","");assert_eq!(read().design_folders,vec![""]);assert_eq!(read().category.as_deref(),Some(""));
         apply("redo_organisation","");assert!(read().design_folders.is_empty());
         apply("set_category","Components / Uncategorised");apply("set_category","Data");assert!(read().component_folders.is_empty());assert_eq!(read().category.as_deref(),Some("Data"));
         apply("undo_organisation","");assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);apply("redo_organisation","");assert!(read().component_folders.is_empty());
         apply("set_category","Components / Templates");assert_eq!(read().design_folders,vec!["Data"]);assert_eq!(read().component_folders,vec!["Components / Templates"]);
+        let arrival=read().category_added["Components / Templates"];
+        connect(&path).unwrap().execute("INSERT INTO item_design_folders VALUES(1,'')",[]).unwrap();
+        apply("set_category","Components / Templates");assert_eq!(read().design_folders,vec!["Data"]);assert_eq!(read().category_added["Components / Templates"],arrival);
         let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();let saved=load(&restored,false).unwrap().items.remove(0);assert_eq!(saved.design_folders,read().design_folders);assert_eq!(saved.component_folders,read().component_folders);
     }
     #[test]
