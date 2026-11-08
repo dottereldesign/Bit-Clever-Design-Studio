@@ -107,6 +107,7 @@ export const categoryOf = (item: Item): string => {
 export const readFolderLabels=():Record<string,string>=>{try{const value=JSON.parse(localStorage.getItem('folder-labels')??'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch{return {};}};
 export const categoryLabel = (name: string): string => {
  const label=readFolderLabels()[name];if(typeof label==='string'&&label.trim())return isComponent(name)?`Components / ${label}`:label;
+ if(/^business[ _-]+cards$/i.test(name.trim()))return "Cards";
  if(name==="Components / Heroes")return "Components / Hero";
  if(name==="Components / FAQs")return "Components / FAQ";
  return name.replace(/_/g," ").trim().replace(/[\p{L}\p{N}]+/gu,word=>
