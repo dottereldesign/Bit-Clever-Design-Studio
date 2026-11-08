@@ -193,3 +193,13 @@ it("component links appear in their folder and aggregate, separately from ordina
  equal(filterItems([link],{...defaults,category:'Components / Headers'}).length,0);
  equal(filterItems([link],{...defaults,linksOnly:true}).length,0);
 });
+
+it("recent sorting uses destination arrival without changing import order or other component folders",()=>{
+ const older={...items[0],id:10,added:10,category:"Components / Uncategorised",component_folders:["Components / Headers","Components / Navbars"],category_added:{"Components / Headers":300}};
+ const newer={...older,id:20,added:200,category_added:{}};
+ equal(filterItems([older,newer],{...defaults,category:"Components / Headers"}).map(i=>i.id),[10,20]);
+ equal(filterItems([older,newer],{...defaults,category:"Components / Navbars"}).map(i=>i.id),[20,10]);
+ equal(filterItems([older,newer],defaults).map(i=>i.id),[20,10]);
+ const design={...older,category:"Branding",component_folders:[],category_added:{Branding:300}};
+ equal(filterItems([design,{...newer,category:"Branding",component_folders:[]}],{...defaults,category:"Branding"}).map(i=>i.id),[10,20]);
+});

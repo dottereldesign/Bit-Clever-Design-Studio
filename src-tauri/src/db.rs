@@ -31,6 +31,8 @@ pub struct Item {
     pub category: Option<String>,
     #[serde(default)]
     pub component_folders: Vec<String>,
+    #[serde(default)]
+    pub category_added: std::collections::HashMap<String,i64>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Label {
@@ -114,6 +116,7 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE INDEX IF NOT EXISTS idx_pixel_hash ON fingerprints(pixel_hash);
       CREATE TABLE IF NOT EXISTS duplicate_recovery(item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,original_path TEXT NOT NULL,recovery_path TEXT NOT NULL,keeper_id INTEGER NOT NULL,removed_at INTEGER NOT NULL);").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_component_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS category_arrivals(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -187,6 +190,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
                 thumbnail: r.get(9)?,
                 category: None,
                 component_folders: vec![],
+                category_added: Default::default(),
             })
         })
         .map_err(err)?
@@ -194,6 +198,11 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         .map_err(err)?;
     let lookup: std::collections::HashMap<i64, usize> =
         items.iter().enumerate().map(|(n, i)| (i.id, n)).collect();
+    {
+        let mut stmt=db.prepare("SELECT item_id,name,added FROM category_arrivals").map_err(err)?;
+        let rows=stmt.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?))).map_err(err)?;
+        for row in rows{let(id,name,added)=row.map_err(err)?;if let Some(index)=lookup.get(&id){items[*index].category_added.insert(name,added);}}
+    }
     for (table, is_tag) in [("item_tags", true), ("item_projects", false)] {
         let mut s = db
             .prepare(&format!("SELECT item_id,label_id FROM {table}"))
@@ -345,6 +354,17 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     db.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,name]).map_err(err)?;
     Ok(())
 }
+pub fn category_is_new(db:&Connection,id:i64,name:&str)->Result<bool>{
+    let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
+    let current=assigned.unwrap_or_else(||default_category(&source));let folders=component_memberships(db,id)?;
+    if name.starts_with("Components / ")&&name!="Components / Uncategorised"{return Ok(current!=name&&!folders.iter().any(|f|f==name));}
+    Ok(current!=name||!folders.is_empty())
+}
+pub fn category_arrivals(db:&Connection,id:i64)->Result<std::collections::HashMap<String,i64>>{
+    let mut query=db.prepare("SELECT name,added FROM category_arrivals WHERE item_id=?").map_err(err)?;
+    let rows=query.query_map([id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?))).map_err(err)?;
+    rows.collect::<std::result::Result<_,_>>().map_err(err)
+}
 pub fn component_memberships(db:&Connection,id:i64)->Result<Vec<String>> {
     let mut stmt=db.prepare("SELECT name FROM item_component_folders WHERE item_id=? ORDER BY name").map_err(err)?;
     let rows=stmt.query_map([id],|r|r.get(0)).map_err(err)?;
@@ -411,7 +431,14 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         }
         "set_category" => {
             if c.ids.is_empty() { return Err("Select at least one reference.".into()); }
-            for id in c.ids { assign_category(&tx,id,value.trim())?; }
+            let added=now();let folder=value.trim();
+            for id in c.ids {
+                let entering=category_is_new(&tx,id,folder)?;
+                assign_category(&tx,id,folder)?;
+                if !entering{continue;}
+                tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,folder,added]).map_err(err)?;
+                if folder.starts_with("Components / "){tx.execute("INSERT INTO category_arrivals VALUES(?,'All Components',?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,added]).map_err(err)?;}
+            }
         }
         "remove_component_folder" => {
             if !value.starts_with("Components / ") || value=="Components / Uncategorised" {return Err("Choose a component folder.".into());}
@@ -712,6 +739,9 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
                 }
             }
         }
+        for (name,added) in item.category_added {
+            tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=MAX(category_arrivals.added,excluded.added)",params![id,name,added]).map_err(err)?;
+        }
         for old in item.favourites {
             if let Some(project) = projects.get(&old) {
                 tx.execute(
@@ -726,4 +756,21 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
     tx.execute("DELETE FROM organisation_redo",[]).map_err(err)?;
     tx.commit().map_err(err)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod arrival_tests {
+    use super::*;
+    #[test]
+    fn folder_arrivals_survive_backup_and_undo_redo(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");init(&path).unwrap();
+        let conn=connect(&path).unwrap();conn.execute("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'test.png','Reference','image','Design/Captures',10)",[]).unwrap();drop(conn);
+        let change_to=|value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[1],"value":value})).unwrap()).unwrap();
+        change_to("Components / Navbars");let before=load(&path,false).unwrap().items[0].category_added.clone();
+        change_to("Components / Headers");let after=load(&path,false).unwrap().items[0].clone();assert_eq!(after.added,10);assert!(after.category_added["Components / Headers"]>10);assert_eq!(after.category_added["Components / Navbars"],before["Components / Navbars"]);
+        change(&path,serde_json::from_value(serde_json::json!({"action":"undo_organisation"})).unwrap()).unwrap();assert_eq!(load(&path,false).unwrap().items[0].category_added,before);
+        change(&path,serde_json::from_value(serde_json::json!({"action":"redo_organisation"})).unwrap()).unwrap();assert_eq!(load(&path,false).unwrap().items[0].category_added,after.category_added);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();assert_eq!(load(&restored,false).unwrap().items[0].category_added,after.category_added);
+        change_to("Branding");let design=load(&path,false).unwrap().items[0].clone();assert!(design.category_added["Branding"]>10);assert_eq!(design.added,10);
+    }
 }

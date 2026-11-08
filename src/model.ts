@@ -7,6 +7,7 @@ export type Item = {
   source: string;
   modified: number;
   added: number;
+  category_added?: Record<string,number>;
   missing: boolean;
   tags: number[];
   projects: number[];
@@ -95,7 +96,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
         ? a.name.localeCompare(b.name, undefined, { numeric: true })
         : f.sort === "shuffle"
           ? hash(a.id) - hash(b.id)
-          : b.added - a.added || b.id - a.id),
+          : (f.category!=null?(b.category_added?.[f.category]??b.added)-(a.category_added?.[f.category]??a.added):b.added-a.added) || b.id - a.id),
   );
 }
 export const categoryOf = (item: Item): string => {
