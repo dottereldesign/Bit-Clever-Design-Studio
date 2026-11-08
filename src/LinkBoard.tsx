@@ -3,6 +3,7 @@ import { convertFileSrc,invoke } from "@tauri-apps/api/core";
 import { ExternalLink, Eye, MoreHorizontal, Plus } from "lucide-react";
 import { openUrl } from "./api";
 import type { Item } from "./model";
+import WebsiteThumbnail from './WebsiteThumbnail';
 
 export default function LinkBoard({ items, size, report, menu, add, selected, openItem }: {
   items: Item[]; size: number; report: (error: unknown) => void;
@@ -30,6 +31,6 @@ export default function LinkBoard({ items, size, report, menu, add, selected, op
 function LinkThumbnail({item}:{item:Item}){
  const [preview,setPreview]=useState('');
  useEffect(()=>{let alive=true;setPreview('');if(item.source==='Websites')void invoke<string>('website_thumbnail',{id:item.id}).then(path=>{if(alive)setPreview(path);}).catch(()=>{if(alive)setPreview(item.thumbnail??'');});return()=>{alive=false;};},[item.id,item.thumbnail,item.source]);
- if(item.source==='Websites'&&!preview)return <div className="link-card-placeholder"/>;
+ if(item.source==='Websites')return <WebsiteThumbnail key={item.thumbnail} poster={preview} original={item.thumbnail!}/>;
  return <img loading="lazy" src={convertFileSrc(preview||item.thumbnail!)} alt=""/>;
 }

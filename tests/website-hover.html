@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Website hover checks</title></head><body><div id="root" style="max-width:400px"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import LinkBoard from '/src/LinkBoard.tsx';
+import '/src/style.css';
+const svg=height=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#abc5af"/><stop offset="1" stop-color="#304a65"/></linearGradient></defs><rect width="1200" height="${height}" fill="url(#g)"/><text x="90" y="160" font-size="60">Website screenshot</text><path d="M0 900H1200M0 1800H1200M0 2700H1200" stroke="white" stroke-width="30"/></svg>`);
+const paths=[];window.__TAURI_INTERNALS__={convertFileSrc:path=>{paths.push(path);return svg(path==='full.png'?6000:900);},invoke:async()=> 'poster.png'};
+createRoot(document.getElementById('root')).render(React.createElement(LinkBoard,{items:[{id:1,name:'Tall website',path:'https://example.com',source:'Websites',kind:'link',thumbnail:'full.png'},{id:2,name:'Short website',path:'https://short.example',source:'Websites',kind:'link',thumbnail:'short.png'}],size:360,report:e=>{throw e;},menu:()=>{},openItem:()=>{}}));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>5000)throw Error(label);await pause(20);}}
+const enter=el=>el.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse',relatedTarget:document.body}));
+const leave=el=>el.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,pointerType:'mouse',relatedTarget:document.body}));
+const y=el=>new DOMMatrix(getComputedStyle(el).transform).m42;
+try{
+ await until(()=>document.querySelector('.website-thumbnail-poster')?.complete,'Poster loads');
+ const frame=document.querySelector('.website-thumbnail'),height=frame.getBoundingClientRect().height;
+ assert(!paths.includes('full.png'),'Full screenshot loaded without hovering');
+ enter(frame);await pause(80);leave(frame);await pause(350);assert(!document.querySelector('.website-thumbnail-scroll'),'Brief hover unnecessarily loaded full image');
+ enter(frame);await until(()=>frame.dataset.scrolling==='true','Hover starts');
+ const full=document.querySelector('.website-thumbnail-scroll');await pause(200);const before=y(full);await pause(700);const after=y(full);
+ assert(after<before-7&&after>before-35,'Scrolling must move slowly and steadily');
+ assert(frame.getBoundingClientRect().height===height,'Hover changed card height');
+ window.__screenshotReady=true;await pause(700);
+ leave(frame);await until(()=>!document.querySelector('.website-thumbnail-scroll'),'Hover releases full image');
+ enter(frame);await until(()=>frame.dataset.scrolling==='true','Rehover starts');assert(y(document.querySelector('.website-thumbnail-scroll'))>-10,'Rehover did not reset to top');
+ document.documentElement.dataset.motion='reduce';await until(()=>!document.querySelector('.website-thumbnail-scroll'),'Reduced motion stops scroll');
+ leave(frame);await pause(250);enter(frame);await pause(450);assert(!document.querySelector('.website-thumbnail-scroll'),'Reduced motion still loads animation');
+ document.documentElement.dataset.motion='';await until(()=>frame.dataset.scrolling==='true','Motion resumes');
+ document.getElementById('root').style.maxWidth='280px';await pause(250);assert(parseFloat(frame.style.getPropertyValue('--website-scroll'))>0,'Resize lost scroll distance');
+ leave(frame);const short=document.querySelectorAll('.website-thumbnail')[1];enter(short);await until(()=>short.querySelector('.website-thumbnail-scroll')?.complete,'Short image loads');await pause(100);assert(short.dataset.scrolling==='false','Short image must stay still');leave(short);
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Delayed lazy loading, steady scroll, stable card size, leave/reset/rehover, reduced motion, resize and short-image handling']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error)});}
+</script></body></html>

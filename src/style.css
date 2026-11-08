@@ -1836,3 +1836,9 @@ main {
 .website-card-actions { display:flex;align-items:center;justify-content:space-between;padding:0 10px 10px;gap:12px; }
 .website-card-actions .subtle-button { display:inline-flex;align-items:center;gap:6px;font-size:11px; }
 .website-card-external { margin-left:auto;flex-shrink:0; }
+.website-thumbnail { display:block;position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;background:#efefec; }
+.link-board .website-thumbnail .website-thumbnail-poster { display:block;width:100%;height:100%;object-fit:cover;object-position:top; }
+.link-board .website-thumbnail .website-thumbnail-scroll { position:absolute;top:0;left:0;display:block;width:100%;height:auto;aspect-ratio:auto;opacity:0;transform:translateY(0);transition:opacity 200ms ease,transform 420ms ease; }
+.link-board .website-thumbnail[data-scrolling=true] .website-thumbnail-scroll { opacity:1;transform:translateY(calc(-1 * var(--website-scroll)));transition:opacity 200ms ease,transform var(--website-scroll-time) linear; }
+html[data-motion=reduce] .website-thumbnail-scroll { display:none; }
+@media (prefers-reduced-motion:reduce) { .website-thumbnail-scroll { display:none; } }
