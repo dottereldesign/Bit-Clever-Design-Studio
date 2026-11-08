@@ -346,6 +346,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     if (thumbnailEnlarged) setGridReturn(null);
   }, [thumbnailEnlarged,quickPreview,modal, viewer, capture, duplicatesOpen]);
   useEffect(()=>{if(quickPreview!==null&&!lib.items.some(i=>i.id===quickPreview))setQuickPreview(null);},[lib.items,quickPreview]);
+  const [searchOpen,setSearchOpen]=useState(false);
   const searchRef = useRef<HTMLInputElement>(null),
     anchor = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -745,14 +746,29 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         e.preventDefault();
         setSelected(new Set(filtered.map((i) => i.id)));
       }
-      if (e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "f")) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
+
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse,homeView,customTab]);
+  useEffect(()=>{
+    if(!searchOpen)return;
+    searchRef.current?.focus();searchRef.current?.select();
+    const outside=(e:PointerEvent)=>{if(!(e.target as HTMLElement)?.closest(".search-popup"))setSearchOpen(false);};
+    window.addEventListener("pointerdown",outside);return()=>window.removeEventListener("pointerdown",outside);
+  },[searchOpen]);
+  useEffect(()=>{
+    const key=(e:KeyboardEvent)=>{
+      if(e.altKey||modal||capture||videoDialog||duplicatesOpen||removedOpen||libraryExportOpen||storageOpen||extraDialog||customTab||quickPreview!==null||itemMenu||viewer!==null)return;
+      const typing=(e.target as HTMLElement)?.closest("input,textarea,select,[contenteditable=true]");
+      const command=e.ctrlKey||e.metaKey;
+      if(command&&e.key===","&&!typing){e.preventDefault();setSearchOpen(false);setModal({kind:"settings"});return;}
+      if((command&&["f","k"].includes(e.key.toLowerCase()))||(!typing&&!command&&e.key==="/")){
+        e.preventDefault();if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
+  },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView]);
   const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
@@ -1075,7 +1091,6 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           <img src={appLogo} alt="" className="brand-logo" />
           <span className="brand-name"><span>BitClever</span><span>Design</span></span>
         </button>
-        <StorageBar revision={lib} onOpen={()=>setStorageOpen(true)}/>
         <SidebarNavigation order={navLayout.order}>
         <button className={`nav-item home-nav ${homeView?"active":""}`} aria-current={homeView?"page":undefined} onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}><AppIcon value={icons.overrides.home} fallback={<House size={16}/>}/><span>Home</span></button>
         <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
@@ -1220,12 +1235,15 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             {project!==null&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
             <button className="icon-button" aria-label="Undo organisation change" disabled={!historyActions.undoLabel||undoing} title={historyActions.undoLabel?`Undo: ${historyActions.undoLabel} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
             <button className="icon-button" aria-label="Redo organisation change" disabled={!historyActions.redoLabel||undoing} title={historyActions.redoLabel?`Redo: ${historyActions.redoLabel} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
-            <label className="search">
+            <StorageBar revision={lib} onOpen={()=>setStorageOpen(true)}/>
+            {search&&!searchOpen&&<button className="subtle-button search-active" title="Clear search" onClick={()=>setSearch("")}>“{search}” <X size={12}/></button>}
+            <label className="search search-popup" hidden={!searchOpen}>
               <Search size={15} />
               <input
                 ref={searchRef}
                 placeholder="Search"
                 aria-label="Search library"
+                onKeyDown={e=>{if(e.key==="Escape"||e.key==="Enter"){e.preventDefault();e.stopPropagation();setSearchOpen(false);searchRef.current?.blur();}}}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -2487,6 +2505,13 @@ function Dialog({
           </>
         ) : kind === "settings" ? (
           <div className="settings-content">
+            <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
+              <span className="setting-label">Keyboard shortcuts</span>
+              <div className="shortcuts">
+                {[["Search", "/ · Ctrl F · Ctrl K"],["Settings", "Ctrl ,"],["Undo", "Ctrl Z"],["Redo", "Ctrl Shift Z · Ctrl Y"],["Quick preview", "Space"],["Previous / next preview", "← / →"],["Close / clear selection", "Esc"],["Select all visible items", "Ctrl A"],["Organise selected images", "C"],["Remove selected items", "Delete"],["Copy image in viewer", "Ctrl C"],["Paste files, images or links", "Ctrl V"],["Enlarge hovered thumbnail", "Ctrl + mouse wheel"]].map(([label,keys])=><span key={label}>{label}<kbd>{keys}</kbd></span>)}
+              </div>
+              <small>Single-key shortcuts work outside text fields. Selection and preview shortcuts apply while browsing your library.</small>
+            </section>
             <div className="setting-block">
               <span className="setting-label">Storage folders</span>
               {lib.source_paths?.length ? lib.source_paths.map(([name, path]) => <div className="storage-source" key={name}>
@@ -2556,20 +2581,7 @@ function Dialog({
               <small>Original files stay in your source folder.</small>
             </div>
             <AppInfo/>
-            <div className="shortcuts">
-              <span>Quick preview <kbd>Space</kbd></span>
-              <span>Undo organisation <kbd>Ctrl Z</kbd></span>
-              <span>Redo organisation <kbd>Ctrl Shift Z</kbd></span>
-              <span>
-                Search <kbd>/</kbd>
-              </span>
-              <span>
-                Select all <kbd>Ctrl A</kbd>
-              </span>
-              <span>
-                Viewer <kbd>← → Esc</kbd>
-              </span>
-            </div>
+
           </div>
         ) : kind === "manageTags" ? (
           <>

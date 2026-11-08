@@ -118,7 +118,7 @@ try{
  window.__screenshotReady=true;await pause(700);
  button('Add to App Components').click();await until(()=>library.items.find(i=>i.id===4).component_folders?.includes('Components / Uncategorised'),'Add to components');assert(cards().length===1,'Adding to components removed Photography');
  category('Components / Uncategorised').click();await until(()=>document.querySelector('[data-item-id="4"]'),'Arrives in component inbox');
- context(4);await until(()=>button('Organise folders…'),'Shared context menu');assert(!button('Add to Design Inspo'),'Already-shared item offered a redundant section add');document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ context(4);await until(()=>button('Organise folders…'),'Shared context menu');assert(!button('Add to Design Inspo'),'Already-shared item offered a redundant section add');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
  assert(library.items.find(i=>i.id===4).design_folders.includes('Photography'),'Component add lost design membership');
  button('Undo').click();await until(()=>library.items.find(i=>i.id===4).category==='Photography','Undo section addition');
  const heading=name=>document.querySelector(`[data-section-label="${name}"]`);
@@ -136,6 +136,13 @@ try{
  for(const name of ['App Components','Design Inspo']){if(button(name).getAttribute('aria-expanded')==='false'){button(name).click();await pause(180);}}
  sectionDrag.setData('application/design-items','[1]');category('Components / Headers').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));await until(()=>library.items.find(i=>i.id===1).component_folders.includes('Components / Headers'),'File older item in Headers');assert(!library.items.find(i=>i.id===1).design_folders.includes(''),'Filing retained Design inbox');category('Components / Headers').click();await until(()=>document.querySelector('[data-item-id="1"]'),'Show destination');assert(document.querySelector('.card[data-item-id]').dataset.itemId==='1','Newly filed component is not first');
  sectionDrag.setData('application/design-items','[2]');category('branding').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:sectionDrag}));await until(()=>library.items.find(i=>i.id===2).category==='branding','File older item in Branding');category('branding').click();await until(()=>document.querySelector('[data-item-id="2"]'),'Show Branding');assert(document.querySelector('.card[data-item-id]').dataset.itemId==='2','Newly filed design is not first');checks.push('Older items dragged into Design Inspo and component folders appear first in Recently added');
+ assert(document.querySelector('.topbar [aria-label="Storage and backup"]')&&!document.querySelector('.sidebar [aria-label="Storage and backup"]'),'Storage not moved to header');
+ assert(document.querySelector('.search-popup').hidden,'Search visible before shortcut');
+ const hotkey=(key,ctrlKey=false)=>document.body.dispatchEvent(new KeyboardEvent('keydown',{key,ctrlKey,bubbles:true,cancelable:true}));
+ hotkey('Escape');await pause(100);
+ for(const key of ['k','f','/']){hotkey(key,key!=='/');await until(()=>document.activeElement?.getAttribute('aria-label')==='Search library'&&!document.querySelector('.search-popup').hidden,'Search shortcut '+key);document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>document.querySelector('.search-popup').hidden,'Dismiss search');}
+ hotkey(',',true);await until(()=>document.querySelector('[aria-label="Keyboard shortcuts"]'),'Settings shortcut');assert(document.querySelector('[aria-label="Keyboard shortcuts"]').textContent.includes('Ctrl K'),'Search shortcut missing in settings');hotkey('Escape');
+ checks.push('Storage lives in the header; search is hidden until /, Ctrl F or Ctrl K; Ctrl comma opens Settings with keyboard shortcuts');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
-}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,checks,calls:calls.slice(-6)});}
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,checks,searchHidden:document.querySelector(".search-popup")?.hidden,focus:document.activeElement?.outerHTML,dialogs:[...document.querySelectorAll("[role=dialog],.modal,.item-menu")].map(n=>n.textContent.slice(0,100)),calls:calls.slice(-6)});}
 </script></body></html>
