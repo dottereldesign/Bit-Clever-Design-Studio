@@ -49,7 +49,7 @@ export default function LibraryExport({ close, migration=false }: { close: () =>
       }}>
       <div className="modal-heading"><h2 id="export-title">{migration?"Create Your Library":"Back Up Library"}</h2><button className="icon-button" aria-label="Close library export" disabled={busy || choosing} onClick={close}><X size={17}/></button></div>
       <p className="export-description">{migration?"Creates a verified, self-contained copy. Your current library and original files stay untouched.":"Save Design Inspo, App Components, General and your settings in one portable folder."}</p>
-      <small>Includes original media, link thumbnails, projects, tags, every component-folder membership, Home tiles and appearance settings. Removed references, undo history and temporary caches are excluded.</small>
+      <small>Includes original media, link thumbnails, projects, tags, every folder membership, Home tiles and appearance settings. Removed references, undo history and temporary caches are excluded.</small>
       {busy && <div className="export-progress" role="status" aria-live="polite">
         <div><span><LoaderCircle size={14} className="spin"/> {cancelling ? "Cancelling…" : progress?.phase === "finishing" ? "Finishing backup…" : progress?.phase === "copying" ? "Copying files…" : "Preparing library…"}</span><strong>{Math.round(percent)}%</strong></div>
         <progress aria-label="Library export progress" max={100} value={progress?.phase === "preparing" || !progress ? undefined : percent}/>

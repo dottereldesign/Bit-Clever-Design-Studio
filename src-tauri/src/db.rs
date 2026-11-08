@@ -32,6 +32,8 @@ pub struct Item {
     #[serde(default)]
     pub component_folders: Vec<String>,
     #[serde(default)]
+    pub design_folders: Vec<String>,
+    #[serde(default)]
     pub category_added: std::collections::HashMap<String,i64>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -117,6 +119,7 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE TABLE IF NOT EXISTS duplicate_recovery(item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,original_path TEXT NOT NULL,recovery_path TEXT NOT NULL,keeper_id INTEGER NOT NULL,removed_at INTEGER NOT NULL);").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_component_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS category_arrivals(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS item_design_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -190,6 +193,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
                 thumbnail: r.get(9)?,
                 category: None,
                 component_folders: vec![],
+                design_folders: vec![],
                 category_added: Default::default(),
             })
         })
@@ -247,6 +251,11 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         let rows = stmt.query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
         rows.collect::<std::result::Result<std::collections::HashMap<_,_>,_>>().map_err(err)?
     };
+    {
+        let mut stmt=db.prepare("SELECT item_id,name FROM item_design_folders ORDER BY name").map_err(err)?;
+        let rows=stmt.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
+        for row in rows{let(id,name)=row.map_err(err)?;if let Some(n)=lookup.get(&id){items[*n].design_folders.push(name);}}
+    }
     let mut categories = {
         let mut stmt = db.prepare("SELECT name FROM categories").map_err(err)?;
         let rows = stmt.query_map([], |r| r.get::<_,String>(0)).map_err(err)?;
@@ -343,6 +352,12 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     if !name.is_empty() { valid_name(name)?; }
     let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND archived=0 AND (kind!='link' OR ? LIKE 'Components / %' OR (?='' AND EXISTS(SELECT 1 FROM item_categories WHERE item_id=items.id AND name LIKE 'Components / %'))))",params![id,name,name],|r|r.get(0)).map_err(err)?;
     if !exists { return Err("Only references still in your library can change category.".into()); }
+    if name.starts_with("Components / ")||name.is_empty(){
+        db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;
+    }else{
+        materialize_design_folder(db,id)?;
+        db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;
+    }
     if name.starts_with("Components / ") && name != "Components / Uncategorised" {
         materialize_component_folder(db,id)?;
         db.execute("INSERT OR IGNORE INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,name]).map_err(err)?;
@@ -354,11 +369,24 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     db.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,name]).map_err(err)?;
     Ok(())
 }
+fn is_design_folder(name:&str)->bool{
+    !name.is_empty()&&!name.starts_with("Components / ")&&name!="All Components"&&name.to_lowercase().replace([' ','_','-'],"")!="webdesign"
+}
+pub fn design_memberships(db:&Connection,id:i64)->Result<Vec<String>>{
+    let mut query=db.prepare("SELECT name FROM item_design_folders WHERE item_id=? ORDER BY name").map_err(err)?;
+    let rows=query.query_map([id],|r|r.get(0)).map_err(err)?;rows.collect::<std::result::Result<_,_>>().map_err(err)
+}
+fn materialize_design_folder(db:&Connection,id:i64)->Result<()>{
+    let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
+    let current=assigned.unwrap_or_else(||default_category(&source));
+    if is_design_folder(&current){db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,current]).map_err(err)?;}Ok(())
+}
 pub fn category_is_new(db:&Connection,id:i64,name:&str)->Result<bool>{
     let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
     let current=assigned.unwrap_or_else(||default_category(&source));let folders=component_memberships(db,id)?;
     if name.starts_with("Components / ")&&name!="Components / Uncategorised"{return Ok(current!=name&&!folders.iter().any(|f|f==name));}
-    Ok(current!=name||!folders.is_empty())
+    if is_design_folder(name){return Ok(current!=name&&!design_memberships(db,id)?.iter().any(|f|f==name));}
+    Ok(current!=name||!folders.is_empty()||!design_memberships(db,id)?.is_empty())
 }
 pub fn category_arrivals(db:&Connection,id:i64)->Result<std::collections::HashMap<String,i64>>{
     let mut query=db.prepare("SELECT name,added FROM category_arrivals WHERE item_id=?").map_err(err)?;
@@ -434,10 +462,23 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
             let added=now();let folder=value.trim();
             for id in c.ids {
                 let entering=category_is_new(&tx,id,folder)?;
-                assign_category(&tx,id,folder)?;
                 if !entering{continue;}
+                assign_category(&tx,id,folder)?;
                 tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,folder,added]).map_err(err)?;
                 if folder.starts_with("Components / "){tx.execute("INSERT INTO category_arrivals VALUES(?,'All Components',?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,added]).map_err(err)?;}
+            }
+        }
+        "remove_design_folder" => {
+            if !is_design_folder(value){return Err("Choose a Design Inspo folder.".into());}
+            for id in c.ids{
+                let (source,assigned):(String,Option<String>)=tx.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=? AND i.archived=0 AND i.kind!='link'",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
+                let current=assigned.unwrap_or_else(||default_category(&source));
+                if current.starts_with("Components / ")||!component_memberships(&tx,id)?.is_empty(){return Err("Select a design still in your library.".into());}
+                materialize_design_folder(&tx,id)?;
+                tx.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;
+                let remaining=design_memberships(&tx,id)?;
+                let primary=if current!=value&&remaining.contains(&current){current}else{remaining.first().cloned().unwrap_or_default()};
+                tx.execute("INSERT INTO item_categories VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,primary]).map_err(err)?;
             }
         }
         "remove_component_folder" => {
@@ -698,8 +739,12 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
                 tx.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,category]).map_err(err)?;
             }
         }
+        tx.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;
+        if !item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")){
+            for folder in &item.design_folders{if is_design_folder(folder){valid_name(folder)?;tx.execute("INSERT OR IGNORE INTO categories VALUES(?)",[folder]).map_err(err)?;tx.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,folder]).map_err(err)?;}}
+        }
+        tx.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;
         if item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")) {
-            tx.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;
             for folder in &item.component_folders {
                 if !folder.starts_with("Components / ") || folder=="Components / Uncategorised" {continue;}
                 valid_name(folder)?;
@@ -773,4 +818,22 @@ mod arrival_tests {
         let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();assert_eq!(load(&restored,false).unwrap().items[0].category_added,after.category_added);
         change_to("Branding");let design=load(&path,false).unwrap().items[0].clone();assert!(design.category_added["Branding"]>10);assert_eq!(design.added,10);
     }
+    #[test]
+    fn designs_support_multiple_folders_inbox_history_and_backup(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'design.png','Design','image','Design/Branding',10)",[]).unwrap();
+        let apply=|action:&str,value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":action,"ids":[1],"value":if action.ends_with("organisation"){None}else{Some(value)}})).unwrap()).unwrap();
+        let read=||load(&path,false).unwrap().items.remove(0);
+        apply("set_category","Social Media");assert_eq!(read().design_folders,vec!["Branding","Social Media"]);assert_eq!(read().added,10);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();assert_eq!(load(&restored,false).unwrap().items[0].design_folders,read().design_folders);
+        apply("remove_design_folder","Social Media");assert_eq!(read().design_folders,vec!["Branding"]);assert_eq!(read().category.as_deref(),Some("Branding"));
+        apply("remove_design_folder","Branding");assert!(read().design_folders.is_empty());assert_eq!(read().category.as_deref(),Some(""));
+        apply("undo_organisation","");assert_eq!(read().design_folders,vec!["Branding"]);apply("redo_organisation","");assert!(read().design_folders.is_empty());
+        apply("set_category","Social Media");apply("set_category","Packaging");assert_eq!(read().design_folders.len(),2);
+        apply("set_category","Components / Headers");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders,vec!["Components / Headers"]);
+        apply("undo_organisation","");assert_eq!(read().design_folders.len(),2);assert!(read().component_folders.is_empty());
+        apply("set_category","");assert!(read().design_folders.is_empty());assert_eq!(read().category.as_deref(),Some(""));
+        init(&path).unwrap();assert!(read().design_folders.is_empty());assert_eq!(read().category.as_deref(),Some(""));
+    }
+
 }

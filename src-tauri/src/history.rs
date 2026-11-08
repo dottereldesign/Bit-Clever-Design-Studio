@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum Patch {
     Category(i64, Option<String>),
     ComponentFolders(i64, Vec<String>),
+    DesignFolders(i64,Vec<String>),
     CategoryArrivals(i64, std::collections::HashMap<String,i64>),
     Member(bool, i64, i64, Option<i64>),
     Archived(i64, bool),
@@ -26,15 +27,17 @@ pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch
     let value = c.value.as_deref().unwrap_or("").trim();
     let target = c.target.unwrap_or(0);
     let label = match c.action.as_str() {
-        "set_category" | "remove_component_folder" => {
+        "set_category" | "remove_component_folder" | "remove_design_folder" => {
             let mut ids=c.ids.clone();ids.sort();ids.dedup();
             for id in ids {
                 let source: Option<String> = db.query_row("SELECT source FROM items WHERE id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                 if let Some(source)=source {
                     let previous: Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                     let folders=db::component_memberships(db,id)?;
+
                     if c.action=="set_category"&&db::category_is_new(db,id,value)?{patches.push(Patch::CategoryArrivals(id,db::category_arrivals(db,id)?));}
-                    if previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") {
+                    if previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") || c.action=="remove_design_folder" {
+                        patches.push(Patch::DesignFolders(id,db::design_memberships(db,id)?));
                         patches.push(Patch::Category(id,previous));
                         patches.push(Patch::ComponentFolders(id,folders));
                     }
@@ -119,6 +122,7 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 // travel back to the other stack without replaying commands or changing IDs.
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
+        Patch::DesignFolders(id,_) => Patch::DesignFolders(*id,db::design_memberships(db,*id)?),
         Patch::CategoryArrivals(id,_) => Patch::CategoryArrivals(*id,db::category_arrivals(db,*id)?),
         Patch::ComponentFolders(id,_) => Patch::ComponentFolders(*id,db::component_memberships(db,*id)?),
         Patch::Category(id,_) => Patch::Category(*id,db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?),
@@ -165,6 +169,7 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
     for patch in serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)? {
         inverses.push(inverse(db,&patch)?);
         match patch {
+            Patch::DesignFolders(id,names)=>{db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;for name in names{db.execute("INSERT INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;}},
             Patch::CategoryArrivals(id,arrivals)=>{
                 db.execute("DELETE FROM category_arrivals WHERE item_id=?",[id]).map_err(err)?;
                 for (name,added) in arrivals{db.execute("INSERT INTO category_arrivals VALUES(?,?,?)",params![id,name,added]).map_err(err)?;}

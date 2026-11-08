@@ -53,7 +53,7 @@ fn display_folder(name:&str,preferences:&serde_json::Value)->String{
 pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::Value)->Result<()> {
     let mut html=String::from(r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BitClever Library</title><style>body{margin:32px;background:#f6f7f3;color:#26352b;font:15px system-ui}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}h1{font-size:24px;margin-right:auto}input,select{padding:10px;border:1px solid #d3d9ce;border-radius:8px;background:white}main{columns:280px;column-gap:16px;margin-top:24px}article{break-inside:avoid;background:white;border-radius:10px;margin-bottom:16px;padding:12px}article[hidden]{display:none}img,video{width:100%;max-height:500px;object-fit:contain;border-radius:6px}a{color:inherit;overflow-wrap:anywhere}small{display:block;color:#657263;margin-top:6px}button{border:0;border-radius:5px;margin:4px 4px 0 0;padding:5px;background:#e7ecdf;cursor:pointer}</style><header><h1>BitClever Library</h1><input id="search" aria-label="Search library" placeholder="Search library"><select id="section" aria-label="Collection"><option value="">All Collections</option><option>Design Inspo</option><option>App Components</option><option>General</option></select><select id="folder" aria-label="Folder"><option value="">All Folders</option></select></header><main>"#);
     for item in &library.items {
-        let mut folders=item.component_folders.clone();
+        let mut folders=if collection(item)=="App Components"{item.component_folders.clone()}else{item.design_folders.clone()};
         if let Some(c)=&item.category {if c.starts_with("Components / ")&&c!="Components / Uncategorised"&&!folders.contains(c){folders.push(c.clone());}else if folders.is_empty(){folders.push(c.clone());}}
         if folders.is_empty(){folders.push(String::new());}
         let labels:Vec<String>=folders.iter().map(|f|if f.is_empty()||f=="Components / Uncategorised"{"Uncategorised".into()}else{display_folder(f,preferences)}).collect();
@@ -373,6 +373,7 @@ mod tests {
         let conn=db::connect(&path).unwrap();
         conn.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=1",[]).unwrap();
         conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
+        db::change(&path,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[2],"value":"Social Media"})).unwrap()).unwrap();
         let cover=path.parent().unwrap().join("home-covers/cover.png");fs::create_dir_all(cover.parent().unwrap()).unwrap();fs::write(&cover,b"cover bytes").unwrap();
         let prefs=serde_json::json!({"home-tiles":[{"id":"project:7","cover":{"path":cover,"width":10,"height":10}}],"app-icons":{"overrides":{"project:7":{"kind":"asset","value":cover}}},"folder-labels":{"Mobile":"iOS & Android"},"collection-shortcuts":[{"target":{"kind":"project","value":"7"}}]});
         let result=export_with_preferences(&path,&destination,"Complete",prefs,&AtomicBool::new(false),&mut |_|{}).unwrap();
@@ -383,6 +384,8 @@ mod tests {
         db::import(&restored,metadata_path(&moved)).unwrap();
         let lib=db::load(&restored,false).unwrap();let item=lib.items.iter().find(|i|i.name=="Reference 1").unwrap();
         assert_eq!(item.component_folders,vec!["Components / Headers","Components / Navbars"]);
+        let design=lib.items.iter().find(|i|i.name=="Reference 2").unwrap();assert!(design.design_folders.contains(&"Social Media".to_string()));assert!(design.design_folders.len()>1);
+        assert!(fs::read_to_string(moved.join("Browse Library.html")).unwrap().contains("Social Media"));
         let settings=restore_preferences(&moved,&restored).unwrap();let project=lib.projects.iter().find(|p|p.name=="Keep project").unwrap();
         assert_eq!(settings["home-tiles"][0]["id"],format!("project:{}",project.id));
         assert_eq!(settings["collection-shortcuts"][0]["target"]["value"],project.id.to_string());

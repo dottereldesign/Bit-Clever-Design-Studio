@@ -1806,3 +1806,6 @@ main {
 .import-progress progress::-webkit-progress-value { background:#718766; border-radius:3px; transition:width .18s ease; }
 .import-current { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .import-progress>div>span:last-child { flex-shrink:0; font-variant-numeric:tabular-nums; }
+
+.card .card-remove-folder { color:#ffb3ad; background:rgba(91,20,18,.65); }
+.card .card-remove-folder:hover,.card .card-remove-folder:focus-visible { color:white; background:#ba3a32; }

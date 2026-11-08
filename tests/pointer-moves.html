@@ -39,7 +39,7 @@ try{
  section('Design Inspo').querySelector('button').click();await drag(section('Design Inspo'));
  await until(()=>library.items.some(i=>i.category===''),'Pointer transfer to design inbox');
  assert(window.__dragSnapshot.highlight&&window.__dragSnapshot.badge.includes('Send to Design Inspo'),'Reverse section feedback missing');
- section('Design Inspo').querySelector('button').click();await pause(50);[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='All categories').click();await until(()=>document.querySelectorAll('.card').length>0,'Return to design grid');
+ section('Design Inspo').querySelector('button').click();await pause(50);[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='All Designs').click();await until(()=>document.querySelectorAll('.card').length>0,'Return to design grid');
  checks.push('Real mouse drops onto collapsed section headings transfer to the correct inbox in both directions with highlighted destinations');
  document.querySelector('.content').scrollTop=0;await pause(80);const r=document.querySelector('.card .card-open').getBoundingClientRect();const point={x:r.left+r.width/2,y:r.top+r.height/2};window.__pointerAction={id:++actionId,from:point,to:point,click:true};await until(()=>window.__pointerActionDone===actionId&&document.querySelector('.viewer'),'Normal click opens viewer');checks.push('An ordinary click still opens the viewer after dragging and cancellation');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});

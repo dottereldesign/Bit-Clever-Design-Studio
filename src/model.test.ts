@@ -203,3 +203,12 @@ it("recent sorting uses destination arrival without changing import order or oth
  const design={...older,category:"Branding",component_folders:[],category_added:{Branding:300}};
  equal(filterItems([design,{...newer,category:"Branding",component_folders:[]}],{...defaults,category:"Branding"}).map(i=>i.id),[10,20]);
 });
+
+it("design folders filter independently and Uncategorised excludes filed designs",()=>{
+ const design={...items[0],category:"Social Media",design_folders:["Branding","Social Media"]};
+ equal(filterItems([design],{...defaults,category:"Branding"}).length,1);
+ equal(filterItems([design],{...defaults,category:"Social Media"}).length,1);
+ equal(filterItems([design],{...defaults,category:""}).length,0);
+ equal(filterItems([{...design,category:"",design_folders:[]}],{...defaults,category:""}).length,1);
+ equal(filterItems([{...design,category:"Components / Uncategorised",design_folders:[]}],{...defaults,category:""}).length,0);
+});

@@ -100,7 +100,7 @@ import { appHistory } from "./appHistory";
 import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
 import { allComponents, componentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
-import {componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
+import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
 
 const empty: Library = {
   items: [],
@@ -471,7 +471,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       ? lib.projects.find((p) => p.id === project)?.name || "Project"
       : linksOnly
         ? "Links"
-        : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Categories");
+        : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Designs");
   const activeFilters = !!(search || type !== "all" || tags.length);
   const clearFilters = () => {
     setSearch("");
@@ -504,7 +504,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
   const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
     const before=libRef.current;await changeLibrary(c);const next=await refresh();
-    const tracked=new Set(['set_category','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    const tracked=new Set(['set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
     const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
     if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
     return next;
@@ -526,7 +526,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     for (const item of lib.items) {
       if (item.kind === "link" && !isComponent(categoryOf(item))) continue;
       const name = categoryOf(item);
-      for (const folder of isComponent(name)?componentFoldersOf(item):[name]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
+      for (const folder of isComponent(name)?componentFoldersOf(item):designFoldersOf(item)) counts.set(folder, (counts.get(folder) ?? 0) + 1);
       if (isComponent(name)) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
     }
     return counts;
@@ -586,14 +586,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
     await mutate({action:"set_category",ids:items.map(i=>i.id),value:name});
     setUndoIds([]);setCategoryUndo(previous);setSelected(new Set());
-    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${isComponent(name) && name!==componentInbox ? "added to" : "moved to"} ${name===componentInbox?"App Components / Uncategorised":name===""?"Design Inspo / Uncategorised":categoryLabel(name)}`;
+    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${name && name!==componentInbox ? "added to" : "moved to"} ${name===componentInbox?"App Components / Uncategorised":name===""?"Design Inspo / Uncategorised":categoryLabel(name)}`;
     setNotice(categoryUndoNotice.current);
   };
   const removeFromComponentFolder = async (item:Item) => {
-    if(!category||!isComponent(category)||category===componentInbox)return;
+    if(!category||category===allComponents||category===componentInbox)return;
     const folder=category;
     try {
-      await mutate({action:"remove_component_folder",ids:[item.id],value:folder});
+      await mutate({action:isComponent(folder)?"remove_component_folder":"remove_design_folder",ids:[item.id],value:folder});
       setSelected(previous=>{const next=new Set(previous);next.delete(item.id);return next;});
       setUndoIds([]);setCategoryUndo([[item.id,folder]]);
       categoryUndoNotice.current=`Removed from ${categoryLabel(folder)}`;
@@ -614,7 +614,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       data-category={s}
       {...categoryDropProps(s)}
       key={s}
-      title={`Open ${categoryLabel(s)}; drop references here to ${isComponent(s)&&s!==componentInbox?"add to this folder":"change category"}`}
+      title={`Open ${categoryLabel(s)}; drop references here to ${s&&s!==componentInbox&&s!==allComponents?"add to this folder":"change category"}`}
       onClick={() => { navigate(null); setCategory(s); }}
     >
       {isComponent(s)&&folderAppearance[s]?.starred&&<Star className="folder-star" size={11} fill="currentColor" aria-label="Starred folder"/>}
@@ -764,7 +764,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     const prior=new Map(lib.items.map(i=>[i.id,i]));
     const already=result.reused>0&&!result.added&&saved.every(i=>{
       const previous=prior.get(i.id);
-      return targetCategory===null||!!previous&&(isComponent(filingCategory(targetCategory))?componentFoldersOf(previous).includes(filingCategory(targetCategory)):categoryOf(previous)===filingCategory(targetCategory));
+      return targetCategory===null||!!previous&&(isComponent(filingCategory(targetCategory))?componentFoldersOf(previous).includes(filingCategory(targetCategory)):designFoldersOf(previous).includes(filingCategory(targetCategory)));
     });
     const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
       result.added&&result.reused?`${result.added} added · ${result.reused} reused in ${destination}`:
@@ -1169,7 +1169,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           >
             <FolderIcon preferences={icons} id="design:all" size={14}/>
             <span>
-              All categories
+              All Designs
             </span>
           </button>
           {sortedFolders([...categories, ''],'design').map(folderRow)}
@@ -1303,7 +1303,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                 value={category??"__all__"}
                 onChange={(e) => setCategory(e.target.value==="__all__"?null:e.target.value)}
               >
-                <option value="__all__">All categories</option><option value="">Uncategorised</option>
+                <option value="__all__">All Designs</option><option value="">Uncategorised</option>
                 {[...categories, allComponents, ...componentFolders].map((s) => (
                   <option value={s} key={s}>
                     {categoryLabel(s)}
@@ -1468,7 +1468,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             <>
               {images.length > 0 && (
                 <MediaGrid
-                  removeFolder={category&&isComponent(category)&&category!==componentInbox?categoryLabel(category).slice("Components / ".length):undefined}
+                  removeFolder={category&&category!==allComponents&&category!==componentInbox?categoryLabel(category).replace(/^Components \/ /,""):undefined}
                   onRemoveFolder={removeFromComponentFolder}
                   masonry={true}
                   copy={copyImage}
@@ -1549,8 +1549,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{const next=await refresh();if(!next.undo_entries)appHistory.record({label:'Change thumbnail',kind:'library',undo:()=>runLibraryHistory(false,'Change thumbnail'),redo:()=>runLibraryHistory(true)});setModal(null);setNotice("Thumbnail updated");}}/>}
       {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
         const ids=modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))??[];
-        await mutate({action:remove?"remove_component_folder":"set_category",ids,value:name});
-        setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from component folder":"Added to component folder");
+        await mutate({action:remove?(isComponent(name)?"remove_component_folder":"remove_design_folder"):"set_category",ids,value:name});
+        setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from folder":"Added to folder");
       }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
       {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
         <Dialog
