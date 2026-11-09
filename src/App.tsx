@@ -1,4 +1,4 @@
-import ColourPicker from './ColourPicker';
+import ColourPicker, {ProjectColours} from './ColourPicker';
 import HoverPreview from "./HoverPreview";
 import {stageFiles} from "./captureImport";
 import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
@@ -1220,9 +1220,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         />
       </aside>
       <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
-        {homeView?<><div className="home-colour-picker"><ColourPicker projects={lib.projects}/></div><HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
+        {homeView?<><HomeDashboard headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
         <header className="topbar">
-          <ColourPicker projects={lib.projects}/>
           <div className="view-title">
             <h1>{title}</h1>
             <span>
@@ -1236,6 +1235,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           </div>
           <div className="header-actions">
             <ThumbnailProgress />
+            <ColourPicker projects={lib.projects}/>
             {project!==null&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
             <button className="icon-button" aria-label="Undo organisation change" disabled={!historyActions.undoLabel||undoing} title={historyActions.undoLabel?`Undo: ${historyActions.undoLabel} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
             <button className="icon-button" aria-label="Redo organisation change" disabled={!historyActions.redoLabel||undoing} title={historyActions.redoLabel?`Redo: ${historyActions.redoLabel} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
@@ -1373,6 +1373,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             </div>}
           </div>
         )}
+        {project!==null&&<ProjectColours key={project} project={project}/>}
         {readingCapture && (
           <div className="capture-reading">
             <CaptureProgress progress={importProgress}/>
