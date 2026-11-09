@@ -10,7 +10,7 @@ export default function AppInfo() {
   return <div className="setting-block">
     <span className="setting-label">Installed version</span>
     <span>BitClever Design Studio {version || "—"}</span>
-    <button className="text-button" onClick={()=>void openUrl("https://github.com/dottereldesign/design-viewer/releases/latest").catch(e=>setError(String(e)))}>Get latest update <ExternalLink size={12}/></button>
+    <button className="text-button" onClick={()=>void openUrl("https://github.com/dottereldesign/BitClever-Design-Studio/releases/latest").catch(e=>setError(String(e)))}>Get latest update <ExternalLink size={12}/></button>
     {error && <small role="alert">{error}</small>}
   </div>;
 }

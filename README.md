@@ -5,7 +5,7 @@
 <h1 align="center">BitClever Design Studio</h1>
 <p align="center">A Windows workspace for design inspiration, UI components and favourite websites.</p>
 <p align="center">
-  <a href="https://github.com/dottereldesign/design-viewer/releases/latest">Download for Windows</a> ·
+  <a href="https://github.com/dottereldesign/BitClever-Design-Studio/releases/latest">Download for Windows</a> ·
   <a href="#your-library--backups">Storage & backups</a> ·
   <a href="#development">Development</a>
 </p>
@@ -37,7 +37,7 @@ Customise sidebar layouts, section styles, icons and Home tiles. Collapse sectio
 
 **Windows 10/11 · 64-bit.** The installer includes media tools and installs WebView2 if needed.
 
-1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/design-viewer/releases/latest) and install it.
+1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/BitClever-Design-Studio/releases/latest) and install it.
 2. Launch BitClever. Click **Storage** in the header to create or open a self-contained library.
 3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
 
