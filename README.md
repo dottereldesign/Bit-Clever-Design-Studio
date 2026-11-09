@@ -1,32 +1,105 @@
-# Design
+<p align="center">
+  <img src="src/assets/app-logo.png" width="72" alt="BitClever logo">
+</p>
 
-A personal Windows library for images, videos and inspiration links.
+<h1 align="center">BitClever Design Studio</h1>
+<p align="center">A Windows workspace for design inspiration, UI components and favourite websites.</p>
+<p align="center">
+  <a href="https://github.com/dottereldesign/design-viewer/releases/latest">Download for Windows</a> ·
+  <a href="#your-library--backups">Storage & backups</a> ·
+  <a href="#development">Development</a>
+</p>
 
-[Download Windows setup](https://github.com/dottereldesign/design-viewer/releases/latest/download/Design-Setup.exe)
+![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.png)
 
-1. Download **Design-Setup.exe** and run it.
-2. Open **Design** from the Start menu.
-3. Go to **Settings → Change Design folder** and choose your media folder.
+## Collect and organise
 
-Windows 10/11, 64-bit. Setup includes the video tools and installs WebView2 if needed.
+- **Design Inspo & App Components** — organise references into multiple folders, including across both sections. Add tags and collect references into projects without duplicating originals.
+- **Fast imports** — paste images, drop files or drag images from webpages. File them directly into the selected folder; edit details later.
+- **Websites** — save a URL with a full-page screenshot captured through Chrome or Edge, or supply your own image. Scroll inside the thumbnail, open the full preview or visit the website.
+- **Media previews** — browse images, GIFs and videos in a responsive gallery. Use quick preview, zoom and pan, or Ctrl + wheel to enlarge a thumbnail.
+- **Links & resources** — keep useful links, fonts, CodePen references and brand guidelines alongside your visual library.
+- **Colour picker** — sample colours, copy hex values and assign saved colours to projects.
 
-This repo backs up the app only. Your media, saved links, projects and tags are stored separately.
+## Make the workspace yours
 
-Back up everything: **Settings → Export full library**. Choose a folder on your PC or an external drive; progress and any missing files are shown.
+![Home dashboard with resizable image tiles linking to collections and projects](docs/images/home.png)
 
-To restore, copy the whole backup folder to its permanent location, then use **Settings → Import metadata** and choose its `library.json`.
+Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrange tiles, drop in cover images and adjust labels, overlays and spacing. Clicking the logo returns Home; reopening the app restores your last workspace.
 
-Updates: check your version in **Settings**, then use **Get latest update**. Close Design before installing the new setup.
+![Customisation panel with sidebar appearance choices](docs/images/customise.png)
 
-## Build from source
+Customise sidebar layouts, section styles, icons and Home tiles. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes and organisation actions support Undo/Redo; settings undo lasts for the current session.
 
-Requires Node.js 20+, Rust and the Microsoft C++ Build Tools with a Windows SDK.
+*Screenshots show the current development interface with original sample artwork, not a personal library. The latest installer may not include every feature shown here.*
+
+## Get started
+
+**Windows 10/11 · 64-bit.** The installer includes media tools and installs WebView2 if needed.
+
+1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/design-viewer/releases/latest) and install it.
+2. Launch BitClever. In the current development app, click **Storage** in the header to create or open a self-contained library.
+3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
+
+Check **Settings → Get latest update** for new releases. Close the app before installing an update.
+
+## Your library & backups
+
+Your originals and organisation belong together in a portable library:
+
+```text
+BitClever Library/
+├── Design Inspo/
+├── App Components/
+├── General/
+├── Appearance/
+├── Library Data/
+└── Browse Library.html
+```
+
+Files are stored once; the database preserves every folder membership, project and tag. Home covers, custom icons, saved colours, links and website screenshots are included in full backups.
+
+- **Back up while using the app:** Storage → **Back Up Now**, then **Verify Backup** on the destination.
+- **Copy to an external drive:** close BitClever first, then copy the entire library folder.
+- **Open a saved copy:** put it in its permanent location, then Storage → **Open Existing Library**.
+
+Portable backups exclude removed items, undo history and temporary caches. Metadata-only exports are not full backups. **Merge Backup** imports into an existing library and can replace matching records’ organisation; opening a separate copy keeps the libraries separate.
+
+Do not manually rename files inside a managed library. This repository contains the application source, not your personal library.
+
+[Storage details](docs/LIBRARY-STORAGE.md) · [Website capture](docs/WEBSITE-CAPTURE.md)
+
+## Keyboard essentials
+
+| Action | Shortcut |
+| --- | --- |
+| Search the current view | `/` or `Ctrl + K` |
+| Quick preview | `Space` |
+| Previous / next preview | `←` / `→` |
+| Enlarge a hovered thumbnail | `Ctrl + mouse wheel` |
+| Organise selected media | `C` |
+| Undo / redo | `Ctrl + Z` / `Ctrl + Shift + Z` |
+| Settings | `Ctrl + ,` |
+
+See Settings for the full shortcut list. Single-key shortcuts apply outside text fields.
+
+## Development
+
+Built with **React, TypeScript, Tauri, Rust and SQLite**. Requires Node.js 20+, Rust, Microsoft C++ Build Tools and a Windows SDK.
 
 ```powershell
 npm ci
 npm run desktop
 ```
 
-Create an installer: `npm run package`.
+Keep the development session open for frontend hot reload. The **Design Dev** shortcut runs `scripts/start-dev.ps1`; the ordinary installed app does not receive development changes.
 
-[Solo GitHub workflow](docs/WORKFLOW.md) · [Development notes](docs/DEVELOPMENT.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+```powershell
+npm test                 # Frontend unit tests
+npm run test:native      # Native and storage tests
+npm run test:boards      # Browser interaction checks (requires Chrome)
+```
+
+Standalone builds and installers are separate from development. See the [workflow](docs/WORKFLOW.md) for packaging and releases.
+
+[Development notes](docs/DEVELOPMENT.md) · [Performance](docs/PERFORMANCE.md) · [MIT licence](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
