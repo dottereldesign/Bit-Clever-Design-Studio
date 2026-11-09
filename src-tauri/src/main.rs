@@ -350,6 +350,28 @@ async fn read_clipboard(app: tauri::AppHandle, state: tauri::State<'_, State>) -
     Ok(result)
 }
 #[tauri::command]
+async fn copy_colour(hex:String)->Result<()> {
+    if hex.len()!=7 || !hex.starts_with('#') || !hex[1..].bytes().all(|b|b.is_ascii_hexdigit()){return Err("Invalid colour".into());}
+    tauri::async_runtime::spawn_blocking(move||arboard::Clipboard::new().map_err(err)?.set_text(hex.to_uppercase()).map_err(err)).await.map_err(err)?
+}
+#[tauri::command]
+async fn pick_colour()->Result<Option<String>> {
+    tauri::async_runtime::spawn_blocking(||{
+        #[cfg(windows)] {
+            use std::os::windows::process::CommandExt;
+            let file=tempfile::Builder::new().prefix("bitclever-colour-").suffix(".ps1").tempfile().map_err(err)?;
+            std::fs::write(file.path(),include_str!("colour-picker.ps1")).map_err(err)?;
+            let output=std::process::Command::new("powershell.exe").args(["-NoLogo","-NoProfile","-NonInteractive","-STA","-ExecutionPolicy","Bypass","-File"]).arg(file.path()).creation_flags(0x08000000).output().map_err(err)?;
+            if !output.status.success(){return Err(format!("Colour picker failed: {}",String::from_utf8_lossy(&output.stderr)));}
+            let hex=String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if hex.is_empty(){return Ok(None);}
+            if hex.len()!=7 || !hex.starts_with('#') || !hex[1..].bytes().all(|b|b.is_ascii_hexdigit()){return Err("Colour picker returned an invalid colour".into());}
+            Ok(Some(hex))
+        }
+        #[cfg(not(windows))] {Err("Screen colour picking is unavailable on this platform.".into())}
+    }).await.map_err(err)?
+}
+#[tauri::command]
 async fn copy_image(id: i64, state: tauri::State<'_, State>) -> Result<()> {
     let s = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -640,7 +662,7 @@ fn main() {
             replace_thumbnail,
             download_video,
             cancel_video_download,
-            read_clipboard,
+            read_clipboard,copy_colour,pick_colour,
             copy_image,
             stage_begin,
             stage_web_image,

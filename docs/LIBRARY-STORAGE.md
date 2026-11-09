@@ -30,3 +30,7 @@ Portable backups exclude removed items, undo history, browser sessions and tempo
 `Library Data/Library.sqlite` is authoritative once a folder is opened as a managed library. The JSON metadata and manifest describe the initial portable snapshot, not subsequent live changes. Live verification uses database integrity, foreign keys, and stored media/appearance checksums. Portable snapshot verification uses its manifest. AppData stores only the selected-library pointer and runtime caches after migration; legacy files remain until the owner removes them separately.
 
 Do not manually rename or rearrange managed media files. Use the app's folder controls. Verify detects missing or altered files; it does not repair corruption. The offline HTML browser is a convenience index and is not a replacement for Library Data.
+
+## Saved colours
+
+The header eyedropper copies a picked colour as a hex code. Right-click it (or press Shift+F10) to browse colour history, copy a colour again, filter by project, and assign it to multiple projects. Assignments support Undo/Redo. The `colour-history` preference is included in portable backups, with project references remapped on restore. The most recent 100 colours are retained; older colours assigned to projects are kept too. Clipboard errors do not discard a picked colour.

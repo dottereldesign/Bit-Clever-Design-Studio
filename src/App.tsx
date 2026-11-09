@@ -1,3 +1,4 @@
+import ColourPicker from './ColourPicker';
 import HoverPreview from "./HoverPreview";
 import {stageFiles} from "./captureImport";
 import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
@@ -1219,8 +1220,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         />
       </aside>
       <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
-        {homeView?<HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/>:<>
+        {homeView?<><div className="home-colour-picker"><ColourPicker projects={lib.projects}/></div><HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
         <header className="topbar">
+          <ColourPicker projects={lib.projects}/>
           <div className="view-title">
             <h1>{title}</h1>
             <span>
@@ -2177,6 +2179,7 @@ function Viewer({
           </small>
         </div>
         <div className="viewer-actions">
+          <ColourPicker projects={projects}/>
           {pin && (
             <button aria-pressed={pinned} onClick={pin}>
               <Pin size={14} fill={pinned ? "currentColor" : "none"} />

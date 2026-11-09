@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Colour picker checks</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import ColourPicker from '/src/ColourPicker.tsx';import {appHistory} from '/src/appHistory';import {collectBackupPreferences} from '/src/backupPreferences';import '/src/style.css';
+let colour='#abc123',cancel=false,failCopy=false;const copies=[];
+window.EyeDropper=class{async open(){if(cancel)throw new DOMException('Cancelled','AbortError');return {sRGBHex:colour};}};
+window.__TAURI_INTERNALS__={invoke:async(command,args)=>{if(command==='copy_colour'){if(failCopy)throw Error('Busy clipboard');copies.push(args.hex);return;}if(command==='pick_colour')return '#112233';throw Error(command);}};
+createRoot(document.getElementById('root')).render(React.createElement('header',{className:'topbar'},React.createElement('div',{className:'view-title'},React.createElement('h1',null,'Colours')),React.createElement(ColourPicker,{projects:[{id:7,name:'Website',count:0},{id:9,name:'Brand refresh',count:0}]}),React.createElement('div',{className:'header-actions'},'Storage · Add')));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>5000)throw Error(label);await pause(20);}}
+const button=()=>document.querySelector('[aria-label="Pick a colour"]');
+const history=()=>JSON.parse(localStorage.getItem('colour-history')??'[]');
+const menu=()=>button().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+try{
+ await until(button,'Picker renders');if(innerWidth>1100){const rect=button().getBoundingClientRect();assert(Math.abs(rect.left+rect.width/2-innerWidth/2)<2,'Icon not centred');}
+ button().click();await until(()=>copies.length===1,'Colour copied');assert(copies[0]==='#ABC123','Hex not normalized');assert(history()[0].hex==='#ABC123','History not persisted');
+ menu();await until(()=>document.querySelector('[aria-label="Colour history"]'),'History opens');
+ const inputs=[...document.querySelectorAll('.colour-projects input')];inputs[0].click();await pause(50);inputs[1].click();await until(()=>history()[0].projects.length===2,'Multiple projects');
+ assert(collectBackupPreferences()['colour-history'][0].projects.includes('project:7'),'Assignments missing from backup');
+ await appHistory.undo();await until(()=>history()[0].projects.length===1,'Undo assignment');await appHistory.redo();await until(()=>history()[0].projects.length===2,'Redo assignment');
+ window.__screenshotReady=true;await pause(700);
+ document.querySelector('[aria-label="Close colour history"]').click();await pause(40);button().click();await until(()=>copies.length===2,'Pick duplicate');assert(history().length===1&&history()[0].projects.length===2,'Duplicate lost assignments');
+ colour='#112244';failCopy=true;button().click();await until(()=>history().length===2,'Save despite clipboard error');await until(()=>document.querySelector('[role=status]')?.textContent.includes('Clipboard unavailable'),'Clipboard failure explained');
+ failCopy=false;cancel=true;await until(()=>!button().disabled,'Picker finished');button().click();await pause(100);assert(history().length===2,'Cancel saved a colour');cancel=false;
+ delete window.EyeDropper;button().click();await until(()=>history()[0].hex==='#112233','Native fallback');
+ menu();await until(()=>document.querySelector('[aria-label="Colour history"]'),'Reopen history');const select=document.querySelector('select');select.value='project:7';select.dispatchEvent(new Event('change',{bubbles:true}));await pause(100);assert(document.querySelectorAll('.colour-swatches button').length===1,'Project filter failed');
+ assert(document.querySelector('.colour-value code').textContent==='#ABC123','Selected colour not in filtered project');
+ document.querySelector('.colour-panel').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!document.querySelector('.colour-panel'),'Escape closes');assert(document.activeElement===button(),'Focus not restored');
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Centred picker; normalized hex copied; persisted history; multiple project assignments; backup preferences; undo/redo; duplicate preservation; clipboard failure; cancellation; native fallback; project filter; keyboard dismissal']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error)});}
+</script></body></html>

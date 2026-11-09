@@ -1,6 +1,6 @@
 import {invoke,isTauri} from "@tauri-apps/api/core";
 import {appHistory} from "./appHistory";
-const keys=['collection-shortcuts','site-shortcuts','tile-size','sidebar-width','sidebar-section-style','home-style','home-appearance','reduce-motion','sidebar-layout','app-icons','folder-labels','folder-appearance','sidebar-folder-order','home-plan','home-tiles'];
+const keys=['colour-history','collection-shortcuts','site-shortcuts','tile-size','sidebar-width','sidebar-section-style','home-style','home-appearance','reduce-motion','sidebar-layout','app-icons','folder-labels','folder-appearance','sidebar-folder-order','home-plan','home-tiles'];
 const allowed=(key:string)=>keys.includes(key)||key.startsWith('sidebar-open:');
 export function collectBackupPreferences(){
  const result:Record<string,unknown>={};

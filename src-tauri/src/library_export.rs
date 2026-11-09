@@ -152,6 +152,12 @@ pub fn restore_preferences(folder:&Path, db_path:&Path)->Result<serde_json::Valu
             },_=>{}
         }Ok(())
     }
+    // A deleted project's old ID must never attach a colour to an unrelated project on restore.
+    if let Some(colours)=value.get_mut("colour-history").and_then(|v|v.as_array_mut()) {
+        for colour in colours {if let Some(ids)=colour.get_mut("projects").and_then(|v|v.as_array_mut()) {
+            ids.retain(|id|id.as_str().and_then(|s|s.strip_prefix("project:")).is_some_and(|id|projects.contains_key(id)));
+        }}
+    }
     rewrite(&mut value,folder,db_path.parent().ok_or("Missing app data folder")?,&projects)?;
     Ok(value)
 }
@@ -382,7 +388,7 @@ mod tests {
         conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
         db::change(&path,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[2],"value":"Social Media"})).unwrap()).unwrap();
         let cover=path.parent().unwrap().join("home-covers/cover.png");fs::create_dir_all(cover.parent().unwrap()).unwrap();fs::write(&cover,b"cover bytes").unwrap();
-        let prefs=serde_json::json!({"home-tiles":[{"id":"project:7","cover":{"path":cover,"width":10,"height":10}}],"app-icons":{"overrides":{"project:7":{"kind":"asset","value":cover}}},"folder-labels":{"Mobile":"iOS & Android"},"collection-shortcuts":[{"target":{"kind":"project","value":"7"}}]});
+        let prefs=serde_json::json!({"colour-history":[{"hex":"#ABCDEF","projects":["project:7","project:999"]}],"home-tiles":[{"id":"project:7","cover":{"path":cover,"width":10,"height":10}}],"app-icons":{"overrides":{"project:7":{"kind":"asset","value":cover}}},"folder-labels":{"Mobile":"iOS & Android"},"collection-shortcuts":[{"target":{"kind":"project","value":"7"}}]});
         let result=export_with_preferences(&path,&destination,"Complete",prefs,&AtomicBool::new(false),&mut |_|{}).unwrap();
         let moved=temp.path().join("external drive copy");fs::rename(result.path,&moved).unwrap();
         let checked=verify(&moved).unwrap();assert_eq!(checked.missing.len(),1);
@@ -395,6 +401,7 @@ mod tests {
         assert!(fs::read_to_string(moved.join("Browse Library.html")).unwrap().contains("Social Media"));
         let settings=restore_preferences(&moved,&restored).unwrap();let project=lib.projects.iter().find(|p|p.name=="Keep project").unwrap();
         assert_eq!(settings["home-tiles"][0]["id"],format!("project:{}",project.id));
+        assert_eq!(settings["colour-history"][0]["projects"].as_array().unwrap().len(),1);assert_eq!(settings["colour-history"][0]["hex"],"#ABCDEF");assert_eq!(settings["colour-history"][0]["projects"][0],format!("project:{}",project.id));
         assert_eq!(settings["collection-shortcuts"][0]["target"]["value"],project.id.to_string());
         assert_eq!(fs::read(settings["home-tiles"][0]["cover"]["path"].as_str().unwrap()).unwrap(),b"cover bytes");
         let again=export_with_preferences(&restored,&destination,"Again",settings,&AtomicBool::new(false),&mut |_|{}).unwrap();
