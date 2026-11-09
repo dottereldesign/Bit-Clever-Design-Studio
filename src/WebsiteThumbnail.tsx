@@ -44,6 +44,6 @@ export default function WebsiteThumbnail({poster,original,active,deactivate}:{po
   <span ref={viewport} className="website-thumbnail-viewport">
    {active&&<img className="website-thumbnail-page" src={convertFileSrc(original)} alt="" draggable={false} onLoad={()=>setReady(true)} onError={()=>setFailed(true)}/>}
   </span>
-  {active&&<span className="website-thumbnail-hint">{failed?'Preview unavailable':ready?'Scroll to explore · Esc to exit':'Loading screenshot…'}</span>}
+  {active&&(!ready||failed)&&<span className="website-thumbnail-hint">{failed?'Preview unavailable':'Loading screenshot…'}</span>}
  </span>;
 }
