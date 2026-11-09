@@ -166,7 +166,7 @@ try{
   await until(()=>!document.querySelector('.website-capture')&&library.items.length===before+1,'Image paste auto saves website');
   const website=library.items.at(-1);assert(website.source==='Websites'&&website.path==='https://inspiring.example/'&&website.thumbnail,'Website metadata incorrect');
   const externalBefore=calls.filter(c=>c.command==='open_external_url').length;converted.length=0;
-  document.querySelector('.link-card-open').click();await until(()=>document.querySelector('.viewer .zoom-image img'),'Full screenshot preview');
+  document.querySelector('.link-card-open').click();await until(()=>document.querySelector('.website-thumbnail[data-active=true]'),'Thumbnail scrolling activated');assert(!document.querySelector('.viewer'),'Thumbnail click opened side viewer');document.querySelector('.website-card-actions .subtle-button').click();await until(()=>document.querySelector('.viewer .zoom-image img'),'Full screenshot preview');
   assert(calls.filter(c=>c.command==='open_external_url').length===externalBefore,'Thumbnail opened browser');
   assert(converted.includes(website.thumbnail),'Preview did not use full-resolution image');
   assert(!!document.querySelector('.viewer-docked')===(innerWidth>=1600),'Preview did not use standard responsive side layout');
@@ -176,7 +176,7 @@ try{
   document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close button preview');await pause(100);
   document.querySelector('.website-card-external').click();await until(()=>calls.some(c=>c.command==='open_external_url'&&c.args.url===website.path),'External icon opens browser');
   assert(!document.querySelector('.viewer'),'External icon opened preview');
-  checks.push('Website thumbnail and Preview button open the full-resolution viewer; external icon alone opens the browser');
+  checks.push('Website thumbnail activates scrolling; Preview opens the full-resolution viewer; external icon opens the browser');
   document.querySelector('.link-card-menu').click();await until(()=>button('Tags'),'Website tags action');button('Tags').click();await until(()=>button('Sports'),'Tag picker');button('Sports').click();await until(()=>library.items.at(-1).tags.includes(1),'Website tag persisted');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
   checks.push('Websites leads General; URL then image paste saves once without confirmation; cards preview screenshots and offer tags');
   document.querySelector('.link-card-menu').click();await until(()=>button('Open full-page screenshot'),'Screenshot action');button('Open full-page screenshot').click();await until(()=>calls.some(c=>c.command==='open_website_screenshot'),'Screenshot opens');
@@ -194,7 +194,7 @@ try{
   button('Cancel capture').click();await until(()=>button('Capture with Chrome'),'Cancel remembered capture');
   const checkbox=document.querySelector('.website-auto-capture input');checkbox.click();assert(!localStorage.getItem('website-capture-browser'),'Remember preference not cleared');
   clipboard={files:[{path:'C:/staging/manual.png',name:'Manual.png'}],url:''};paste();await until(()=>!document.querySelector('.website-capture')&&library.items.length===count+2,'Manual fallback after cancel');
-  await pause(100);const cards=[...document.querySelectorAll('.link-card')];cards[0].querySelector('.link-card-open').click();await until(()=>document.querySelector('.viewer'),'Multiple website preview');
+  await pause(100);const cards=[...document.querySelectorAll('.link-card')];cards[0].querySelector('.website-card-actions .subtle-button').click();await until(()=>document.querySelector('.viewer'),'Multiple website preview');
   const first=document.querySelector('.viewer').dataset.itemId;document.querySelector('[aria-label="Next image"]').click();await until(()=>document.querySelector('.viewer')?.dataset.itemId!==first,'Next website screenshot');
   document.querySelector('[aria-label="Previous image"]').click();await until(()=>document.querySelector('.viewer')?.dataset.itemId===first,'Previous website screenshot');
   document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close navigation preview');

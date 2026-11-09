@@ -1,26 +1,34 @@
-import {useEffect,useRef,useState,type CSSProperties} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {convertFileSrc} from '@tauri-apps/api/core';
 
-export default function WebsiteThumbnail({poster,original}:{poster:string;original:string}){
- const frame=useRef<HTMLSpanElement>(null),image=useRef<HTMLImageElement>(null);
- const [hover,setHover]=useState(false),[load,setLoad]=useState(false),[ready,setReady]=useState(false),[distance,setDistance]=useState(0);
- const [reduced,setReduced]=useState(false);
+export default function WebsiteThumbnail({poster,original,active,deactivate}:{poster:string;original:string;active:boolean;deactivate:()=>void}){
+ const frame=useRef<HTMLSpanElement>(null),viewport=useRef<HTMLSpanElement>(null);
+ const [ready,setReady]=useState(false),[failed,setFailed]=useState(false);
+ useEffect(()=>{setReady(false);setFailed(false);if(viewport.current)viewport.current.scrollTop=0;},[active,original]);
  useEffect(()=>{
-  const media=matchMedia('(prefers-reduced-motion: reduce)');
-  const update=()=>setReduced(media.matches||document.documentElement.dataset.motion==='reduce');
-  const observer=new MutationObserver(update);observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-motion']});
-  media.addEventListener('change',update);update();return()=>{media.removeEventListener('change',update);observer.disconnect();};
- },[]);
- useEffect(()=>{
-  const timer=setTimeout(()=>{setLoad(hover&&!reduced);if(!hover||reduced)setReady(false);},hover&&!reduced?300:220);
-  return()=>clearTimeout(timer);
- },[hover,reduced]);
- const measure=()=>{const el=frame.current,img=image.current;if(el&&img?.naturalWidth)setDistance(Math.max(0,img.naturalHeight*el.clientWidth/img.naturalWidth-el.clientHeight));};
- useEffect(()=>{const observer=new ResizeObserver(measure);if(frame.current)observer.observe(frame.current);return()=>observer.disconnect();},[]);
- const scrolling=hover&&!reduced&&ready&&distance>0;
- return <span ref={frame} className="website-thumbnail" data-scrolling={scrolling} style={{'--website-scroll':`${distance}px`,'--website-scroll-time':`${Math.max(1,distance/72)}s`} as CSSProperties}
-  onPointerEnter={event=>{if(event.pointerType!=='touch')setHover(true);}} onPointerLeave={()=>setHover(false)} onPointerCancel={()=>setHover(false)}>
+  if(!active)return;
+  const el=viewport.current!,button=frame.current!.closest('button')!;
+  const outside=(event:PointerEvent)=>{if(!button.contains(event.target as Node))deactivate();};
+  const wheel=(event:WheelEvent)=>{
+   if(event.ctrlKey||event.metaKey||!event.deltaY)return;
+   event.preventDefault();event.stopPropagation();
+   el.scrollTop+=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?el.clientHeight:1);
+  };
+  const key=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();deactivate();return;}
+   if(event.ctrlKey||event.metaKey||event.altKey)return;
+   const amount=({ArrowDown:48,ArrowUp:-48,PageDown:el.clientHeight*.85,PageUp:-el.clientHeight*.85,Home:-el.scrollHeight,End:el.scrollHeight} as Record<string,number>)[event.key];
+   if(amount!==undefined){event.preventDefault();event.stopPropagation();el.scrollTop+=amount;}
+  };
+  document.addEventListener('pointerdown',outside,true);window.addEventListener('blur',deactivate);
+  el.addEventListener('wheel',wheel,{passive:false});button.addEventListener('keydown',key);
+  return()=>{document.removeEventListener('pointerdown',outside,true);window.removeEventListener('blur',deactivate);el.removeEventListener('wheel',wheel);button.removeEventListener('keydown',key);};
+ },[active,deactivate]);
+ return <span ref={frame} className="website-thumbnail" data-active={active} data-ready={active&&ready}>
   {poster?<img className="website-thumbnail-poster" loading="lazy" src={convertFileSrc(poster)} alt=""/>:<span className="link-card-placeholder"/>}
-  {load&&<img ref={image} className="website-thumbnail-scroll" src={convertFileSrc(original)} alt="" draggable={false} onLoad={()=>{measure();setReady(true);}} onError={()=>setReady(false)}/>}
+  <span ref={viewport} className="website-thumbnail-viewport">
+   {active&&<img className="website-thumbnail-page" src={convertFileSrc(original)} alt="" draggable={false} onLoad={()=>setReady(true)} onError={()=>setFailed(true)}/>}
+  </span>
+  {active&&<span className="website-thumbnail-hint">{failed?'Preview unavailable':ready?'Scroll to explore · Esc to exit':'Loading screenshot…'}</span>}
  </span>;
 }
