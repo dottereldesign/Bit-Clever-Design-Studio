@@ -19,10 +19,10 @@ try{
  assert(frame.dataset.active==='true','Click did not activate scrolling');
  const rect=viewport.getBoundingClientRect();window.__wheelAction={id:1,x:rect.left+rect.width/2,y:rect.top+rect.height/2,deltaY:160,ctrl:false};
  await until(()=>window.__wheelActionDone===1&&viewport.scrollTop>20,'Real wheel scrolls screenshot');
- const down=viewport.scrollTop;await pause(500);assert(viewport.scrollTop===down,'Screenshot moved automatically');
- assert(wheel(viewport,-80).defaultPrevented,'Active screenshot did not capture wheel');assert(viewport.scrollTop<down,'Wheel up did not scroll back');
- wheel(viewport,99999);const bottom=viewport.scrollTop;assert(bottom>0&&bottom<=viewport.scrollHeight-viewport.clientHeight+1,'Scroll exceeded image bounds');
- wheel(viewport,99999);assert(viewport.scrollTop===bottom,'Bottom edge moved');wheel(viewport,-99999);assert(viewport.scrollTop===0,'Top edge moved');
+ assert(viewport.clientWidth===frame.clientWidth,'Activation narrowed screenshot');assert(getComputedStyle(frame).boxShadow==='none','Active border remains');await pause(650);const down=viewport.scrollTop;await pause(200);assert(viewport.scrollTop===down,'Screenshot moved automatically');
+ assert(wheel(viewport,-80).defaultPrevented,'Active screenshot did not capture wheel');await pause(500);assert(viewport.scrollTop<down,'Wheel up did not scroll back');
+ wheel(viewport,99999);await pause(800);const bottom=viewport.scrollTop;assert(bottom>0&&bottom<=viewport.scrollHeight-viewport.clientHeight+1,'Scroll exceeded image bounds');
+ wheel(viewport,99999);assert(viewport.scrollTop===bottom,'Bottom edge moved');wheel(viewport,-99999);await until(()=>viewport.scrollTop===0,'Top edge settles');
  assert(!wheel(viewport,120,{ctrlKey:true}).defaultPrevented,'Ctrl+wheel enlargement intercepted');
  document.documentElement.dataset.motion='reduce';wheel(viewport,120);assert(viewport.scrollTop>0,'Reduced motion blocked manual scrolling');
  frame.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,pointerType:'mouse',relatedTarget:document.body}));await pause(250);assert(viewport.scrollTop>0&&frame.dataset.active==='true','Leaving thumbnail lost reading position');
