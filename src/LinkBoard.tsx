@@ -13,10 +13,10 @@ export default function LinkBoard({ items, size, report, menu, add, selected, op
   openItem?: (item: Item, event: React.MouseEvent) => void;
 }) {
   const [activeId,setActiveId]=useState<number|null>(null);
-  return <div className="link-board" style={{ columnWidth: size }}>
+  return <div className="link-board" style={{ gridTemplateColumns: `repeat(auto-fill,minmax(min(100%,${size}px),1fr))` }}>
     {items.map(item => <article className={`link-card ${selected?.has(item.id) ? "selected" : ""}`} key={item.id} data-item-id={item.id}>
-      <button className="link-card-open" title={item.source==="Websites"?"Click, then scroll to explore the screenshot":"Open reference · Ctrl + scroll to enlarge"} aria-pressed={item.source==="Websites"?activeId===item.id:undefined} onClick={event => {if(item.source==="Websites"&&item.thumbnail&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey){setActiveId(item.id);return;}if(openItem)openItem(item,event);else void openUrl(item.path).catch(report);}} aria-label={`${item.source==="Websites"?"Explore screenshot of":"Open"} ${item.name}`}>
-        {item.thumbnail ? <LinkThumbnail item={item} active={activeId===item.id} deactivate={()=>setActiveId(null)}/> : <div className="link-card-placeholder" />}
+      <button className="link-card-open" title={item.source==="Websites"?"Ctrl + scroll to explore the screenshot":"Open reference · Ctrl + scroll to enlarge"} onClick={event => {if(openItem)openItem(item,event);else void openUrl(item.path).catch(report);}} aria-label={`${item.source==="Websites"?"Explore screenshot of":"Open"} ${item.name}`}>
+        {item.thumbnail ? <LinkThumbnail item={item} active={activeId===item.id} activate={()=>setActiveId(item.id)} deactivate={()=>setActiveId(null)}/> : <div className="link-card-placeholder" />}
         <strong>{item.name}</strong><small>{new URL(item.path).hostname}</small>
       </button>
       {item.source==="Websites"&&<div className="website-card-actions">
@@ -29,9 +29,9 @@ export default function LinkBoard({ items, size, report, menu, add, selected, op
   </div>;
 }
 
-function LinkThumbnail({item,active,deactivate}:{item:Item;active:boolean;deactivate:()=>void}){
+function LinkThumbnail({item,active,activate,deactivate}:{item:Item;active:boolean;activate:()=>void;deactivate:()=>void}){
  const [preview,setPreview]=useState('');
  useEffect(()=>{let alive=true;setPreview('');if(item.source==='Websites')void invoke<string>('website_thumbnail',{id:item.id}).then(path=>{if(alive)setPreview(path);}).catch(()=>{if(alive)setPreview(item.thumbnail??'');});return()=>{alive=false;};},[item.id,item.thumbnail,item.source]);
- if(item.source==='Websites')return <WebsiteThumbnail key={item.thumbnail} poster={preview} original={item.thumbnail!} active={active} deactivate={deactivate}/>;
+ if(item.source==='Websites')return <WebsiteThumbnail key={item.thumbnail} poster={preview} original={item.thumbnail!} active={active} activate={activate} deactivate={deactivate}/>;
  return <img loading="lazy" src={convertFileSrc(preview||item.thumbnail!)} alt=""/>;
 }

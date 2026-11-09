@@ -1,12 +1,12 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {convertFileSrc} from '@tauri-apps/api/core';
 
-export default function WebsiteThumbnail({poster,original,active,deactivate}:{poster:string;original:string;active:boolean;deactivate:()=>void}){
+export default function WebsiteThumbnail({poster,original,active,activate,deactivate}:{poster:string;original:string;active:boolean;activate:()=>void;deactivate:()=>void}){
  const frame=useRef<HTMLSpanElement>(null),viewport=useRef<HTMLSpanElement>(null);
+ const pending=useRef(0),moveRef=useRef<(delta:number)=>void>(()=>{});
  const [ready,setReady]=useState(false),[failed,setFailed]=useState(false);
- useEffect(()=>{setReady(false);setFailed(false);if(viewport.current)viewport.current.scrollTop=0;},[active,original]);
+ useLayoutEffect(()=>{setReady(false);setFailed(false);if(viewport.current)viewport.current.scrollTop=0;},[active,original]);
  useEffect(()=>{
-  if(!active)return;
   const el=viewport.current!,button=frame.current!.closest('button')!;
   let animation=0,target=el.scrollTop,last=0;
   const move=(delta:number)=>{
@@ -23,13 +23,17 @@ export default function WebsiteThumbnail({poster,original,active,deactivate}:{po
    };
    if(!animation){last=0;animation=requestAnimationFrame(tick);}
   };
+  moveRef.current=move;
   const outside=(event:PointerEvent)=>{if(!button.contains(event.target as Node))deactivate();};
   const wheel=(event:WheelEvent)=>{
-   if(event.ctrlKey||event.metaKey||!event.deltaY)return;
+   if(!event.ctrlKey||event.altKey||event.shiftKey||!event.deltaY)return;
    event.preventDefault();event.stopPropagation();
-   move(event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?el.clientHeight:1));
+   const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?el.clientHeight:1);
+   if(!active||!ready){pending.current+=delta;if(!active)activate();return;}
+   move(delta);
   };
   const key=(event:KeyboardEvent)=>{
+   if(!active)return;
    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();deactivate();return;}
    if(event.ctrlKey||event.metaKey||event.altKey)return;
    const amount=({ArrowDown:48,ArrowUp:-48,PageDown:el.clientHeight*.85,PageUp:-el.clientHeight*.85,Home:-el.scrollHeight,End:el.scrollHeight} as Record<string,number>)[event.key];
@@ -38,7 +42,8 @@ export default function WebsiteThumbnail({poster,original,active,deactivate}:{po
   document.addEventListener('pointerdown',outside,true);window.addEventListener('blur',deactivate);
   el.addEventListener('wheel',wheel,{passive:false});button.addEventListener('keydown',key);
   return()=>{cancelAnimationFrame(animation);document.removeEventListener('pointerdown',outside,true);window.removeEventListener('blur',deactivate);el.removeEventListener('wheel',wheel);button.removeEventListener('keydown',key);};
- },[active,deactivate]);
+ },[active,ready,activate,deactivate]);
+ useEffect(()=>{if(active&&ready&&pending.current){moveRef.current(pending.current);pending.current=0;}},[active,ready]);
  return <span ref={frame} className="website-thumbnail" data-active={active} data-ready={active&&ready}>
   {poster?<img className="website-thumbnail-poster" loading="lazy" src={convertFileSrc(poster)} alt=""/>:<span className="link-card-placeholder"/>}
   <span ref={viewport} className="website-thumbnail-viewport">
