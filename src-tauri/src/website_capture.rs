@@ -261,18 +261,26 @@ pub fn capture(
             }
         }
         wait(job, 1000)?;
-        let blocked=cdp.js(r#"(()=>{const visible=e=>e&&e.getBoundingClientRect().height>0;return [...document.querySelectorAll('input[type=password],[role=dialog],#onetrust-banner-sdk,#CybotCookiebotDialog,iframe[src*=captcha]')].some(visible)||/just a moment|verify you are human|checking your browser/i.test(document.title)})()"#,job)?.as_bool().unwrap_or(false);
+        let blocked=cdp.js(include_str!("capture-blockers.js"),job)?.as_bool().unwrap_or(false);
         if blocked {
             job.resume.store(false, Ordering::SeqCst);
-            send(Progress{phase:"attention",message:"Handle the login, cookie notice or verification in the capture browser, then Continue.".into()});
+            send(Progress{phase:"attention",message:"Handle the website notice, then click Continue capture in the browser or here.".into()});
+            cdp.js(include_str!("capture-controls.js"),job)?;
             let start = Instant::now();
             while !job.resume.load(Ordering::SeqCst) {
-                wait(job, 100)?;
+                wait(job, 150)?;
+                cdp.js(include_str!("capture-controls.js"),job)?;
+                match cdp.js("window.__bitcleverCaptureAction || ''",job)?.as_str() {
+                    Some("continue")=>job.resume.store(true,Ordering::SeqCst),
+                    Some("cancel")=>{job.cancel.store(true,Ordering::SeqCst);check(job)?;},
+                    _=>{}
+                }
                 if start.elapsed() > Duration::from_secs(300) {
                     return Err("Capture paused too long. Start again when ready.".into());
                 }
             }
         }
+        cdp.js("document.getElementById('bitclever-capture-controls')?.remove();delete window.__bitcleverCaptureAction;true",job)?;
         send(Progress {
             phase: "preparing",
             message: "Loading images and revealing page sections".into(),
@@ -366,11 +374,14 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         std::thread::spawn(move || {
-            for stream in listener.incoming().take(4) {
+            for stream in listener.incoming().take(8) {
                 let mut stream = stream.unwrap();
                 let mut buf = [0; 4096];
                 let _ = stream.read(&mut buf);
-                let body="<!doctype html><style>html,body{margin:0}body{height:4200px;background:linear-gradient(#f00,#00f)}</style><div style='height:100px;background:#0f0'>Capture fixture</div>";
+                let body="<!doctype html><style>html,body{margin:0}body{height:4200px;background:linear-gradient(#f00,#00f)}</style><div style='height:100px;background:#0f0'>Capture fixture</div><div role='dialog' style='height:233px;position:fixed;visibility:hidden'>Hidden region dialog</div><div style='opacity:0'><div role='dialog' style='position:fixed;height:80px'>Hidden parent</div></div>";
+                let body=if String::from_utf8_lossy(&buf).contains("GET /prompt ") {
+                    format!("{body}<div id='cookie' role='dialog' style='position:fixed;top:0;background:white'>Cookies</div><script>let t=setInterval(()=>{{let h=document.getElementById('bitclever-capture-controls');if(h){{document.getElementById('cookie').remove();h.shadowRoot.getElementById('continue').click();clearInterval(t);}}}},50)</script>")
+                }else{body.to_owned()};
                 let _=write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body);
             }
         });
@@ -381,7 +392,7 @@ mod tests {
             &format!("http://{address}/"),
             &Job::default(),
             true,
-            &mut |_| {},
+            &mut |p| {assert_ne!(p.phase,"attention","Hidden dialogs must not pause capture");},
         )
         .unwrap();
         let image = image::open(file.path).unwrap().to_rgb8();
@@ -391,5 +402,11 @@ mod tests {
             assert!(p[1] < 5, "Unexpected gap at {y}");
         }
         assert!(image.get_pixel(720, 4199).0[2] > 240);
+        let mut paused=false;
+        let file=capture(temp.path(),browser.id,&format!("http://{address}/prompt"),&Job::default(),true,&mut |p|{if p.phase=="attention"{paused=true;}}).unwrap();
+        assert!(paused,"Visible dialog must offer browser controls");
+        let image=image::open(file.path).unwrap().to_rgb8();assert_eq!(image.dimensions(),(1440,4200));
+        assert_eq!(image.get_pixel(1300,50).0,[0,255,0],"Capture controls must be removed from screenshot");
+
     }
 }

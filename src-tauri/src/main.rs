@@ -50,11 +50,11 @@ fn website_capture_control(action:String,jobs:tauri::State<'_,website_capture::J
  if let Some(job)=jobs.0.lock().map_err(err)?.as_ref(){match action.as_str(){"cancel"=>job.cancel.store(true,Ordering::SeqCst),"continue"=>job.resume.store(true,Ordering::SeqCst),_=>return Err("Unknown capture action".into())}}Ok(())
 }
 #[tauri::command]
-async fn capture_website(app:tauri::AppHandle,url:String,browser:String,on_progress:tauri::ipc::Channel<website_capture::Progress>,state:tauri::State<'_,State>,jobs:tauri::State<'_,website_capture::Jobs>)->Result<content::CaptureFile>{
+async fn capture_website(app:tauri::AppHandle,window:tauri::WebviewWindow,url:String,browser:String,on_progress:tauri::ipc::Channel<website_capture::Progress>,state:tauri::State<'_,State>,jobs:tauri::State<'_,website_capture::Jobs>)->Result<content::CaptureFile>{
  let data=state.db.parent().ok_or("Data folder unavailable")?.to_owned();
  let job=Arc::new(website_capture::Job::default());{let mut active=jobs.0.lock().map_err(err)?;if active.is_some(){return Err("A website capture is already running.".into());}*active=Some(job.clone());}
  let result=tauri::async_runtime::spawn_blocking(move||website_capture::capture(&data,&browser,&url,&job,false,&mut |p|{let _=on_progress.send(p);})).await.map_err(err);
- *jobs.0.lock().map_err(err)?=None;let file=result??;
+ *jobs.0.lock().map_err(err)?=None;let _=window.set_focus();let file=result??;
  app.asset_protocol_scope().allow_file(&file.path).map_err(err)?;Ok(file)
 }
 #[tauri::command]
