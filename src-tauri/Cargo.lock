@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "design-viewer"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",

@@ -31,14 +31,14 @@ Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrang
 
 Customise sidebar layouts, section styles, icons and Home tiles. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes and organisation actions support Undo/Redo; settings undo lasts for the current session.
 
-*Screenshots show the current development interface with original sample artwork, not a personal library. The latest installer may not include every feature shown here.*
+*Screenshots show the app with the owner’s design library. Reference artwork belongs to its respective creators and is not bundled with the app.*
 
 ## Get started
 
 **Windows 10/11 · 64-bit.** The installer includes media tools and installs WebView2 if needed.
 
 1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/design-viewer/releases/latest) and install it.
-2. Launch BitClever. In the current development app, click **Storage** in the header to create or open a self-contained library.
+2. Launch BitClever. Click **Storage** in the header to create or open a self-contained library.
 3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
 
 Check **Settings → Get latest update** for new releases. Close the app before installing an update.
