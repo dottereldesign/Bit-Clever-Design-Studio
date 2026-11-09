@@ -10,7 +10,7 @@
   <a href="#development">Development</a>
 </p>
 
-![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.png)
+![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.jpg)
 
 ## Collect and organise
 
@@ -23,11 +23,11 @@
 
 ## Make the workspace yours
 
-![Home dashboard with resizable image tiles linking to collections and projects](docs/images/home.png)
+![Home dashboard with resizable image tiles linking to collections and projects](docs/images/home.jpg)
 
 Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrange tiles, drop in cover images and adjust labels, overlays and spacing. Clicking the logo returns Home; reopening the app restores your last workspace.
 
-![Customisation panel with sidebar appearance choices](docs/images/customise.png)
+![Customisation panel with sidebar appearance choices](docs/images/customise.jpg)
 
 Customise sidebar layouts, section styles, icons and Home tiles. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes and organisation actions support Undo/Redo; settings undo lasts for the current session.
 
