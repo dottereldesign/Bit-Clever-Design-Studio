@@ -5,8 +5,26 @@ import {useHistoryState} from './useAppHistory';
 import type {Label} from './model';
 type Colour={hex:string;projects:string[]};
 type EyeDropperConstructor=new()=>{open:()=>Promise<{sRGBHex:string}>};
+const readColours=():Colour[]=>{try{const rows=JSON.parse(localStorage.getItem('colour-history')??'[]');return Array.isArray(rows)?rows.filter(c=>c&&/^#[0-9A-F]{6}$/i.test(c.hex)&&Array.isArray(c.projects)):[];}catch{return [];}};
+const useColours=()=>useHistoryState<Colour[]>('colour-history',readColours,'Colour collection');
+
+export function ProjectColours({project}:{project:number}){
+ const [colours]=useColours();
+ const [message,setMessage]=useState('');
+ useEffect(()=>{setMessage('');},[project]);
+ useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(''),3500);return()=>clearTimeout(timer);},[message]);
+ const saved=colours.filter(c=>c.projects.includes(`project:${project}`));
+ if(!saved.length)return null;
+ const copy=async(hex:string)=>{try{await invoke('copy_colour',{hex});setMessage(`${hex} copied`);}catch{setMessage('Clipboard unavailable. Click a colour to retry.');}};
+ return <section className="project-colours" aria-label="Project colours">
+  <span className="project-colours-label">Colours</span>
+  <div className="project-colour-list">{saved.map(c=><button key={c.hex} className="project-colour" title={`Copy ${c.hex}`} aria-label={`Copy ${c.hex}`} onClick={()=>void copy(c.hex)}><span style={{background:c.hex}} aria-hidden="true"/><code>{c.hex}</code></button>)}</div>
+  <span className="project-colour-status" role="status">{message}</span>
+ </section>;
+}
+
 export default function ColourPicker({projects}:{projects:Label[]}){
- const [colours,setColours]=useHistoryState<Colour[]>('colour-history',()=>{try{return (JSON.parse(localStorage.getItem('colour-history')??'[]') as Colour[]).filter(c=>/^#[0-9A-F]{6}$/i.test(c.hex)&&Array.isArray(c.projects));}catch{return [];}},'Colour collection');
+ const [colours,setColours]=useColours();
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[selected,setSelected]=useState(''),[filter,setFilter]=useState(''),[message,setMessage]=useState('');
  const root=useRef<HTMLDivElement>(null),button=useRef<HTMLButtonElement>(null),running=useRef(false);
  useEffect(()=>{if(!open)return;root.current?.querySelector('select')?.focus();const outside=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',outside,true);return()=>document.removeEventListener('pointerdown',outside,true);},[open]);

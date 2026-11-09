@@ -5,33 +5,39 @@ import LinkBoard from '/src/LinkBoard.tsx';
 import '/src/style.css';
 const svg=height=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#abc5af"/><stop offset="1" stop-color="#304a65"/></linearGradient></defs><rect width="1200" height="${height}" fill="url(#g)"/><text x="90" y="160" font-size="60">Website screenshot</text><path d="M0 900H1200M0 1800H1200M0 2700H1200" stroke="white" stroke-width="30"/></svg>`);
 const paths=[];window.__TAURI_INTERNALS__={convertFileSrc:path=>{paths.push(path);return svg(path==='full.png'?6000:900);},invoke:async()=> 'poster.png'};
-createRoot(document.getElementById('root')).render(React.createElement(LinkBoard,{items:[{id:1,name:'Tall website',path:'https://example.com',source:'Websites',kind:'link',thumbnail:'full.png'},{id:2,name:'Short website',path:'https://short.example',source:'Websites',kind:'link',thumbnail:'short.png'}],size:360,report:e=>{throw e;},menu:()=>{},openItem:()=>{}}));
+const reactRoot=createRoot(document.getElementById('root'));reactRoot.render(React.createElement(LinkBoard,{items:[{id:1,name:'Tall website',path:'https://example.com',source:'Websites',kind:'link',thumbnail:'full.png'},{id:2,name:'Short website',path:'https://short.example',source:'Websites',kind:'link',thumbnail:'short.png'}],size:360,report:e=>{throw e;},menu:()=>{},openItem:()=>{}}));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>5000)throw Error(label);await pause(20);}}
-const wheel=(el,deltaY,extra={})=>{const event=new WheelEvent('wheel',{deltaY,bubbles:true,cancelable:true,...extra});el.dispatchEvent(event);return event;};
+const wheel=(el,deltaY,extra={ctrlKey:true})=>{const event=new WheelEvent('wheel',{deltaY,bubbles:true,cancelable:true,...extra});el.dispatchEvent(event);return event;};
 try{
  await until(()=>document.querySelector('.website-thumbnail-poster')?.complete,'Poster loads');
  const frame=document.querySelector('.website-thumbnail'),viewport=frame.querySelector('.website-thumbnail-viewport'),height=frame.getBoundingClientRect().height;
  frame.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse'}));await pause(500);
  assert(!paths.includes('full.png'),'Hover loaded the full screenshot');
- assert(!wheel(viewport,120).defaultPrevented,'Inactive thumbnail blocked page scrolling');
- document.querySelector('.link-card-open').click();await until(()=>frame.dataset.ready==='true','Click loads screenshot');
- assert(frame.dataset.active==='true','Click did not activate scrolling');
- const rect=viewport.getBoundingClientRect();window.__wheelAction={id:1,x:rect.left+rect.width/2,y:rect.top+rect.height/2,deltaY:160,ctrl:false};
+ assert(!wheel(viewport,120,{ctrlKey:false}).defaultPrevented,'Inactive thumbnail blocked page scrolling');
+ wheel(viewport,120);await until(()=>frame.dataset.ready==='true'&&viewport.scrollTop>0,'Ctrl wheel loads and scrolls screenshot without a click');
+ assert(frame.dataset.active==='true','Ctrl wheel did not activate scrolling');
+ const rect=viewport.getBoundingClientRect();window.__wheelAction={id:1,x:rect.left+rect.width/2,y:rect.top+rect.height/2,deltaY:160,ctrl:true};
  await until(()=>window.__wheelActionDone===1&&viewport.scrollTop>20,'Real wheel scrolls screenshot');
  assert(viewport.clientWidth===frame.clientWidth,'Activation narrowed screenshot');assert(getComputedStyle(frame).boxShadow==='none','Active border remains');await pause(650);const down=viewport.scrollTop;await pause(200);assert(viewport.scrollTop===down,'Screenshot moved automatically');
  assert(wheel(viewport,-80).defaultPrevented,'Active screenshot did not capture wheel');await pause(500);assert(viewport.scrollTop<down,'Wheel up did not scroll back');
  wheel(viewport,99999);await pause(800);const bottom=viewport.scrollTop;assert(bottom>0&&bottom<=viewport.scrollHeight-viewport.clientHeight+1,'Scroll exceeded image bounds');
  wheel(viewport,99999);assert(viewport.scrollTop===bottom,'Bottom edge moved');wheel(viewport,-99999);await until(()=>viewport.scrollTop===0,'Top edge settles');
- assert(!wheel(viewport,120,{ctrlKey:true}).defaultPrevented,'Ctrl+wheel enlargement intercepted');
+ assert(!wheel(viewport,120,{ctrlKey:false}).defaultPrevented,'Normal wheel must scroll the page');
  document.documentElement.dataset.motion='reduce';wheel(viewport,120);assert(viewport.scrollTop>0,'Reduced motion blocked manual scrolling');
  frame.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,pointerType:'mouse',relatedTarget:document.body}));await pause(250);assert(viewport.scrollTop>0&&frame.dataset.active==='true','Leaving thumbnail lost reading position');
  assert(frame.getBoundingClientRect().height===height,'Scrolling changed card height');window.__screenshotReady=true;await pause(700);
  const button=document.querySelector('.link-card-open');button.focus();button.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));assert(viewport.scrollTop===0,'Keyboard Home did not scroll');
  button.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>frame.dataset.active==='false','Escape exits');assert(!frame.querySelector('.website-thumbnail-page'),'Inactive full image not released');
- button.click();await until(()=>frame.dataset.ready==='true','Reactivate');assert(viewport.scrollTop===0,'Reactivation should start at top');
+ wheel(viewport,120);await until(()=>frame.dataset.ready==='true'&&viewport.scrollTop>0,'Ctrl wheel reactivates');
  document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));await until(()=>frame.dataset.active==='false','Outside click exits');
- const short=document.querySelectorAll('.website-thumbnail')[1];document.querySelectorAll('.link-card-open')[1].click();await until(()=>short.dataset.ready==='true','Short screenshot loads');wheel(short.querySelector('.website-thumbnail-viewport'),120);assert(short.querySelector('.website-thumbnail-viewport').scrollTop===0,'Short image scrolled past bounds');
- document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['No hover animation; click activates native wheel scrolling; both directions and bounds; stationary without input; reduced motion; pointer leave preserves position; Escape/outside release; keyboard controls; short screenshots']});
-}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error)});}
+ const short=document.querySelectorAll('.website-thumbnail')[1];wheel(short.querySelector('.website-thumbnail-viewport'),120);await until(()=>short.dataset.ready==='true','Short screenshot loads');wheel(short.querySelector('.website-thumbnail-viewport'),120);assert(short.querySelector('.website-thumbnail-viewport').scrollTop===0,'Short image scrolled past bounds');
+ const root=document.getElementById('root');root.style.maxWidth='none';
+ for(const width of [350,800,1300]){root.style.width=width+'px';await pause(80);const board=document.querySelector('.link-board'),card=board.querySelector('.link-card'),css=getComputedStyle(board),columns=css.gridTemplateColumns.split(' ').map(Number.parseFloat);assert(Math.abs(columns.reduce((a,b)=>a+b,0)+14*(columns.length-1)-(board.clientWidth-40))<2,'Grid leaves unused width');assert(card.getBoundingClientRect().width<=width,'Card overflows narrow window');}
+ root.style.width='100%';
+ const cards=Array.from({length:6},(_,i)=>({id:i+10,name:`Website ${i+1}`,path:`https://example${i}.com`,source:'Websites',kind:'link',thumbnail:'short.png'}));
+ let largeWidth=0;
+ for(const size of [420,220]){reactRoot.render(React.createElement(LinkBoard,{items:cards,size,report:e=>{throw e;},menu:()=>{},openItem:()=>{}}));await pause(120);const board=document.querySelector('.link-board'),width=board.querySelector('.link-card').getBoundingClientRect().width;if(size===420)largeWidth=width;else assert(width<largeWidth,'Size slider did not resize cards');const last=[...board.children].filter(c=>Math.abs(c.offsetTop-board.children[0].offsetTop)<2).at(-1);assert(Math.abs(last.getBoundingClientRect().right-(board.getBoundingClientRect().right-20))<2,'First row leaves a right-hand gap');}
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['No hover animation; Ctrl wheel activates smooth scrolling without a click; normal wheel remains page scrolling; both directions and bounds; stationary without input; reduced motion; pointer leave preserves position; Escape/outside release; keyboard controls; short screenshots']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),debug:[...document.querySelectorAll('.website-thumbnail')].map(f=>({active:f.dataset.active,ready:f.dataset.ready,scroll:f.querySelector('.website-thumbnail-viewport').scrollTop,height:f.querySelector('.website-thumbnail-viewport').scrollHeight,client:f.clientHeight,image:f.querySelector('.website-thumbnail-page')?.complete}))});}
 </script></body></html>
