@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Direct image drops</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import {readWebDrop} from '/src/webDrop.ts';import {stageFiles} from '/src/captureImport.ts';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="#c9dac0"/></svg>');
+const library={items:[],categories:['Poster'],projects:[],tags:[],sources:[],root:'C:/mock',scanning:false},calls=[];let callback=0,id=0,fail=false;
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ if(command==="capture_items_progress")command="capture_items";
+ calls.push({command,args});if(command==='save_library_preferences')return;if(command==='storage_usage')return {bytes:100,data_bytes:10,library_bytes:80,app_bytes:10,partial:false};if(command==='get_library')return structuredClone(library);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'mock.png';
+ if(command==='stage_web_image'){await new Promise(r=>setTimeout(r,80));if(fail){fail=false;throw 'Download blocked';}return {path:'C:/staging/web.png',name:'Web image.png'};}
+ if(command==='stage_begin')return {path:'C:/staging/local.png',name:args.name};if(command==='stage_chunk'||command==='discard_capture')return;
+ if(command==='capture_items'){if(args.onProgress&&args.input.files.length>1){args.onProgress.onmessage({phase:'saving',checked:1,total:2,current:'Second.png',elapsed_ms:4000,remaining_seconds:4});await new Promise(r=>setTimeout(r,900));}const n=++id;library.items.push({id:n,name:args.input.name||'Link',source:'Design',category:'',kind:args.input.files.length?'image':'link',path:args.input.url||'C:/mock/'+n+'.png',modified:1,added:n,missing:false,tags:[],projects:[]});return {ids:[n],added:1,reused:0};}
+ if(command==='update'){for(const item of library.items.filter(i=>args.change.ids.includes(i.id))){item.category=args.change.value;item.component_folders=[args.change.value];}return;}
+ throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(App));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>10000)throw Error(label);await pause(25);}}
+const folder=name=>document.querySelector(`[data-category="${name}"]`);
+function drop(target,url,local=false){const data=new DataTransfer();if(local){data.items.add(new File(['image'],'Local.png',{type:'image/png'}));data.items.add(new File(['second'],'Second.png',{type:'image/png'}));}else {data.setData('text/html',`<a href="https://example.com/page"><img src="${url}"></a>`);data.setData('text/uri-list','https://example.com/page');}target.dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));}
+try{
+ await until(()=>folder('Components / Pricing'),'startup');folder('Components / Pricing').click();await pause(100);
+ drop(document.querySelector('.content'),'https://example.com/image.png');folder('Components / Headers').click();await pause(30);drop(folder('Poster'),'https://example.com/second.webp');
+ await until(()=>library.items.length===2&&library.items[1].category==='Poster','queued drops');assert(library.items[0].category==='Components / Pricing','Destination changed during download');assert(!document.querySelector('.capture-dialog'),'Drop opened a modal');
+ assert(calls.find(c=>c.command==='capture_items').args.input.source_url==='https://example.com/page','Source link lost');
+ drop(folder('Components / Headers'),'',true);await until(()=>document.querySelector('.import-progress strong')?.textContent==='Saving files'&&document.querySelector('.import-progress')?.textContent.includes('1 / 2 files'),'Saving progress');assert(document.querySelector('.import-progress progress').value===1,'Wrong progress value');assert(document.querySelector('.import-progress progress').max===2,'Wrong progress total');window.__screenshotReady=true;await pause(600);await until(()=>library.items.length===3&&library.items[2].category==='Components / Headers','local file drop');
+ fail=true;drop(folder('Poster'),'https://example.com/fail.png');await until(()=>document.body.textContent.includes('Download blocked'),'error feedback');drop(folder('Poster'),'https://example.com/retry.png');await until(()=>library.items.length===4&&library.items[3].category==='Poster','queue recovery');
+ const data=new DataTransfer();data.setData('text/uri-list','# comment\r\nhttps://example.com/image.webp?size=2');assert(readWebDrop(data).imageUrl.includes('image.webp'),'URI-list parsing');
+ const progress=[];await stageFiles([new File([new Uint8Array(3*1024*1024)],'Large.png'),new File(['small'],'Small.png')],p=>progress.push(p));assert(progress.at(-1).checked===2&&progress.at(-1).bytes===3*1024*1024+5,'Staging did not report complete bytes and files');assert(progress.some(p=>p.bytes>0&&p.checked===0),'Staging did not report within-file progress');folder('Poster').click();await pause(100);
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Browser image saves without modal','Rapid drops keep original destinations','Sidebar drops file directly','Local file drops skip modal','Source URL retained','Failed download does not block next drop','URI-list comments and image query strings supported','Bulk import displays native file progress and staging byte progress']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),calls:calls.map(c=>c.command)});}
+</script></body></html>

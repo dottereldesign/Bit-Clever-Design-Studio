@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod browser;
+mod website_capture;
+mod storage;
 mod clipboard;
 mod content;
 mod db;
@@ -8,8 +10,10 @@ mod library;
 mod resources;
 mod sources;
 mod thumbnail;
+mod home_covers;
 mod history;
 mod library_export;
+mod managed_library;
 use db::{err, Result};
 use notify::Watcher;
 use std::{
@@ -21,6 +25,8 @@ use std::{
     time::Duration,
 };
 use tauri::{Emitter, Manager};
+
+struct LibraryLocation { config:PathBuf, error:Option<String> }
 
 #[derive(Clone)]
 struct State {
@@ -38,16 +44,109 @@ struct State {
     export_cancel: Arc<AtomicBool>,
 }
 #[tauri::command]
+fn website_capture_browsers()->Vec<website_capture::Browser>{website_capture::browsers()}
+#[tauri::command]
+fn website_capture_control(action:String,jobs:tauri::State<'_,website_capture::Jobs>)->Result<()>{
+ if let Some(job)=jobs.0.lock().map_err(err)?.as_ref(){match action.as_str(){"cancel"=>job.cancel.store(true,Ordering::SeqCst),"continue"=>job.resume.store(true,Ordering::SeqCst),_=>return Err("Unknown capture action".into())}}Ok(())
+}
+#[tauri::command]
+async fn capture_website(app:tauri::AppHandle,window:tauri::WebviewWindow,url:String,browser:String,on_progress:tauri::ipc::Channel<website_capture::Progress>,state:tauri::State<'_,State>,jobs:tauri::State<'_,website_capture::Jobs>)->Result<content::CaptureFile>{
+ let data=state.db.parent().ok_or("Data folder unavailable")?.to_owned();
+ let job=Arc::new(website_capture::Job::default());{let mut active=jobs.0.lock().map_err(err)?;if active.is_some(){return Err("A website capture is already running.".into());}*active=Some(job.clone());}
+ let result=tauri::async_runtime::spawn_blocking(move||website_capture::capture(&data,&browser,&url,&job,false,&mut |p|{let _=on_progress.send(p);})).await.map_err(err);
+ *jobs.0.lock().map_err(err)?=None;let _=window.set_focus();let file=result??;
+ app.asset_protocol_scope().allow_file(&file.path).map_err(err)?;Ok(file)
+}
+#[tauri::command]
+async fn website_thumbnail(id:i64,state:tauri::State<'_,State>)->Result<String>{
+ let _permit=state.media_slots.clone().acquire_owned().await.map_err(err)?;
+ let db=state.db.clone();let cache=state.cache.clone();tauri::async_runtime::spawn_blocking(move||{
+  let conn=db::connect(&db)?;let path:String=conn.query_row("SELECT thumbnail FROM items WHERE id=? AND source='Websites' AND archived=0",[id],|r|r.get(0)).map_err(err)?;
+  use sha2::{Digest,Sha256};let key=format!("{:x}",Sha256::digest(path.as_bytes()));let folder=cache.join("website-previews");std::fs::create_dir_all(&folder).map_err(err)?;let target=folder.join(format!("{key}.png"));
+  if !target.is_file(){let img=image::open(&path).map_err(err)?;let height=img.height().min(img.width()*3/4).max(1);img.crop_imm(0,0,img.width(),height).thumbnail(600,450).save(&target).map_err(err)?;}
+  Ok(target.to_string_lossy().into_owned())
+ }).await.map_err(err)?
+}
+#[tauri::command]
+fn open_website_screenshot(id:i64,state:tauri::State<'_,State>)->Result<()>{let db=db::connect(&state.db)?;let path:String=db.query_row("SELECT thumbnail FROM items WHERE id=? AND source='Websites' AND archived=0",[id],|r|r.get(0)).map_err(err)?;tauri_plugin_opener::open_path(path,None::<&str>).map_err(err)}
+#[tauri::command]
+async fn library_overview(state:tauri::State<'_,State>)->Result<managed_library::Overview>{let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::overview(&db)).await.map_err(err)?}
+#[tauri::command]
+async fn library_preferences(app:tauri::AppHandle)->Result<Option<serde_json::Value>>{if let Some(error)=&app.state::<LibraryLocation>().error{return Err(error.clone());}let db=app.state::<State>().db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::preferences(&db)).await.map_err(err)?}
+#[tauri::command]
+async fn save_library_preferences(preferences:serde_json::Value,state:tauri::State<'_,State>)->Result<()>{let s=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;managed_library::save_preferences(&s.db,&preferences)}).await.map_err(err)?}
+#[tauri::command]
+async fn prepare_library(path:String,preferences:serde_json::Value,on_progress:tauri::ipc::Channel<library_export::Progress>,state:tauri::State<'_,State>)->Result<library_export::ExportResult>{
+    let s=state.inner().clone();
+    if s.exporting.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err(){return Err("A backup or migration is already running.".into());}
+    s.export_cancel.store(false,Ordering::SeqCst);let active=s.exporting.clone();
+    let result=tauri::async_runtime::spawn_blocking(move||{
+        let _guard=s.content_lock.lock().map_err(err)?;
+        let result=library_export::export_with_preferences(&s.db,std::path::Path::new(&path),"BitClever Library",preferences,&s.export_cancel,&mut |p|{let _=on_progress.send(p);})?;
+        if !result.cancelled&&result.missing.is_empty(){managed_library::open(std::path::Path::new(&result.path))?;managed_library::verify_live(std::path::Path::new(&result.path))?;}
+        Ok(result)
+    }).await.map_err(err);active.store(false,Ordering::SeqCst);result?
+}
+#[tauri::command]
+async fn open_library(path:String,app:tauri::AppHandle)->Result<()>{
+    let config=app.state::<LibraryLocation>().config.clone();
+    let lock=app.try_state::<State>().map(|s|s.content_lock.clone());
+    tauri::async_runtime::spawn_blocking(move||{let _guard=lock.as_ref().map(|l|l.lock().map_err(err)).transpose()?;managed_library::activate(&config,std::path::Path::new(&path))}).await.map_err(err)??;
+    app.restart();
+}
+#[tauri::command]
+fn open_library_location(name:String,state:tauri::State<'_,State>)->Result<()>{
+    let root=managed_library::root(&state.db)?.ok_or("Create your managed library first.")?;
+    let folder=match name.as_str(){""=>root,"Design Inspo"|"App Components"|"General"|"Appearance"|"Library Data"=>root.join(name),_=>return Err("Unknown library location".into())};
+    tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
+}
+#[tauri::command]
+async fn storage_usage(state:tauri::State<'_,State>)->Result<storage::Usage>{
+ let s=state.inner().clone();
+ tauri::async_runtime::spawn_blocking(move||{let mut app_files=vec![s.ffmpeg,s.downloader];if let Ok(exe)=std::env::current_exe(){app_files.push(exe);}storage::usage(&s.db,app_files)}).await.map_err(err)?
+}
+#[tauri::command]
+fn open_data_folder(state:tauri::State<'_,State>)->Result<()>{
+ let folder=state.db.parent().ok_or("Data folder unavailable")?;
+ tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
+}
+#[tauri::command]
+fn open_storage_folder(name:String,state:tauri::State<'_,State>)->Result<()>{
+    let db=db::connect(&state.db)?;
+    let (_,folder)=sources::roots(&db).into_iter().find(|(label,_)|label==&name).ok_or("Storage folder is not configured")?;
+    tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
+}
+#[tauri::command]
+async fn save_home_cover(bytes:Vec<u8>,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<home_covers::Cover>{
+    let data=state.db.parent().ok_or("Library folder unavailable")?.to_path_buf();
+    let cover=tauri::async_runtime::spawn_blocking(move||home_covers::save(&data,&bytes)).await.map_err(err)??;
+    app.asset_protocol_scope().allow_file(&cover.path).map_err(err)?;Ok(cover)
+}
+#[tauri::command]
 fn app_version() -> &'static str { env!("CARGO_PKG_VERSION") }
 #[tauri::command]
-async fn export_library(path: String, name: String, on_progress: tauri::ipc::Channel<library_export::Progress>, state: tauri::State<'_, State>) -> Result<library_export::ExportResult> {
+async fn export_library(path: String, name: String, preferences: Option<serde_json::Value>, on_progress: tauri::ipc::Channel<library_export::Progress>, state: tauri::State<'_, State>) -> Result<library_export::ExportResult> {
     let s=state.inner().clone();
     if s.exporting.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() {return Err("A library export is already running.".into());}
     s.export_cancel.store(false,Ordering::SeqCst);
     let active=s.exporting.clone();
-    let result=tauri::async_runtime::spawn_blocking(move || library_export::export(&s.db,std::path::Path::new(&path),&name,&s.export_cancel,&mut |progress|{let _=on_progress.send(progress);})).await.map_err(err);
+    let result=tauri::async_runtime::spawn_blocking(move || {let _guard=s.content_lock.lock().map_err(err)?;library_export::export_with_preferences(&s.db,std::path::Path::new(&path),&name,preferences.unwrap_or(serde_json::json!({})),&s.export_cancel,&mut |progress|{let _=on_progress.send(progress);})}).await.map_err(err);
     active.store(false,Ordering::SeqCst);
-    result?
+    let result=result??;
+    if !result.cancelled&&result.missing.is_empty(){db::set_setting(&db::connect(&state.db)?,"last_backup",&db::now().to_string())?;}
+    Ok(result)
+}
+#[tauri::command]
+async fn verify_library_backup(path:String)->Result<library_export::Verification>{
+    tauri::async_runtime::spawn_blocking(move||{let folder=std::path::Path::new(&path);if folder.join("Library Data/Library.sqlite").exists(){managed_library::verify_live(folder)}else{library_export::verify(folder)}}).await.map_err(err)?
+}
+#[tauri::command]
+async fn backup_preferences(path:String, app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<serde_json::Value>{
+    let folder=PathBuf::from(path);let db=state.db.clone();let assets=managed_library::appearance(db.parent().unwrap());
+    std::fs::create_dir_all(&assets).map_err(err)?;
+    if assets.is_dir(){app.asset_protocol_scope().allow_directory(&assets,true).map_err(err)?;}
+    let lock=state.content_lock.clone();
+    tauri::async_runtime::spawn_blocking(move||{let _guard=lock.lock().map_err(err)?;let restored=library_export::restore_preferences(&folder,&db)?;if let Some(mut saved)=managed_library::preferences(&db)?{if let (Some(saved),Some(restored))=(saved.as_object_mut(),restored.as_object()){saved.extend(restored.clone());}managed_library::save_preferences(&db,&saved)?;}Ok(restored)}).await.map_err(err)?
 }
 #[tauri::command]
 fn cancel_library_export(state: tauri::State<'_, State>) {state.export_cancel.store(true,Ordering::SeqCst);}
@@ -60,8 +159,8 @@ async fn get_library(state: tauri::State<'_, State>) -> Result<db::Library> {
 }
 #[tauri::command]
 async fn update(change: db::Change, state: tauri::State<'_, State>) -> Result<()> {
-    let path = state.db.clone();
-    tauri::async_runtime::spawn_blocking(move || db::change(&path, change))
+    let s=state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {let _guard=s.content_lock.lock().map_err(err)?;db::change(&s.db,change)?;managed_library::organise(&s.db)})
         .await
         .map_err(err)?
 }
@@ -82,7 +181,7 @@ fn scan_background(app: tauri::AppHandle, s: State) {
     }
     let _ = app.emit("scan-started", ());
     tauri::async_runtime::spawn_blocking(move || {
-        let result = (|| library::scan_all(&s.db))();
+        let result = (|| {let _guard=s.content_lock.lock().map_err(err)?;library::scan_all(&s.db)?;managed_library::organise(&s.db)})();
         s.scanning.store(false, Ordering::SeqCst);
         match result {
             Ok(_) => {
@@ -110,6 +209,7 @@ fn rescan(app: tauri::AppHandle, state: tauri::State<'_, State>) {
 }
 #[tauri::command]
 fn set_root(path: String, app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<()> {
+    if managed_library::root(&state.db)?.is_some(){return Err("Use Storage & Backup to open or create a library.".into());}
     if state.scanning.load(Ordering::SeqCst) {
         return Err("Wait for the current scan to finish.".into());
     }
@@ -140,9 +240,13 @@ async fn backup(
 ) -> Result<()> {
     let db = state.db.clone();
     let db_path = db.clone();
+    let lock=state.content_lock.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard=lock.lock().map_err(err)?;
         if restore {
-            db::import(&db, PathBuf::from(path))
+            let source=PathBuf::from(path);
+            if let Some(parent)=source.parent(){let folder=if parent.file_name().is_some_and(|n|n=="Library Data"){parent.parent().unwrap()}else{parent};if library_export::manifest_path(folder).exists(){library_export::verify(folder)?;}}
+            db::import(&db, source)?;managed_library::organise(&db)
         } else {
             db::export(&db, PathBuf::from(path))
         }
@@ -170,14 +274,20 @@ fn removed_items(state: tauri::State<'_, State>) -> Result<Vec<db::RemovedItem>>
     db::removed_items(&state.db)
 }
 #[tauri::command]
-async fn capture_items(
-    input: content::Capture,
-    state: tauri::State<'_, State>,
-) -> Result<content::CaptureResult> {
-    let s = state.inner().clone();
+async fn capture_items(input:content::Capture,state:tauri::State<'_,State>)->Result<content::CaptureResult>{
+    perform_capture(input,None,state.inner().clone()).await
+}
+#[tauri::command]
+async fn capture_items_progress(input:content::Capture,on_progress:tauri::ipc::Channel<content::DuplicateProgress>,state:tauri::State<'_,State>)->Result<content::CaptureResult>{
+    perform_capture(input,Some(on_progress),state.inner().clone()).await
+}
+async fn perform_capture(input:content::Capture,on_progress:Option<tauri::ipc::Channel<content::DuplicateProgress>>,s:State)->Result<content::CaptureResult>{
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = s.content_lock.lock().map_err(err)?;
-        content::capture(&s.db, input)
+        let mut send=|p|{if let Some(channel)=&on_progress{let _=channel.send(p);}};
+        let result=content::capture_with_progress(&s.db, input,&mut send)?;
+        let mut finishing=content::DuplicateProgress::waiting();finishing.phase="finishing";send(finishing);
+        managed_library::organise(&s.db)?;Ok(result)
     })
     .await
     .map_err(err)?
@@ -210,7 +320,7 @@ async fn replace_thumbnail(id: i64, file: content::CaptureFile, state: tauri::St
     let s = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = s.content_lock.lock().map_err(err)?;
-        thumbnail::replace(&s.db,id,&file)
+        thumbnail::replace(&s.db,id,&file)?;managed_library::refresh_browser(&s.db)
     }).await.map_err(err)?
 }
 #[tauri::command]
@@ -219,7 +329,7 @@ async fn download_video(input: download::Request, on_progress: tauri::ipc::Chann
     if s.downloading.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() { return Err("A video is already downloading.".into()); }
     s.download_cancel.store(false,Ordering::SeqCst);
     let active=s.downloading.clone();
-    let result=tauri::async_runtime::spawn_blocking(move||download::run(&s.db,&s.downloader,&s.ffmpeg,input,&s.download_cancel,&mut |progress|{let _=on_progress.send(progress);})).await.map_err(err);
+    let result=tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;let saved=download::run(&s.db,&s.downloader,&s.ffmpeg,input,&s.download_cancel,&mut |progress|{let _=on_progress.send(progress);})?;managed_library::organise(&s.db)?;Ok::<_,String>(saved)}).await.map_err(err);
     active.store(false,Ordering::SeqCst);
     let saved=result??;
     let _=app.emit("library-changed",());
@@ -240,6 +350,28 @@ async fn read_clipboard(app: tauri::AppHandle, state: tauri::State<'_, State>) -
     Ok(result)
 }
 #[tauri::command]
+async fn copy_colour(hex:String)->Result<()> {
+    if hex.len()!=7 || !hex.starts_with('#') || !hex[1..].bytes().all(|b|b.is_ascii_hexdigit()){return Err("Invalid colour".into());}
+    tauri::async_runtime::spawn_blocking(move||arboard::Clipboard::new().map_err(err)?.set_text(hex.to_uppercase()).map_err(err)).await.map_err(err)?
+}
+#[tauri::command]
+async fn pick_colour()->Result<Option<String>> {
+    tauri::async_runtime::spawn_blocking(||{
+        #[cfg(windows)] {
+            use std::os::windows::process::CommandExt;
+            let file=tempfile::Builder::new().prefix("bitclever-colour-").suffix(".ps1").tempfile().map_err(err)?;
+            std::fs::write(file.path(),include_str!("colour-picker.ps1")).map_err(err)?;
+            let output=std::process::Command::new("powershell.exe").args(["-NoLogo","-NoProfile","-NonInteractive","-STA","-ExecutionPolicy","Bypass","-File"]).arg(file.path()).creation_flags(0x08000000).output().map_err(err)?;
+            if !output.status.success(){return Err(format!("Colour picker failed: {}",String::from_utf8_lossy(&output.stderr)));}
+            let hex=String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if hex.is_empty(){return Ok(None);}
+            if hex.len()!=7 || !hex.starts_with('#') || !hex[1..].bytes().all(|b|b.is_ascii_hexdigit()){return Err("Colour picker returned an invalid colour".into());}
+            Ok(Some(hex))
+        }
+        #[cfg(not(windows))] {Err("Screen colour picking is unavailable on this platform.".into())}
+    }).await.map_err(err)?
+}
+#[tauri::command]
 async fn copy_image(id: i64, state: tauri::State<'_, State>) -> Result<()> {
     let s = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -251,6 +383,11 @@ async fn copy_image(id: i64, state: tauri::State<'_, State>) -> Result<()> {
     })
     .await
     .map_err(err)?
+}
+#[tauri::command]
+async fn stage_web_image(url: String, state: tauri::State<'_, State>) -> Result<content::CaptureFile> {
+    let data = state.db.parent().unwrap().to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || content::stage_web_image(&data, &url)).await.map_err(err)?
 }
 #[tauri::command]
 fn stage_begin(name: String, app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<content::CaptureFile> {
@@ -271,6 +408,32 @@ fn stage_chunk(request: tauri::ipc::Request<'_>, state: tauri::State<'_, State>)
         }
         _ => Err("Expected binary file data".into()),
     }
+}
+fn write_contact_sheet(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("png")) {
+        return Err("Choose a filename ending in .png.".into());
+    }
+    let mut temp = tempfile::NamedTempFile::new_in(path.parent().ok_or("Missing destination folder")?).map_err(err)?;
+    temp.write_all(bytes).map_err(err)?;
+    temp.persist(path).map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_contact_sheet(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) if bytes.starts_with(b"\x89PNG\r\n\x1a\n") => bytes.clone(),
+        _ => return Err("Expected a PNG image.".into()),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app.dialog().file().add_filter("PNG image", &["png"])
+            .set_file_name("Contact sheet.png").blocking_save_file() else { return Ok(None); };
+        let path = file.into_path().map_err(err)?;
+        write_contact_sheet(&path, &bytes)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }).await.map_err(err)?
 }
 #[tauri::command]
 fn discard_capture(paths: Vec<String>, state: tauri::State<'_, State>) -> Result<()> {
@@ -350,6 +513,7 @@ fn open_external_url(url: String) -> Result<()> {
 
 fn main() {
     tauri::Builder::default()
+        .manage(website_capture::Jobs::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -359,10 +523,14 @@ fn main() {
                 .map(PathBuf::from)
                 .unwrap_or(data);
             std::fs::create_dir_all(&data)?;
-            let db_path = data.join("library.sqlite");
+            let config=data.clone();
+            let selected=managed_library::selected_db(&config);
+            app.manage(LibraryLocation{config:config.clone(),error:selected.as_ref().err().cloned()});
+            let db_path=match selected {Ok(path)=>path,Err(_)=>return Ok(())};
+            let library_data=db_path.parent().unwrap().to_path_buf();
             db::init(&db_path)?;
             let db = db::connect(&db_path)?;
-            resources::seed(&db)?;
+            if managed_library::root(&db_path)?.is_none(){resources::seed(&db)?;}
             if db::setting(&db, "root").is_none() {
                 if let Some(root) = library::default_root() {
                     db::set_setting(&db, "root", &root.to_string_lossy())?;
@@ -381,7 +549,10 @@ fn main() {
                     let _ = app.asset_protocol_scope().allow_file(&item.path);
                 }
             }
-            let thumbnails = data.join("link-thumbnails");
+            let home_covers=managed_library::appearance(&library_data);
+            std::fs::create_dir_all(&home_covers)?;
+            app.asset_protocol_scope().allow_directory(&home_covers,true)?;
+            let thumbnails = library_data.join("link-thumbnails");
             std::fs::create_dir_all(&thumbnails)?;
             app.asset_protocol_scope().allow_directory(&thumbnails, true)?;
             let cache = data.join("cache");
@@ -458,9 +629,23 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
+            library_overview,
+            library_preferences,
+            save_library_preferences,
+            prepare_library,
+            open_library,
+            open_library_location,
+            storage_usage,
+            open_storage_folder,
+            open_data_folder,
+            save_home_cover,
             open_external_url,
             app_version,
+            save_contact_sheet,
             export_library,
+            verify_library_backup,
+            backup_preferences,
             cancel_library_export,
             get_library,
             update,
@@ -471,14 +656,16 @@ fn main() {
             data_folder,
             removed_items,
             capture_items,
+            capture_items_progress,
             capture_screen,
             crop_thumbnail,
             replace_thumbnail,
             download_video,
             cancel_video_download,
-            read_clipboard,
+            read_clipboard,copy_colour,pick_colour,
             copy_image,
             stage_begin,
+            stage_web_image,
             stage_chunk,
             discard_capture,
             find_duplicates,

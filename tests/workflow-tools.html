@@ -5,14 +5,16 @@ const item=(id,name,projects=[],kind='image',source='Design/3d')=>({id,name,proj
 const library={items:[item(1,'Assigned',[7]),item(2,'New image'),item(3,'Font',[],'link','Fonts'),item(4,'Pen',[],'link','CodePen')],projects:[{id:7,name:'Website',count:1}],tags:[],sources:['Design/3d'],root:'C:/Design',scanning:false};
 let clipboard='image',captureFailure=false,clipboardReads=0;
 const redo=[],history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ if(command==="capture_items_progress")command="capture_items";
  calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Organisation change':null,redo_label:redo.length?'Organisation change':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='open_external_url')return;
  if(command==='read_clipboard'){clipboardReads++;await new Promise(resolve=>setTimeout(resolve,70));return clipboard==='url'?{files:[],url:'https://example.com/pasted'}:{files:[{path:'C:/staged/paste.png',name:'Pasted image.png'}],url:''};}
+ if(command==='save_contact_sheet'){assert(args instanceof Uint8Array && args[0]===137 && args[1]===80 && args.length>500,'Expected PNG bytes');return 'Example sheet.png';}
  if(command==='discard_capture')return;
  if(command==='capture_items'){if(captureFailure)throw Error('Could not save pasted image');const input=args.input;let saved=library.items.find(i=>i.id===100);const reused=!!saved;if(!saved){saved={...item(100,'Pasted image'),source:input.source+'/Captures'};library.items.push(saved);}return {ids:[100],added:reused?0:1,reused:reused?1:0,destination:null};}
 
  if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){redo.push(structuredClone(library.items));library.items=history.pop();return;}if(c.action==='redo_organisation'){history.push(structuredClone(library.items));library.items=redo.pop();return;}if(c.action==='set_category'){history.push(structuredClone(library.items));redo.length=0;for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.category=c.value;return;}if(c.action==='add_project'){redo.length=0;history.push(structuredClone(library.items));for(const i of library.items.filter(i=>c.ids.includes(i.id)))if(!i.projects.includes(c.target))i.projects.push(c.target);return;}throw Error(c.action);}throw Error(command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(25);}}
 const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')].find(b=>b.querySelector('span')?.textContent===name).click();
@@ -20,15 +22,15 @@ const key=(key,extra={})=>{const e=new KeyboardEvent('keydown',{key,bubbles:true
 const checks=[];
 try{
  await until(()=>document.querySelector('.card'),'library');
- const navigation=[...document.querySelectorAll('nav[aria-label=Library] button span')].map(el=>el.textContent);assert(navigation[0]==='Links'&&!navigation.includes('All')&&!navigation.includes('Inbox'),'Sidebar should start with Links without All or Inbox');
- checks.push('Sidebar starts with Links; categories and projects remain available');
+ const navigation=[...document.querySelectorAll('nav[aria-label=Library] button span')].map(el=>el.textContent);assert(navigation[0]==='Websites'&&!navigation.includes('All')&&!navigation.includes('Inbox'),'Sidebar should start with Websites without All or Inbox');
+ checks.push('Sidebar starts with Websites; categories and projects remain available');
  const card=document.querySelector('[data-item-id="2"]');card.querySelector('.card-open').focus();key(' ');await until(()=>document.querySelector('.quick-preview img'),'Space preview');assert(!document.querySelector('.viewer'),'Opened full viewer');assert(document.querySelector('main').inert,'Background must be inert');
  key('ArrowLeft');await until(()=>document.querySelector('.quick-preview>header strong')?.textContent==='Assigned','Arrow browse');assert(!calls.some(c=>c.command==='open_external_url'),'Preview opened website');
  key(' ');await until(()=>!document.querySelector('.quick-preview'),'Space closes');assert(!document.querySelector('.viewer'),'Space opened viewer on close');
  document.querySelector('[data-item-id="2"] .card-open').focus();key(' ');await until(()=>document.querySelector('.quick-preview'),'reopen');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Esc closes');
  checks.push('Space peeks without full viewer; arrows browse links without launching them; Space/Esc restore library');
- nav('Fonts');await until(()=>document.querySelector('.fonts-table .link-name'),'Fonts table');document.querySelector('.fonts-table .link-name').focus();key(' ');await until(()=>document.querySelector('.quick-preview-link'),'Link preview');assert(!calls.some(c=>c.command==='open_external_url'),'Link preview launched website');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close link preview');document.querySelector('nav[aria-label=Categories] button').click();await until(()=>document.querySelector('[data-item-id="2"]'),'Category overview');
- const search=document.querySelector('input[type=search]')||document.querySelector('input[placeholder="Search"]');search.focus();assert(!key(' ').defaultPrevented,'Space intercepted while typing');assert(!key('z',{ctrlKey:true}).defaultPrevented,'Text Undo intercepted');assert(!key('Z',{ctrlKey:true,shiftKey:true}).defaultPrevented,'Text Redo intercepted');assert(!key('y',{ctrlKey:true}).defaultPrevented,'Text Ctrl+Y intercepted');
+ nav('Fonts');await until(()=>document.querySelector('.fonts-table .link-name'),'Fonts table');document.querySelector('.fonts-table .link-name').focus();key(' ');await until(()=>document.querySelector('.quick-preview-link'),'Link preview');assert(!calls.some(c=>c.command==='open_external_url'),'Link preview launched website');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close link preview');document.querySelector('nav[aria-label="Design Inspo"] button').click();await until(()=>document.querySelector('[data-item-id="2"]'),'Category overview');
+ key('k',{ctrlKey:true});await until(()=>!document.querySelector('.search-popup').hidden,'Search shortcut');const search=document.querySelector('input[type=search]')||document.querySelector('input[placeholder="Search"]');search.focus();assert(!key(' ').defaultPrevented,'Space intercepted while typing');assert(!key('z',{ctrlKey:true}).defaultPrevented,'Text Undo intercepted');assert(!key('Z',{ctrlKey:true,shiftKey:true}).defaultPrevented,'Text Redo intercepted');assert(!key('y',{ctrlKey:true}).defaultPrevented,'Text Ctrl+Y intercepted');search.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>document.querySelector('.search-popup').hidden,'Close search');
  document.querySelector('[data-item-id="2"] .card-select').click();await pause(30);
  const data=new DataTransfer();document.querySelector('[data-item-id="2"]').dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));
  const project=[...document.querySelectorAll('.project-row')].find(e=>e.textContent.includes('Website'));
@@ -61,13 +63,36 @@ try{
  document.querySelector('[data-item-id="100"] .card-open').focus();key('v',{ctrlKey:true});
  await until(()=>calls.filter(c=>c.command==='capture_items').length===2&&!document.querySelector('.capture-status'),'Repeated paste');
  await pause(150);assert(library.items.filter(i=>i.id===100).length===1&&!document.querySelector('.capture-modal'),'Repeated paste duplicated or opened dialog');
+ assert(document.querySelector('.toast')?.textContent.includes('Already in 3D'),'Expected category reuse receipt');
+ document.querySelector('.toast button').click();await until(()=>document.querySelector('.quick-preview header')?.textContent.includes('Pasted image'),'Receipt opens saved reference');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close receipt preview');document.querySelector('[data-item-id="100"] .card-open').focus();
  checks.push('Image paste into a category saves immediately, suppresses overlapping pastes, cleans staged files and reuses duplicates');
  captureFailure=true;key('v',{ctrlKey:true});await until(()=>document.querySelector('.error-banner')?.textContent.includes('Could not save'),'Paste failure shown');
  assert(!document.querySelector('.capture-modal'),'Paste error opened modal');captureFailure=false;
  clipboard='url';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'URL retains capture form');
  document.querySelector('[aria-label="Close capture"]').click();await until(()=>!document.querySelector('.capture-modal'),'Close URL form');
- document.querySelector('nav[aria-label=Categories] button').click();await pause(60);document.querySelector('nav[aria-label=Library] button').focus();clipboard='image';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'Overview retains capture form');
+ document.querySelector('nav[aria-label="Design Inspo"] button').click();await pause(60);document.querySelector('nav[aria-label=Library] button').focus();clipboard='image';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'Overview retains capture form');
  checks.push('Save errors stay inline; URLs and non-category views retain existing capture forms');
+ document.querySelector('[aria-label="Close capture"]').click();
+ nav('Recently added');await until(()=>document.querySelector('.recent-list h3'),'Added date group');
+ assert(document.querySelectorAll('.recent-reference').length===library.items.length,'Recent view omitted collection links');
+ nav('Recently viewed');await until(()=>document.querySelector('.recent-reference'),'Previously previewed references');
+ document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Shortcut editor');
+ [...document.querySelectorAll('.customise-layout > nav button')].find(b=>b.textContent==='General').click();await until(()=>document.querySelector('.general-editor'),'General editor');
+ const shortcut=[...document.querySelectorAll('.shortcut-row')].find(el=>el.textContent.startsWith('CodePen'));
+ shortcut.querySelector('input').click();document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close customisation');await until(()=>![...document.querySelectorAll('nav[aria-label=Library] button span')].some(el=>el.textContent==='CodePen'),'Hide sidebar shortcut');
+ document.querySelector('nav[aria-label=Projects] button.nav-item').click();
+ const byText=(selector,text)=>[...document.querySelectorAll(selector)].find(el=>el.textContent.trim()===text);
+ await until(()=>byText('button','Contact sheet'),'Project actions');byText('button','Contact sheet').click();await until(()=>document.querySelector('.sheet-picker input'),'Project sheet picker');
+ for(const box of document.querySelectorAll('.sheet-picker input'))box.click();
+ await until(()=>!byText('dialog button','Export PNG')?.disabled,'PNG preview ready');
+ const ordered=()=>[...document.querySelectorAll('section[aria-label="Sheet order"] .shortcut-row span')].map(el=>el.textContent);
+ const original=ordered();assert(original.length===2,'Expected two selected project items');
+ document.querySelector('section[aria-label="Sheet order"] .shortcut-row button:last-child').click();await until(()=>ordered()[0].slice(3)===original[1].slice(3),'Reorder sheet');
+ const flags=[...document.querySelectorAll('dialog fieldset>label input')];flags[0].click();flags[1].click();await pause(100);
+ await until(()=>!byText('dialog button','Export PNG').disabled,'Caption preview ready');
+ byText('dialog button','Export PNG').click();await until(()=>document.querySelector('dialog footer')?.textContent.includes('Saved to Example sheet.png'),'PNG delivered to save command');
+ window.__screenshotReady=true;await pause(350);
+ checks.push('Recent lists include board links and viewing history; hidden shortcuts disappear; project sheet renders and exports PNG bytes');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks,calls:calls.slice(-6)});}
 </script></body></html>

@@ -14,12 +14,16 @@ fn key(name: &str) -> Result<&'static str> {
 }
 
 pub fn root(db: &Connection, name: &str) -> Result<PathBuf> {
+    if let Some(root)=db::setting(db,"managed_root") {
+        return Ok(PathBuf::from(root).join(match name {"App Components"=>"App Components","Videos"|"General"=>"General",_=>"Design Inspo"}));
+    }
     db::setting(db, key(name)?)
         .map(PathBuf::from)
         .ok_or_else(|| "Choose your Design folder in Settings first.".into())
 }
 
 pub fn roots(db: &Connection) -> Vec<(String, PathBuf)> {
+    if let Some(root)=db::setting(db,"managed_root") {return [("Design","Design Inspo"),("App Components","App Components"),("General","General")].into_iter().map(|(key,name)|(key.into(),PathBuf::from(&root).join(name))).collect();}
     NAMES
         .into_iter()
         .filter_map(|name| root(db, name).ok().map(|path| (name.to_owned(), path)))
@@ -27,6 +31,7 @@ pub fn roots(db: &Connection) -> Vec<(String, PathBuf)> {
 }
 
 pub fn ensure(db: &Connection) -> Result<()> {
+    if db::setting(db,"managed_root").is_some(){return Ok(());}
     let design = root(db, "Design")?.canonicalize().map_err(err)?;
     let parent = design
         .parent()

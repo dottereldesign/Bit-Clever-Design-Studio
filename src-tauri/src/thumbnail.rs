@@ -19,7 +19,7 @@ pub fn crop(data: &Path, path: &str, x: u32, y: u32, width: u32, height: u32) ->
 }
 
 pub fn replace(db_path: &Path, id: i64, file: &content::CaptureFile) -> Result<()> {
-    let db = db::connect(db_path)?;
+    let mut db = db::connect(db_path)?;
     let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND kind='link' AND archived=0)", [id], |r| r.get(0)).map_err(err)?;
     if !exists { return Err("This link is no longer in the library.".into()); }
     let image = image::open(&file.path).map_err(err)?;
@@ -27,10 +27,16 @@ pub fn replace(db_path: &Path, id: i64, file: &content::CaptureFile) -> Result<(
     std::fs::create_dir_all(&directory).map_err(err)?;
     let path = directory.join(format!("{}.png", content::nonce()));
     image.thumbnail(image.width().min(1600),image.height().min(1600)).save(&path).map_err(err)?;
-    if let Err(error) = db.execute("UPDATE items SET thumbnail=? WHERE id=? AND kind='link' AND archived=0", params![path.to_string_lossy(),id]) {
-        let _ = std::fs::remove_file(path); return Err(err(error));
-    }
-    Ok(())
+    // Keep both images: history switches the reference without deleting files.
+    let result = (|| {
+        let tx=db.transaction().map_err(err)?;
+        let previous:String=tx.query_row("SELECT thumbnail FROM items WHERE id=? AND kind='link' AND archived=0",[id],|r|r.get(0)).map_err(err)?;
+        tx.execute("UPDATE items SET thumbnail=? WHERE id=?",params![path.to_string_lossy(),id]).map_err(err)?;
+        crate::history::record(&tx,"Change thumbnail",vec![crate::history::Patch::Thumbnail(id,previous)])?;
+        tx.commit().map_err(err)
+    })();
+    if result.is_err() {let _=std::fs::remove_file(path);}
+    result
 }
 
 #[cfg(windows)]

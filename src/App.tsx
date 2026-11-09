@@ -1,3 +1,16 @@
+import ColourPicker from './ColourPicker';
+import HoverPreview from "./HoverPreview";
+import {stageFiles} from "./captureImport";
+import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
+import {Channel} from "@tauri-apps/api/core";
+import { readViewSession, useViewSession, type ViewState } from "./viewSession";
+import { copyImageToClipboard, readClipboard } from "./clipboard";
+import { acceptsExternalDrop, readWebDrop } from './webDrop';
+import StorageBar from './StorageBar';
+import StoragePanel from './StoragePanel';
+import {applyBackupPreferences,trackLibraryPreferences} from './backupPreferences';
+import FolderRename from './FolderRename';
+import { readFolderLabels } from './model';
 import {
   useCallback,
   useEffect,
@@ -13,8 +26,9 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { openUrl } from "./api";
 import appLogo from "./assets/app-logo.png";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { arrangeMasonry } from "./masonry";
 import {
+  Star,
   ArrowDownUp,
   ArrowLeft,
   ArrowRight,
@@ -23,6 +37,7 @@ import {
   ExternalLink,
   Folder,
   FolderPlus,
+  FolderMinus,
   Grid2X2,
   ImageOff,
   Link2,
@@ -45,30 +60,47 @@ import {
   Undo2,
   Redo2,
 } from "lucide-react";
-import { changeLibrary, loadLibrary, media, type Change } from "./api";
+import { changeLibrary, loadLibrary, media, forgetMedia, type Change } from "./api";
+import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
+import ContactSheet from "./ContactSheet";
+import RecentReferences from "./RecentReferences";
+import { collections, sites, withWebsites, withCodePen, ordered, useLocalList, type Shortcut, type GeneralTarget } from "./Shortcuts";
 import LibraryExport from "./LibraryExport";
 import AppInfo from "./AppInfo";
 import QuickPreview from "./QuickPreview";
+import ThumbnailEnlargement from "./ThumbnailEnlargement";
 import useItemDragFeedback from "./useItemDragFeedback";
 import ZoomImage from "./ZoomImage";
 import VideoDownloadDialog from "./VideoDownloadDialog";
-import SidebarIcon from "./SidebarIcon";
 import VideoDownloadQueue from "./VideoDownloadQueue";
 import useVideoQueue from "./useVideoQueue";
 import Resources from "./Resources";
 import LinkBoard from "./LinkBoard";
 import ThumbnailEditor from "./ThumbnailEditor";
 import CaptureDialog, {
-  stageFiles,
   type CaptureDraft,
   type CaptureResult,
 } from "./CaptureDialog";
 import DuplicatesDialog from "./DuplicatesDialog";
 import ItemMenu, { type ItemMenuTarget } from "./ItemMenu";
 import RemovedDialog from "./RemovedDialog";
+import SidebarSection from "./SidebarSection";
+import useHomeShortcutDrag from "./useHomeShortcutDrag";
+import HomeDashboard, { homeMime, type HomeDestination } from "./HomeDashboard";
+import { readSectionStyle } from "./SectionStylePicker";
+import Customization, { readHomeAppearance, type CustomTab } from "./Customization";
+import useSidebarSpace from "./useSidebarSpace";
+import SidebarNavigation from "./SidebarNavigation";
+import { sidebarLayouts, readSidebarLayout } from './appearance';
+import { AppIcon, FolderIcon, GeneralEntryIcon, readIcons } from './AppIcon';
+import type { GeneralDraft,GeneralOption } from './GeneralEditor';
+import CollectionView from './CollectionView';
+import { appHistory } from "./appHistory";
+import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
+import { allComponents, componentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
-import {categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
+import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
 
 const empty: Library = {
   items: [],
@@ -207,25 +239,62 @@ function Popover({
   );
 }
 
-export default function App() {
+export default function App({startOnHome}:{startOnHome?:boolean}={}) {
+  const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
+  const savedView=savedSession?.view;
+  const [homeView,setHomeView]=useState(savedView?.homeView??startOnHome??true);
+  const [homeDrop,setHomeDrop]=useState<string|null>(null);
   const [lib, setLib] = useState<Library>(empty),
     [ready, setReady] = useState(false),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
-  const [project, setProject] = useState<number | null>(null),
-    [linksOnly, setLinksOnly] = useState(false);
-  const [search, setSearch] = useState(""),
-    [type, setType] = useState("all"),
-    [tags, setTags] = useState<number[]>([]),
-    [source, setSource] = useState(""),
-    [sort, setSort] = useState("recent");
-  const [seed, setSeed] = useState(Date.now()),
-    [size, setSize] = useState(() => storedNumber("tile-size", 260)),
-    [sidebarWidth, setSidebarWidth] = useState(() =>
-      storedNumber("sidebar-width", 208),
-    );
+    [notice, setNoticeText] = useState("");
+  const [receipt,setReceipt]=useState<{ids:number[];existing:boolean;undo?:string} | null>(null);
+  const setNotice=useCallback((text:string)=>{setReceipt(null);setNoticeText(text);},[]);
+  const [tagMode,setTagMode]=useState<"any"|"all">(savedView?.tagMode??"any");
+  const [recent,setRecent]=useState<"added"|"viewed"|null>(savedView?.recent??null);
+  const [history,setHistory]=useLocalList<{id:number;path:string}>("reference-history",[]);
+  const [collectionPrefs,setCollectionPrefs,setCollectionPrefsRaw]=useHistoryState<Shortcut[]>("collection-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("collection-shortcuts")??"null");return withWebsites(Array.isArray(value)?value:collections);}catch{return collections;}},"Sidebar shortcuts");
+  useEffect(()=>{const next=withWebsites(collectionPrefs);if(next!==collectionPrefs)setCollectionPrefsRaw(next);},[collectionPrefs,setCollectionPrefsRaw]);
+  const [sitePrefs,setSitePrefs,setSitePrefsRaw]=useHistoryState<Shortcut[]>("site-shortcuts",()=>{try{const value=JSON.parse(localStorage.getItem("site-shortcuts")??"null");return Array.isArray(value)?value:sites;}catch{return sites;}},"Favourite websites");
+  useEffect(()=>{const next=withCodePen(sitePrefs);if(next!==sitePrefs)setSitePrefsRaw(next);},[sitePrefs,setSitePrefsRaw]);
+  const [extraDialog,setExtraDialog]=useState<"sheet"|null>(null);
+  const [viewedOrder,setViewedOrder]=useState<number[]>(()=>savedView?.recent==="viewed"?history.map(entry=>entry.id):[]);
+  const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
+  const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
+    [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
+  const [project, setProject] = useState<number | null>(savedView?.project??null),
+    [linksOnly, setLinksOnly] = useState(savedView?.linksOnly??false);
+  const [search, setSearch] = useState(savedView?.search??""),
+    [type, setType] = useState(savedView?.type??"all"),
+    [tags, setTags] = useState<number[]>(savedView?.tags??[]),
+    [source, setSource] = useState(savedView?.source??""),
+    [sort, setSort] = useState(savedView?.sort??"recent");
+  const [seed, setSeed] = useState(savedView?.seed??Date.now()),
+    [size, setSize] = useHistoryState("tile-size",() => storedNumber("tile-size", 260),"Thumbnail size"),
+    [sidebarWidth, setSidebarWidth] = useHistoryState("sidebar-width",() => storedNumber("sidebar-width",208),"Sidebar width");
+  const [sectionStyle,setSectionStyle]=useHistoryState("sidebar-section-style",readSectionStyle,"Sidebar style");
+  const [customTab,setCustomTab]=useState<CustomTab|null>(null);
+  const [homeStyle,setHomeStyle]=useHistoryState('home-style',()=>Math.max(1,Math.min(20,storedNumber('home-style',1))),'Home style');
+  const [homeAppearance,setHomeAppearance]=useHistoryState("home-appearance",readHomeAppearance,"Home appearance");
+  const [reducedMotion,setReducedMotion]=useHistoryState('reduce-motion',()=>localStorage.getItem('reduce-motion')==='true','Motion preference');
+  const [sidebarLayout,setSidebarLayout]=useHistoryState('sidebar-layout',readSidebarLayout,'Sidebar layout');
+  const [icons,setIcons]=useHistoryState('app-icons',readIcons,'App icons');
+  const [folderLabels,setFolderLabels]=useHistoryState<Record<string,string>>('folder-labels',readFolderLabels,'Rename folder');
+  const [folderAppearance,setFolderAppearance]=useHistoryState<Record<string,{color?:string;starred?:boolean}>>('folder-appearance',()=>{try{return JSON.parse(localStorage.getItem('folder-appearance')??'{}');}catch{return {}; }},'Folder appearance');
+  const [folderMenu,setFolderMenu]=useState<{name:string;x:number;y:number}|null>(null);
+  const [folderOrder,setFolderOrder]=useHistoryState<Record<string,string[]>>('sidebar-folder-order',()=>{try{return JSON.parse(localStorage.getItem('sidebar-folder-order')??'{}');}catch{return {}; }},'Folder order');
+  const sortedFolders=(folders:string[],group:string)=>{const saved=folderOrder[group]??[];return [...folders].sort((a,b)=>{const ai=saved.indexOf(a),bi=saved.indexOf(b);return (ai<0?Infinity:ai)-(bi<0?Infinity:bi)||categoryLabel(a).localeCompare(categoryLabel(b),undefined,{numeric:true,sensitivity:'base'});});};
+  const navLayout=sidebarLayouts[sidebarLayout-1]??sidebarLayouts[0];
+  const [generalKey,setGeneralKey]=useState<string|null>(savedView?.generalKey??null);
+  const generalEntry=collectionPrefs.find(s=>s.key===generalKey);
+  const generalRoute=useRef(generalEntry?JSON.stringify([generalEntry.key,generalEntry.target??{kind:'view',value:generalEntry.key}]):'');
+  const generalMissing=generalEntry?.target?.kind==='project'&&!lib.projects.some(p=>String(p.id)===generalEntry.target!.value);
+  useSidebarSpace(sidebarLayout);
+  useEffect(()=>{localStorage.setItem('home-style',String(homeStyle));},[homeStyle]);
+  useEffect(()=>{localStorage.setItem('home-appearance',JSON.stringify(homeAppearance));},[homeAppearance]);
+  useEffect(()=>{localStorage.setItem('reduce-motion',String(reducedMotion));document.documentElement.dataset.motion=reducedMotion?'reduce':'';if(reducedMotion)document.getAnimations().forEach(a=>a.cancel());},[reducedMotion]);
   const [selected, setSelected] = useState<Set<number>>(new Set()),
-    [viewer, setViewer] = useState<number | null>(null),
+    [viewer, setViewer] = useState<number | null>(savedView?.viewer??null),
     [modal, setModal] = useState<Modal | null>(null),
     [busy, setBusy] = useState(false);
   const [widePreview, setWidePreview] = useState(() => window.matchMedia("(min-width: 1600px)").matches);
@@ -236,21 +305,26 @@ export default function App() {
     return () => query.removeEventListener("change", update);
   }, []);
   const [libraryExportOpen,setLibraryExportOpen]=useState(false);
+  const [storageOpen,setStorageOpen]=useState(false);
+  const [libraryMigration,setLibraryMigration]=useState(false);
   const [quickPreview,setQuickPreview]=useState<number|null>(null);
+  const [thumbnailEnlarged,setThumbnailEnlarged]=useState(false);
   const previewCandidate=useRef<number|null>(null);
-  const undoBusy=useRef(false);
-  const [undoing,setUndoing]=useState(false);
+  const historyActions=useHistory();
+  const undoing=historyActions.busy;
+  const libRef=useRef(lib);libRef.current=lib;
+  const historyReady=useRef(false);
   const pasteBusy=useRef(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
-  const [category,setCategory] = useState<string|null>(null);
+  const [category,setCategory] = useState<string|null>(savedView?.category??null);
   const [categoryUndo,setCategoryUndo] = useState<[number,string][]|null>(null);
   const categoryUndoNotice = useRef("");
   const [categoryDrop,setCategoryDrop] = useState<string|null>(null);
-  const [videoView, setVideoView] = useState(false);
+  const [videoView, setVideoView] = useState(savedView?.videoView??false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [videoDialog, setVideoDialog] = useState<{url:string}|null>(null);
-  const [boardView, setBoardView] = useState<BoardKey | null>(null);
-  const [resourcesView, setResourcesView] = useState(false),
+  const [boardView, setBoardView] = useState<BoardKey | null>(savedView?.boardView??null);
+  const [resourcesView, setResourcesView] = useState(savedView?.resourcesView??false),
     [capture, setCapture] = useState<CaptureDraft | null>(null),
     [duplicatesOpen, setDuplicatesOpen] = useState(false),
     [dropActive, setDropActive] = useState(false),
@@ -258,30 +332,46 @@ export default function App() {
   const [itemMenu, setItemMenu] = useState<ItemMenuTarget | null>(null),
     [removedOpen, setRemovedOpen] = useState(false),
     [undoIds, setUndoIds] = useState<number[]>([]);
-  const [gridReturn, setGridReturn] = useState<{ id: number } | null>(null);
+  const [gridReturn, setGridReturn] = useState<{ id: number; offset?: number } | null>(savedSession?.scroll.anchor??null);
   const [copying, setCopying] = useState<number | null>(null);
   const [resourceVersion, setResourceVersion] = useState(0);
   const copyBusy = useRef(false);
   const finishGridReturn = useCallback(() => setGridReturn(null), []);
   const closeViewer = useCallback(() => {
-    if (viewer !== null && !widePreview) setGridReturn({ id: viewer });
+    if (viewer !== null && libRef.current.items.some(i=>i.id===viewer&&i.kind==='link')) {
+      requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(`.link-card[data-item-id="${viewer}"] .link-card-open`)?.focus({preventScroll:true}));
+    } else if (viewer !== null && !widePreview) setGridReturn({ id: viewer });
     setViewer(null);
   }, [viewer, widePreview]);
   const closeItemMenu = useCallback(() => setItemMenu(null), []);
   useEffect(() => {
-    if (quickPreview !== null || modal || viewer !== null || capture || duplicatesOpen) setHoverId(null);
-  }, [quickPreview,modal, viewer, capture, duplicatesOpen]);
+    if (thumbnailEnlarged || quickPreview !== null || modal || viewer !== null || capture || duplicatesOpen) setHoverId(null);
+    if (thumbnailEnlarged) setGridReturn(null);
+  }, [thumbnailEnlarged,quickPreview,modal, viewer, capture, duplicatesOpen]);
   useEffect(()=>{if(quickPreview!==null&&!lib.items.some(i=>i.id===quickPreview))setQuickPreview(null);},[lib.items,quickPreview]);
+  const [searchOpen,setSearchOpen]=useState(false);
   const searchRef = useRef<HTMLInputElement>(null),
     anchor = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async function refresh() {
     const next = await loadLibrary();
-    setLib(next);
+    // Observe native history itself, including imports/downloads completed by
+    // other dialogs, rather than trying to enumerate every possible save path.
+    if(historyReady.current&&next.undo_entries){
+      const known=new Set(libRef.current.undo_entries?.map(e=>e.id));
+      for(const entry of next.undo_entries){if(!known.has(entry.id))appHistory.record({
+        label:entry.label,kind:'library',
+        undo:async()=>{await changeLibrary({action:'undo_organisation',value:entry.label});await refresh();},
+        redo:async()=>{await changeLibrary({action:'redo_organisation'});await refresh();},
+      });}
+    }
+    historyReady.current=true;
+    libRef.current=next;setLib(next);
     setReady(true);
     return next;
   }, []);
   const report = useCallback((e: unknown) => setError(tidyError(e)), []);
+  useEffect(()=>trackLibraryPreferences(report),[report]);
   const videoQueue = useVideoQueue(ready && isTauri(), refresh, report);
   useEffect(() => {
     if (!isTauri()) {
@@ -321,54 +411,72 @@ export default function App() {
   useEffect(() => {
     if (!notice) return;
     if(categoryUndo && notice!==categoryUndoNotice.current) setCategoryUndo(null);
-    const timer = setTimeout(() => { setNotice(""); setUndoIds([]); setCategoryUndo(null); }, undoIds.length || categoryUndo ? 9000 : 3000);
+    const timer = setTimeout(() => { setNotice(""); setUndoIds([]); setCategoryUndo(null); }, undoIds.length || categoryUndo || receipt ? 9000 : 3000);
     return () => clearTimeout(timer);
-  }, [notice, undoIds, categoryUndo]);
+  }, [notice, undoIds, categoryUndo,receipt]);
   useEffect(() => {
     localStorage.setItem("tile-size", String(size));
   }, [size]);
   useEffect(() => {
     localStorage.setItem("sidebar-width", String(sidebarWidth));
   }, [sidebarWidth]);
+  useEffect(()=>{const id=quickPreview??viewer;
+    const item=id===null?null:lib.items.find(i=>i.id===id);if(item)track(item);
+  },[lib.items,quickPreview,viewer,track]);
+  const sheetItems=useMemo(()=>lib.items.filter(i=>project!==null&&i.projects.includes(project)),[lib.items,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
+  const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
   const filtered = useMemo(
-    () =>
-      filterItems(lib.items, {
+    () => {
+      const matches=filterItems(lib.items, {
+        tagMode, includeCollections:!!recent||resourcesView||generalEntry?.target?.kind==='project',
         category,
         collection: boardView ? boardNames[boardView] : undefined,
         search,
-        type: videoView ? "video" : type,
+        type: videoView ? "video" : type==='all'?(generalEntry?.content??'all'):type,
         tags,
-        source: videoView ? "Videos" : source,
+        source: videoView ? "Videos" : generalEntry&&resourcesView?"Resources":source,
         project,
         linksOnly,
-        sort,
-        seed,
-      }),
-    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category],
+        sort:recent?"recent":sort, seed,
+      });
+      if(generalMissing)return [];
+      if(allCategoriesView)return matches.filter(i=>designFoldersOf(i).length>0);
+      if(recent!=="viewed")return matches;
+      const byId=new Map(matches.map(i=>[i.id,i]));
+      return viewedOrder.flatMap(id=>byId.get(id)??[]);
+    },
+    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
   );
+  useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
+  const customCollection = !!generalEntry?.layout && generalEntry.layout !== 'auto';
+  const originalResources = resourcesView && !customCollection;
   const tableBoard = isTableCollection(boardView);
   const images = useMemo(
     () => filtered.filter((i) => i.kind !== "link"),
     [filtered],
   );
+  const previewItems = useMemo(()=>filtered.filter(i=>i.kind!=="link"||(i.source==="Websites"&&!!i.thumbnail)),[filtered]);
   const links = useMemo(
-    () => filtered.filter((i) => i.kind === "link" && (!isBoardLink(i) || isTableLink(i))),
+    () => filtered.filter((i) => i.kind === "link" && (componentFoldersOf(i).length>0 || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
+  const viewState=useMemo<ViewState>(()=>({homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
+  useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
   const dockedPreview = widePreview && !!activeItem;
   useEffect(() => {
-    if (viewer !== null && !filtered.some(item => item.id === viewer)) setViewer(null);
-  }, [filtered, viewer]);
-  const title = videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
+    if (ready && viewer !== null && !filtered.some(item => item.id === viewer)) setViewer(null);
+  }, [filtered, viewer, ready]);
+  const title = generalEntry?.name??(recent==="added"?"Recently added":recent==="viewed"?"Recently viewed":videoView ? "Facebook Videos" : boardView ? boardNames[boardView] : resourcesView
     ? "Resources"
     : project
       ? lib.projects.find((p) => p.id === project)?.name || "Project"
       : linksOnly
         ? "Links"
-        : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Categories";
+        : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Designs");
   const activeFilters = !!(search || type !== "all" || tags.length);
   const clearFilters = () => {
     setSearch("");
@@ -377,8 +485,11 @@ export default function App() {
     setSource("");
   };
   const navigate = (id: number | null, onlyLinks = false) => {
+    setHomeView(false);
+    setGeneralKey(null);
     setQuickPreview(null);
     setGridReturn(null);
+    setRecent(null);
     setResourcesView(false);
     setBoardView(null);
     setVideoView(false);
@@ -390,40 +501,132 @@ export default function App() {
     clearFilters();
     scrollRef.current?.scrollTo(0, 0);
   };
-  const mutate = useCallback(
-    async (c: Change) => {
-      await changeLibrary(c);
-      return refresh();
-    },
-    [refresh],
-  );
-  const undoLast=useCallback(async()=>{
-    if(undoBusy.current||!lib.undo_label)return;
-    undoBusy.current=true;setUndoing(true);
-    try {await mutate({action:"undo_organisation"});setUndoIds([]);setCategoryUndo(null);setNotice(`Undid: ${lib.undo_label}`);}
-    catch(e){report(e);}finally{undoBusy.current=false;setUndoing(false);}
-  },[lib.undo_label,mutate,report]);
-  const redoLast=useCallback(async()=>{
-    if(undoBusy.current||!lib.redo_label)return;
-    undoBusy.current=true;setUndoing(true);
-    try {await mutate({action:"redo_organisation"});setUndoIds([]);setCategoryUndo(null);setNotice(`Redid: ${lib.redo_label}`);}
-    catch(e){report(e);}finally{undoBusy.current=false;setUndoing(false);}
-  },[lib.redo_label,mutate,report]);
+  const runLibraryHistory=useCallback(async(redo:boolean,expected?:string)=>{
+    await changeLibrary({action:redo?'redo_organisation':'undo_organisation',value:expected});await refresh();setUndoIds([]);setCategoryUndo(null);
+  },[refresh]);
+  appHistory.onError=report;
+  appHistory.fallback={undoLabel:lib.undo_label,redoLabel:lib.redo_label,undo:()=>runLibraryHistory(false),redo:()=>runLibraryHistory(true)};
+  const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
+  const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
+    const before=libRef.current;await changeLibrary(c);const next=await refresh();
+    const tracked=new Set(['set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
+    if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
+    return next;
+  }),[refresh,runLibraryHistory]);
+  const undoLast=useCallback(async(expected?:string)=>{if(expected&&appHistory.undoLabel!==expected){setNotice("A newer change took place. Use the header Undo action.");return;}await appHistory.undo();},[]);
+  const redoLast=useCallback(async()=>{await appHistory.redo();},[]);
+  useEffect(()=>{
+    const gesture=()=>crypto.randomUUID();
+    const typing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!target.closest('textarea,[contenteditable=true],input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button])');
+    const key=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&!e.altKey&&!typing(e.target)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();e.stopImmediatePropagation();void ((e.key.toLowerCase()==='y'||e.shiftKey)?appHistory.redo():appHistory.undo());return;}if(e.target instanceof HTMLElement&&e.target.matches('input[type=range]')&&e.key.startsWith('Arrow'))appHistory.beginGesture(`key-${gesture()}`);};
+    const down=(e:PointerEvent)=>{if(e.target instanceof HTMLElement&&e.target.closest('input[type=range],.sidebar-resize'))appHistory.beginGesture(`pointer-${gesture()}`);};
+    const end=()=>appHistory.endGesture();
+    document.addEventListener('keydown',key,true);document.addEventListener('keyup',end,true);document.addEventListener('pointerdown',down,true);document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);window.addEventListener('blur',end);
+    return ()=>{document.removeEventListener('keydown',key,true);document.removeEventListener('keyup',end,true);document.removeEventListener('pointerdown',down,true);document.removeEventListener('pointerup',end);document.removeEventListener('pointercancel',end);window.removeEventListener('blur',end);};
+  },[]);
   const categories = useMemo(()=>libraryCategories(lib),[lib]);
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of lib.items) {
+      if (item.kind === "link" && !componentFoldersOf(item).length) continue;
+      for (const folder of [...componentFoldersOf(item),...designFoldersOf(item)]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
+      if (componentFoldersOf(item).length) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
+    }
+    return counts;
+  }, [lib.items]);
+  const homeDestinations:HomeDestination[]=[
+    {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&designFoldersOf(i).length>0).length},
+    {id:"group:general",label:"General",kind:"group",value:"general",group:"general"},
+    {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
+    ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
+    ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?categoryLabel(name).slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
+  ];
+  const generalOptions:GeneralOption[]=[
+    ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
+    {label:'Design Inspo / All',target:{kind:'category',value:'__all__'}},{label:'App Components / All',target:{kind:'category',value:allComponents}},
+    ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
+    ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
+  ];
+  const iconTargets=[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))];
+  const saveGeneral=async(draft:GeneralDraft,key?:string)=>{
+    if(!draft.name)throw Error('Enter a name for the entry.');
+    let target:GeneralTarget;
+    if(draft.target.kind==='new'){const next=await mutate({action:'create_project',name:draft.name});const created=next.projects.find(p=>p.name===draft.name);if(!created)throw Error('Could not find the new collection.');target={kind:'project',value:String(created.id)};}else target=draft.target;
+    const entry:Shortcut={...collectionPrefs.find(s=>s.key===key),key:key??crypto.randomUUID(),name:draft.name,target,layout:draft.layout,content:draft.content};
+    setCollectionPrefs(previous=>key?previous.map(s=>s.key===key?entry:s):[...previous,entry]);
+  };
+  const openGeneral=(entry:Shortcut)=>{
+    const target=entry.target??{kind:'view',value:entry.key};
+    if(target.kind==='website'){setGeneralKey(null);void openUrl(target.value).catch(report);return;}
+    generalRoute.current=JSON.stringify([entry.key,target]);
+    navigate(target.kind==='project'?Number(target.value):null,target.kind==='view'&&target.value==='links');setGeneralKey(entry.key);
+    if(target.kind==='category'){if(target.value!=='__all__')setCategory(target.value===allComponents?allComponents:filingCategory(target.value));return;}
+    if(target.kind==='project')return;
+    const key=target.value;if(isBoardDestination(key))setBoardView(key);if(key==='resources')setResourcesView(true);
+    if(key==='facebook'){setVideoView(true);setSource('Videos');}
+    if(key==='added'||key==='viewed'){setRecent(key);if(key==='viewed'){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}}
+  };
+  useEffect(()=>{if(!generalEntry)return;const target=generalEntry.target??{kind:'view',value:generalEntry.key};if(generalRoute.current!==JSON.stringify([generalEntry.key,target])){if(target.kind==='website')setGeneralKey(null);else openGeneral(generalEntry);}},[generalKey,generalEntry?.target?.kind,generalEntry?.target?.value]);
+  const openHomeDestination=(destination:HomeDestination)=>{
+    if(destination.kind==='collection'){const entry=collectionPrefs.find(s=>s.key===destination.value);if(entry)openGeneral(entry);return;}
+    if(destination.kind==="project"){navigate(Number(destination.value));return;}
+    navigate(null,destination.value==="links");
+    if(destination.kind==="category"){if(destination.value!=="__all__")setCategory(destination.value===allComponents?allComponents:filingCategory(destination.value));return;}
+    const key=destination.value;
+    if(isBoardDestination(key))setBoardView(key);
+    if(key==="resources")setResourcesView(true);
+    if(key==="facebook"){setVideoView(true);setSource("Videos");}
+    if(key==="added"||key==="viewed"){setRecent(key);if(key==="viewed"){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}}
+  };
+  const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop,(id,target,after)=>{const from=id.slice(9),to=target.slice(9),group=isComponent(from)?'components':'design';if(isComponent(from)!==isComponent(to)||from===to)return;const rows=sortedFolders(group==='components'?componentFolders:[...categories,''],group).filter(name=>name!==from),index=rows.indexOf(to);if(index<0)return;rows.splice(index+(after?1:0),0,from);setFolderOrder(previous=>({...previous,[group]:rows}));});
+  const homeDrag=(id:string)=>homeShortcutDrag.props(id,homeDestinations.find(d=>d.id===id)?.label??"Destination");
   const changeCategory = async (ids:number[],name:string) => {
-    const items=lib.items.filter(i=>ids.includes(i.id)&&i.kind!=="link");
+    const items=lib.items.filter(i=>ids.includes(i.id)&&(i.kind!=="link"||isComponent(name)||componentFoldersOf(i).length>0));
     if(!items.length)throw Error("Select images or videos to change category.");
+    name = filingCategory(name);
     const previous: [number,string][] = items.map(i=>[i.id,categoryOf(i)]);
     await mutate({action:"set_category",ids:items.map(i=>i.id),value:name});
     setUndoIds([]);setCategoryUndo(previous);setSelected(new Set());
-    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} moved to ${categoryLabel(name)}`;
+    categoryUndoNotice.current=`${items.length} ${items.length===1?"reference":"references"} ${name && name!==componentInbox ? "added to" : "moved to"} ${name===componentInbox?"App Components / Uncategorised":name===""?"Design Inspo / Uncategorised":categoryLabel(name)}`;
     setNotice(categoryUndoNotice.current);
   };
+  const removeFromComponentFolder = async (item:Item) => {
+    if(!category||category===allComponents||category===componentInbox)return;
+    const folder=category;
+    try {
+      await mutate({action:isComponent(folder)?"remove_component_folder":"remove_design_folder",ids:[item.id],value:folder});
+      setSelected(previous=>{const next=new Set(previous);next.delete(item.id);return next;});
+      setUndoIds([]);setCategoryUndo([[item.id,folder]]);
+      categoryUndoNotice.current=`Removed from ${categoryLabel(folder)}`;
+      setNotice(categoryUndoNotice.current);
+    } catch(error){report(error);}
+  };
   const categoryDropProps = (name:string) => ({
-    onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes("application/design-items")){e.preventDefault();e.dataTransfer.dropEffect="move";setCategoryDrop(name);}},
+    onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes("application/design-items")||acceptsExternalDrop(e.dataTransfer)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect=acceptsExternalDrop(e.dataTransfer)?"copy":"move";setCategoryDrop(name);}},
     onDragLeave:(e:React.DragEvent)=>{if(!(e.relatedTarget instanceof Node)||!e.currentTarget.contains(e.relatedTarget))setCategoryDrop(null);},
-    onDrop:(e:React.DragEvent)=>{e.preventDefault();e.stopPropagation();setCategoryDrop(null);try{const ids=JSON.parse(e.dataTransfer.getData("application/design-items"));if(Array.isArray(ids)&&ids.every(Number.isInteger))void changeCategory(ids,name).catch(report);}catch{/* Unrelated drag. */}}
+    onDrop:(e:React.DragEvent)=>{e.preventDefault();e.stopPropagation();setCategoryDrop(null);setDropActive(false);if(acceptsExternalDrop(e.dataTransfer)){queueImageDrop(e.dataTransfer,name);return;}try{const ids=JSON.parse(e.dataTransfer.getData("application/design-items"));if(Array.isArray(ids)&&ids.every(Number.isInteger))void changeCategory(ids,name).catch(report);}catch{/* Unrelated drag. */}}
   });
+  const folderRow = (s: string) => (
+    <button
+      className={`nav-item source-item ${s===allComponents?"source-parent":""} ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
+      {...homeDrag(`category:${s}`)}
+      onContextMenu={e=>{if(s===allComponents||s===componentInbox||!s)return;e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
+      data-folder-order={s===allComponents?undefined:isComponent(s)?'components':'design'}
+      data-category={s}
+      {...categoryDropProps(s)}
+      key={s}
+      title={`Open ${categoryLabel(s)}; drop references here to ${s&&s!==componentInbox&&s!==allComponents?"add to this folder":"change category"}`}
+      onClick={() => { navigate(null); setCategory(s); }}
+    >
+      {isComponent(s)&&folderAppearance[s]?.starred&&<Star className="folder-star" size={11} fill="currentColor" aria-label="Starred folder"/>}
+      <i className="folder-row-icon" style={{color:folderAppearance[s]?.color}}><FolderIcon preferences={icons} id={`category:${s}`} size={14}/></i>
+      <span>{isComponent(s) ? categoryLabel(s).slice("Components / ".length) : categoryLabel(s)}</span>
+      <small>{categoryCounts.get(s)||""}</small>
+    </button>
+  );
   const perform = useCallback(
     async (c: Change) => {
       try {
@@ -455,8 +658,8 @@ export default function App() {
       select(item.id, e.shiftKey);
       return;
     }
-    if (item.kind === "link") {
-      void openUrl(item.path).catch(report);
+    if (item.kind === "link" && !(item.source === "Websites" && item.thumbnail)) {
+      void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
       setGridReturn(null);
       setViewer(item.id);
@@ -467,7 +670,7 @@ export default function App() {
     copyBusy.current = true;
     setCopying(id);
     try {
-      await invoke("copy_image", { id });
+      await copyImageToClipboard(id);
       setUndoIds([]);
       setNotice("Image copied");
     } catch (e) { report(e); }
@@ -485,21 +688,21 @@ export default function App() {
   const moveViewer = useCallback(
     (delta: number) => {
       setViewer((id) => {
-        const n = images.findIndex((i) => i.id === id);
-        return images[(n + delta + images.length) % images.length]?.id ?? null;
+        const n = previewItems.findIndex((i) => i.id === id);
+        return previewItems[(n + delta + previewItems.length) % previewItems.length]?.id ?? null;
       });
     },
-    [images],
+    [previewItems],
   );
   useLayoutEffect(() => {
     const key = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable=true]",
       );
-      if(libraryExportOpen)return;
+      if(libraryExportOpen||extraDialog||customTab||(homeView&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen))return;
       if(quickPreview!==null){
         if(e.key==="Escape"||(e.key===" "&&!typing&&!(e.target as HTMLElement).closest("button,video"))){e.preventDefault();if(!e.repeat)setQuickPreview(null);}
-        if(!typing&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();const n=filtered.findIndex(i=>i.id===quickPreview);setQuickPreview(filtered[(n+(e.key==="ArrowRight"?1:-1)+filtered.length)%filtered.length]?.id??null);}
+        if(!typing&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();const ids=receiptBrowse.length?receiptBrowse:filtered.map(i=>i.id);const n=ids.indexOf(quickPreview);setQuickPreview(ids[(n+(e.key==="ArrowRight"?1:-1)+ids.length)%ids.length]??null);}
         return;
       }
       if (e.key === "Escape") {
@@ -547,30 +750,99 @@ export default function App() {
         e.preventDefault();
         setSelected(new Set(filtered.map((i) => i.id)));
       }
-      if (e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key === "f")) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
+
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen]);
+  }, [modal, viewer, filtered, moveViewer, capture, duplicatesOpen, removedOpen, itemMenu, selected, removeItems, closeViewer, activeItem, copyImage, videoDialog, quickPreview, undoLast, redoLast, widePreview, libraryExportOpen,extraDialog,receiptBrowse,homeView,customTab]);
+  useEffect(()=>{
+    if(!searchOpen)return;
+    searchRef.current?.focus();searchRef.current?.select();
+    const outside=(e:PointerEvent)=>{if(!(e.target as HTMLElement)?.closest(".search-popup"))setSearchOpen(false);};
+    window.addEventListener("pointerdown",outside);return()=>window.removeEventListener("pointerdown",outside);
+  },[searchOpen]);
+  useEffect(()=>{
+    const key=(e:KeyboardEvent)=>{
+      if(e.altKey||modal||capture||videoDialog||duplicatesOpen||removedOpen||libraryExportOpen||storageOpen||extraDialog||customTab||quickPreview!==null||itemMenu||viewer!==null)return;
+      const typing=(e.target as HTMLElement)?.closest("input,textarea,select,[contenteditable=true]");
+      const command=e.ctrlKey||e.metaKey;
+      if(command&&e.key===","&&!typing){e.preventDefault();setSearchOpen(false);setModal({kind:"settings"});return;}
+      if((command&&["f","k"].includes(e.key.toLowerCase()))||(!typing&&!command&&e.key==="/")){
+        e.preventDefault();if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
+  },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView]);
+  const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
+    const saved=next.items.filter(i=>result.ids.includes(i.id));
+    if(!saved.length)return;
+    const item=saved[0];
+    const destination=targetCategory!==null?categoryLabel(targetCategory):result.destination==="links"?"Links":result.destination==="resources"?"Resources":
+      result.destination&&isBoardDestination(result.destination)?boardNames[result.destination]:
+      item.source;
+    const prior=new Map(lib.items.map(i=>[i.id,i]));
+    const already=result.reused>0&&!result.added&&saved.every(i=>{
+      const previous=prior.get(i.id);
+      return targetCategory===null||!!previous&&(isComponent(filingCategory(targetCategory))?componentFoldersOf(previous).includes(filingCategory(targetCategory)):designFoldersOf(previous).includes(filingCategory(targetCategory)));
+    });
+    const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
+      result.added&&result.reused?`${result.added} added · ${result.reused} reused in ${destination}`:
+      already?`Already in ${destination}`:`${saved.length===1?"Added":saved.length+" added"} to ${destination}`;
+    setUndoIds([]);setCategoryUndo(null);setNoticeText(message);
+    setReceipt({ids:saved.map(i=>i.id),existing:already&&!result.moved_from,undo:result.move_label});
+  },[lib.items]);
+  const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
+  const dropQueue = useRef(Promise.resolve());
+  const queueImageDrop = useCallback((data:DataTransfer, destination:string|null) => {
+    // Read immediately: browser drag data is unavailable after the drop event returns.
+    const payload = readWebDrop(data);
+    dropQueue.current = dropQueue.current.then(async () => {
+      let files:CaptureDraft['files'] = [];
+      try {
+        setReadingCapture(true);
+        setImportProgress(null);
+        if(payload.files.length) files = (await stageFiles(payload.files,setImportProgress)).files;
+        else if(payload.imageUrl) files = [await invoke('stage_web_image',{url:payload.imageUrl})];
+        else if(!payload.sourceUrl) throw new Error('Drag the image itself, or copy and paste it into this folder.');
+        const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+        setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
+        const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
+          files,url:files.length?'':payload.sourceUrl,name:files.length===1?files[0].name.replace(/\.[^.]+$/,''):'',
+          source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:payload.sourceUrl,resource:false,
+        }}));
+        setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
+        recordCapture(result);
+        if(destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+        showCaptureReceipt(result,await refresh(),destination);
+      } catch(error){report(error);}
+      finally {
+        await invoke('discard_capture',{paths:files.map(file=>file.path)}).catch(report);
+        setReadingCapture(false);setImportProgress(null);
+      }
+    });
+  },[mutate,recordCapture,refresh,report,showCaptureReceipt]);
   const pasteCapture = useCallback(async () => {
     if(pasteBusy.current)return;
     pasteBusy.current=true;
     try {
       setReadingCapture(true);
-      const draft = await invoke<CaptureDraft>("read_clipboard");
+      const draft = await readClipboard<CaptureDraft>();
+      if(category!==null && (isComponent(category)||category===allComponents) && draft.url && !draft.files.length){
+        const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{files:[],url:draft.url,name:'',source:'Design',projects:[],tags:[],source_url:'',resource:false}}));
+        recordCapture(result);
+        if(result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(category)});
+        showCaptureReceipt(result,await refresh(),filingCategory(category));return;
+      }
       if(videoView && draft.url){setVideoDialog({url:draft.url});return;}
       if(category!==null && draft.files.length && !resourcesView && !boardView && !videoView && !linksOnly){
         try {
-          const result=await invoke<CaptureResult>("capture_items",{input:{
+          const result=await appHistory.perform(()=>invoke<CaptureResult>("capture_items",{input:{
             files:draft.files,url:"",name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/, ""):"",
             source:category==="Photography"?"Photography":"Design",projects:[],tags:[],source_url:"",resource:false,
-          }});
-          if(result.ids.length)await changeLibrary({action:"set_category",ids:result.ids,value:category});
-          await refresh();setUndoIds([]);setCategoryUndo(null);
-          setNotice(`${result.added?`${result.added} added to ${categoryLabel(category)}`:""}${result.added&&result.reused?" · ":""}${result.reused?`${result.reused} already in library — reused`:""}`);
+          }}));
+          recordCapture(result);
+          if(result.ids.length)await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+          showCaptureReceipt(result,await refresh(),category);
         } finally {await invoke("discard_capture",{paths:draft.files.map(file=>file.path)}).catch(report);}
         return;
       }
@@ -581,7 +853,7 @@ export default function App() {
       pasteBusy.current=false;
       setReadingCapture(false);
     }
-  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh]);
+  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture]);
   const chooseCaptureFiles = async () => {
     try {
       const paths = await open({
@@ -616,7 +888,7 @@ export default function App() {
           path,
           name: path.replace(/\\/g, "/").split("/").pop()!,
         }));
-        setCapture({ files, url: "" });
+        setCapture(boardView==="websites"?{files:[],url:"",thumbnail:files[0],destination:"websites"}:{ files, url: "" });
       }
     } catch (e) {
       report(e);
@@ -630,7 +902,7 @@ export default function App() {
         !(e.target as HTMLElement).closest(
           "input,textarea,select,[contenteditable=true]",
         ) &&
-        quickPreview === null && !libraryExportOpen && !capture &&
+        quickPreview === null && !libraryExportOpen && !storageOpen && !extraDialog && !capture &&
         !videoDialog &&
         !duplicatesOpen &&
         !removedOpen &&
@@ -641,7 +913,8 @@ export default function App() {
       }
     };
     const over = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes("Files")) {
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop")){setDropActive(false);return;}
+      if (!extraDialog && !storageOpen && e.dataTransfer && acceptsExternalDrop(e.dataTransfer)) {
         e.preventDefault();
         setDropActive(true);
       }
@@ -651,14 +924,21 @@ export default function App() {
     };
     const drop = (e: DragEvent) => {
       setDropActive(false);
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop"))return;
+      if(extraDialog||storageOpen)return;
+      if(e.dataTransfer && acceptsExternalDrop(e.dataTransfer) && !resourcesView && !boardView && !videoView && !linksOnly){
+        e.preventDefault();
+        queueImageDrop(e.dataTransfer,category);
+        return;
+      }
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length) {
         e.preventDefault();
         setReadingCapture(true);
-        stageFiles(files)
-          .then(setCapture)
+        stageFiles(files,setImportProgress)
+          .then(draft=>setCapture(boardView==="websites"?{...draft,files:[],thumbnail:draft.files[0],destination:"websites"}:draft))
           .catch(report)
-          .finally(() => setReadingCapture(false));
+          .finally(() => {setReadingCapture(false);setImportProgress(null);});
         return;
       }
       const url = e.dataTransfer?.getData("text/uri-list") || "";
@@ -678,10 +958,11 @@ export default function App() {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen]);
+  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,boardView,linksOnly,storageOpen]);
   const captured = async (result: CaptureResult) => {
-    if(category!==null && capture?.files.length && result.ids.length) await changeLibrary({action:"set_category",ids:result.ids,value:category});
-    await refresh();
+    recordCapture(result);
+    if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
         paths: capture.files.map((f) => f.path),
@@ -693,10 +974,7 @@ export default function App() {
       if (result.destination && isBoardDestination(result.destination)) setBoardView(result.destination);
       if (result.destination === "resources") setResourceVersion(version => version + 1);
     }
-    setUndoIds([]);
-    setNotice(
-      `${result.added ? `${result.added} added` : ""}${result.added && result.reused ? " · " : ""}${result.reused ? `${result.reused} already in library — reused` : ""}`,
-    );
+    showCaptureReceipt(result,next,result.destination?null:category);
   };
   useEffect(() => {
     setSelected((prev) => {
@@ -705,7 +983,7 @@ export default function App() {
     });
     scrollRef.current?.scrollTo(0, 0);
     setHoverId(null);
-  }, [search, type, tags, source, project, linksOnly, sort, seed]);
+  }, [search, type, tags, tagMode, source, project, linksOnly, sort, seed]);
   const chooseRoot = async () => {
     try {
       const path = await open({
@@ -715,8 +993,10 @@ export default function App() {
         defaultPath: lib.root || undefined,
       });
       if (typeof path === "string") {
+        const previous=lib.root;
         await invoke("set_root", { path });
         await refresh();
+        if(previous&&previous!==path){const restore=async(path:string)=>{await invoke("set_root",{path});await refresh();};appHistory.record({label:"Library folder",undo:()=>restore(previous),redo:()=>restore(path)});}
       }
     } catch (e) {
       report(e);
@@ -727,6 +1007,7 @@ export default function App() {
       const path = restore
         ? await open({
             multiple: false,
+            title: "Choose library.json inside your backup folder",
             filters: [{ name: "Design backup", extensions: ["json"] }],
           })
         : await save({
@@ -735,7 +1016,11 @@ export default function App() {
           });
       if (typeof path === "string") {
         await invoke("backup", { path, restore });
-        if (restore) await refresh();
+        if (restore) {
+          appHistory.clearLibrary();await refresh();setStorageOpen(false);
+          const preferences=await invoke<Record<string,unknown>>('backup_preferences',{path:path.replace(/[\\/][^\\/]+$/,'').replace(/[\\/]Library Data$/,'')});
+          if(preferences&&Object.keys(preferences).length){applyBackupPreferences(preferences);localStorage.removeItem('last-workspace-view');window.location.reload();return;}
+        }
         setUndoIds([]);
         setNotice(restore ? "Backup imported" : "Backup exported");
       }
@@ -777,7 +1062,7 @@ export default function App() {
     onTags={id=>setModal({kind:"tags",ids:[id]})} onDelete={id=>void removeItems([id])} project={project}
     onPin={item=>project&&void perform({action:item.favourites?.includes(project)?"unpin_project":"pin_project",target:project,ids:[item.id]})}/>;
   const itemDrag=useItemDragFeedback({
-    enabled:(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!libraryExportOpen,
+    enabled:!thumbnailEnlarged&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!libraryExportOpen,
     ids:id=>selected.has(id)?[...selected]:[id],
     category:(ids,name)=>void changeCategory(ids,name).catch(report),
     project:(ids,target)=>void mutate({action:"add_project",ids,target}).then(()=>{setUndoIds([]);setNotice("Added to project");}).catch(report),
@@ -785,13 +1070,14 @@ export default function App() {
   });
   return (
     <div
-      className="app"
+      className="app" data-sidebar-layout={sidebarLayout} data-sidebar-brand={navLayout.brand} data-sidebar-counts={navLayout.counts!==false} data-sidebar-compact={sidebarWidth<200}
+      onClickCapture={homeShortcutDrag.captureClick}
       onDragStart={itemDrag.start}
       onPointerDown={itemDrag.pointerDown}
       onPointerOver={e=>{const target=(e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");previewCandidate.current=target?Number(target.dataset.itemId):null;}}
       onDragEnd={()=>setCategoryDrop(null)}
       onContextMenu={(e) => {
-        if (modal || capture || duplicatesOpen || removedOpen) return;
+        if (modal || capture || duplicatesOpen || removedOpen || folderMenu) return;
         const target = (e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");
         if (!target) return;
         const id = Number(target.dataset.itemId);
@@ -799,54 +1085,40 @@ export default function App() {
         setHoverId(null);
         setItemMenu({ x: e.clientX, y: e.clientY, ids: (viewer === null || widePreview) && selected.has(id) ? [...selected] : [id] });
       }}
-      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+      style={{ "--sidebar-width": `${sidebarWidth}px`,"--nav-row":`${navLayout.row}px`,"--nav-inset":`${navLayout.inset}px`,"--nav-radius":`${navLayout.radius}px`,"--nav-indent":navLayout.indent===undefined?undefined:`${navLayout.indent}px` } as React.CSSProperties}
     >
       <aside
         className="sidebar"
-        inert={quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
       >
-        <div className="brand">
+        <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
-          <span>Design</span>
-        </div>
+          <span className="brand-name"><span>BitClever</span><span>Design</span></span>
+        </button>
+        <SidebarNavigation order={navLayout.order}>
+        <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
         <nav aria-label="Library">
-          <button
-            className={`nav-item ${linksOnly ? "active" : ""}`}
-            onClick={() => navigate(null, true)}
-          >
-            <Link2 size={15} />
-            <span>Links</span>
-            <small>
-              {lib.items.filter((i) => i.kind === "link" && !isCollectionLink(i)).length || ""}
-            </small>
-          </button>
-          <button
-            className={`nav-item ${resourcesView ? "active" : ""}`}
-            onClick={() => {
-              navigate(null);
-              setResourcesView(true);
-            }}
-          >
-            <SidebarIcon name="resources" />
-            <span>Resources</span>
-          </button>
-          {(Object.entries(boardNames) as [BoardKey, string][]).map(([key, name]) => <button key={key} className={`nav-item ${boardView === key ? "active" : ""}`} onClick={() => { navigate(null);setBoardView(key); }}><SidebarIcon name={key}/><span>{name}</span><small>{lib.items.filter(item=>item.kind==="link"&&item.source===name).length || ""}</small></button>)}
-          <button className={`nav-item ${videoView ? "active" : ""}`} onClick={()=>{navigate(null);setVideoView(true);setSource("Videos");}}><SidebarIcon name="facebook"/><span>Facebook Videos</span><small>{lib.items.filter(item=>item.kind==="video"&&(item.source==="Videos"||item.source.startsWith("Videos/"))).length||""}</small></button>
+          {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
+            const {key,name,pinned}=entry,target=entry.target??{kind:'view',value:key},view=target.kind==='view'?target.value:'',board=isBoardDestination(view);
+            const count=target.kind==='project'?lib.projects.find(p=>String(p.id)===target.value)?.count:target.kind==='category'?categoryCounts.get(target.value):view==='links'?lib.items.filter(i=>i.kind==='link'&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[view]).length:view==='facebook'?lib.items.filter(i=>i.kind==='video'&&(i.source==='Videos'||i.source.startsWith('Videos/'))).length:0;
+            const folder=target.kind==='category'?(target.value==='__all__'?'':target.value===allComponents?componentInbox:target.value):undefined;
+            const projectProps=target.kind==='project'?{'data-project-id':Number(target.value),'data-project-name':name,onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes('application/design-items')){e.preventDefault();e.currentTarget.classList.add('drop-target');}},onDragLeave:(e:React.DragEvent)=>e.currentTarget.classList.remove('drop-target'),onDrop:(e:React.DragEvent)=>drop(e,Number(target.value))}:{};
+            return <button className={`nav-item general-nav ${!homeView&&generalKey===key?'active':''}`} key={key} {...homeDrag(`collection:${key}`)} {...projectProps} {...(folder!==undefined?{'data-category':folder,...categoryDropProps(folder)}:{})} onClick={()=>openGeneral(entry)} title={name}><GeneralEntryIcon entry={entry} preferences={icons}/><span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||''}</small></button>;
+          })}
         </nav>
-        <div className="sidebar-heading">
-          <span>Projects</span>
+        </SidebarSection>
+        <SidebarSection name="Projects" icon={icons.overrides["section:Projects"]&&<AppIcon value={icons.overrides["section:Projects"]}/>} dropProps={homeDrag("group:projects")} action={
           <IconButton
             title="New project"
             onClick={() => setModal({ kind: "project" })}
           >
             <Plus size={15} />
-          </IconButton>
-        </div>
+          </IconButton>}>
         <div className="projects">
           <nav aria-label="Projects">
             {lib.projects.map((p) => (
               <div
-                className={`project-row ${project === p.id ? "active" : ""}`}
+                className={`project-row ${!homeView && !generalKey && project === p.id ? "active" : ""}`}
                 data-project-id={p.id}
                 data-project-name={p.name}
                 key={p.id}
@@ -864,8 +1136,8 @@ export default function App() {
                 }}
                 onDrop={(e) => drop(e, p.id)}
               >
-                <button className="nav-item" onClick={() => navigate(p.id)}>
-                  <Folder size={15} />
+                <button className="nav-item" {...homeDrag(`project:${p.id}`)} onClick={() => navigate(p.id)}>
+                  <FolderIcon preferences={icons} id={`project:${p.id}`}/>
                   <span>{p.name}</span>
                   <small>{p.count || ""}</small>
                 </button>
@@ -898,42 +1170,37 @@ export default function App() {
             </button>
           )}
         </div>
-        <div className="sidebar-heading">
-          <span>Categories</span>
+        </SidebarSection>
+        <SidebarSection name="Categories" label="Design Inspo" identity="design" icon={icons.overrides.design&&<AppIcon value={icons.overrides.design} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag("design"),...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
           <IconButton
             title="New category"
             onClick={() => setModal({kind:"category",ids:[]})}
           >
             <Plus size={15} />
-          </IconButton>
-        </div>
-        <nav className="source-list" aria-label="Categories">
+          </IconButton>}>
+        <nav className="source-list" aria-label="Design Inspo">
           <button
-            className={`nav-item ${category===null&&!source ? "source-active" : ""}`}
+            className={`nav-item ${!homeView&&!generalKey&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
+            {...homeDrag("design")}
             onClick={() => navigate(null)}
           >
-            <Folder size={14} />
+            <FolderIcon preferences={icons} id="design:all" size={14}/>
             <span>
-              All categories
+              All Designs
             </span>
           </button>
-          {[...categories, ""].map((s) => (
-              <button
-                className={`nav-item source-item ${category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
-                data-category={s}
-                {...categoryDropProps(s)}
-                key={s}
-                title={`Open ${categoryLabel(s)}; drop references here to change category`}
-                onClick={() => { navigate(null); setCategory(s); }}
-              >
-                <Folder size={14} />
-                <span>{categoryLabel(s)}</span>
-                <small>{lib.items.filter(i=>i.kind!=="link"&&categoryOf(i)===s).length||""}</small>
-              </button>
-            ))}
+          {sortedFolders([...categories, ''],'design').map(folderRow)}
         </nav>
-        <div className="sidebar-footer">
-          <button onClick={() => setModal({ kind: "settings" })}>
+        </SidebarSection>
+        <SidebarSection name="Components" label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
+          <nav aria-label="App Components">
+            {folderRow(allComponents)}
+            {sortedFolders(componentFolders,'components').map(folderRow)}
+          </nav>
+        </SidebarSection>
+        </SidebarNavigation>
+        <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('sidebar')}><SlidersHorizontal size={15}/><span>Customise</span></button>
+          <button title="Settings" aria-label="Settings" onClick={() => setModal({ kind: "settings" })}>
             <Settings2 size={15} />
             <span>Settings</span>
           </button>
@@ -952,13 +1219,15 @@ export default function App() {
           aria-orientation="vertical"
         />
       </aside>
-      <main inert={quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}>
+      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
+        {homeView?<><div className="home-colour-picker"><ColourPicker projects={lib.projects}/></div><HomeDashboard icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
         <header className="topbar">
+          <ColourPicker projects={lib.projects}/>
           <div className="view-title">
             <h1>{title}</h1>
             <span>
               {boardView ? boardItems.length : resourcesView
-                ? lib.items.filter(isResource).length
+                ? filtered.filter(isResource).length
                 : filtered.length.toLocaleString()}
             </span>
             {lib.scanning && (
@@ -966,14 +1235,19 @@ export default function App() {
             )}
           </div>
           <div className="header-actions">
-            <button className="icon-button" aria-label="Undo organisation change" disabled={!lib.undo_label||undoing} title={lib.undo_label?`Undo: ${lib.undo_label} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
-            <button className="icon-button" aria-label="Redo organisation change" disabled={!lib.redo_label||undoing} title={lib.redo_label?`Redo: ${lib.redo_label} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
-            <label className="search">
+            <ThumbnailProgress />
+            {project!==null&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
+            <button className="icon-button" aria-label="Undo organisation change" disabled={!historyActions.undoLabel||undoing} title={historyActions.undoLabel?`Undo: ${historyActions.undoLabel} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
+            <button className="icon-button" aria-label="Redo organisation change" disabled={!historyActions.redoLabel||undoing} title={historyActions.redoLabel?`Redo: ${historyActions.redoLabel} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
+            <StorageBar revision={lib} onOpen={()=>setStorageOpen(true)}/>
+            {search&&!searchOpen&&<button className="subtle-button search-active" title="Clear search" onClick={()=>setSearch("")}>“{search}” <X size={12}/></button>}
+            <label className="search search-popup" hidden={!searchOpen}>
               <Search size={15} />
               <input
                 ref={searchRef}
                 placeholder="Search"
                 aria-label="Search library"
+                onKeyDown={e=>{if(e.key==="Escape"||e.key==="Enter"){e.preventDefault();e.stopPropagation();setSearchOpen(false);searchRef.current?.blur();}}}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -1000,7 +1274,7 @@ export default function App() {
             </Popover>
           </div>
         </header>
-        {!resourcesView && (
+        {!originalResources && (
           <div className="toolbar">
             <div className="filters">
               {!boardView && !videoView && <select
@@ -1044,15 +1318,16 @@ export default function App() {
                   <SlidersHorizontal size={13} /> Manage tags
                 </button>
               </Popover>
+              {lib.tags.length>0&&<select aria-label="Tag matching" value={tagMode} onChange={e=>setTagMode(e.target.value==="all"?"all":"any")}><option value="any">Any tag</option><option value="all">All tags</option></select>}
               {!boardView && !videoView && <select
                 aria-label="Filter by category"
                 value={category??"__all__"}
                 onChange={(e) => setCategory(e.target.value==="__all__"?null:e.target.value)}
               >
-                <option value="__all__">All categories</option><option value="">Uncategorised</option>
-                {categories.map((s) => (
+                <option value="__all__">All Designs</option><option value="">Uncategorised</option>
+                {[...categories, allComponents, ...componentFolders].map((s) => (
                   <option value={s} key={s}>
-                    {s.replace(/_/g, " ")}
+                    {categoryLabel(s)}
                   </option>
                 ))}
               </select>}
@@ -1062,7 +1337,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="display-controls">
+            {!recent&&<div className="display-controls">
               <ArrowDownUp size={13} />
               <select
                 aria-label="Sort items"
@@ -1084,7 +1359,7 @@ export default function App() {
                   <RefreshCw size={12} />
                 </IconButton>
               )}
-              {!tableBoard && <><span className="divider" />
+              {(!tableBoard || customCollection) && <><span className="divider" />
               <Grid2X2 size={13} />
               <input
                 type="range"
@@ -1095,15 +1370,15 @@ export default function App() {
                 value={size}
                 onChange={(e) => setSize(Number(e.target.value))}
               /></>}
-            </div>
+            </div>}
           </div>
         )}
         {readingCapture && (
           <div className="capture-reading">
-            <LoaderCircle className="spin" size={13} /> Reading files…
+            <CaptureProgress progress={importProgress}/>
           </div>
         )}
-        {selected.size > 0 && !resourcesView && (
+        {selected.size > 0 && !originalResources && (
           <div className="selection-bar">
             <IconButton
               title="Clear selection"
@@ -1112,7 +1387,7 @@ export default function App() {
               <X size={14} />
             </IconButton>
             <span>{selected.size} selected</span>
-            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Change category (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Change category</button>}
+            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Organise folders (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Organise folders</button>}
             <button
               onClick={() => setModal({ kind: "projects", ids: [...selected] })}
             >
@@ -1171,11 +1446,11 @@ export default function App() {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (
-            <Resources key={resourceVersion} search={search} items={lib.items} report={report}
+            <Resources icons={icons} favourites={ordered(sitePrefs).filter(s=>!s.hidden)} openItem={openItem} key={resourceVersion} search={search} items={filtered} report={report}
               menu={(id, event) => { const rect = event.currentTarget.getBoundingClientRect(); setItemMenu({ ids: [id], x: rect.left, y: rect.bottom }); }} />
           ) : !ready && !error ? (
             <div className="empty-state">
@@ -1214,6 +1489,9 @@ export default function App() {
             <>
               {images.length > 0 && (
                 <MediaGrid
+                  removeFolder={category&&category!==allComponents&&category!==componentInbox?categoryLabel(category).replace(/^Components \/ /,""):undefined}
+                  onRemoveFolder={removeFromComponentFolder}
+                  masonry={true}
                   copy={copyImage}
                   copying={copying}
                   previewId={dockedPreview ? viewer : null}
@@ -1241,22 +1519,26 @@ export default function App() {
                   setHoverId={setHoverId}
                 />
               )}
-              {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i))} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
+              {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length)} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
               {links.length > 0 && (
                 linkTable(links)
               )}
             </>
           )}
         </div>
+        </>}
       </main>
+      <ThumbnailEnlargement items={lib.items} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
+        enabled={!homeView&&!customTab&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!folderMenu&&!libraryExportOpen&&!extraDialog}/>
       {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>}
       {activeItem && (
+        <div className={dockedPreview ? "preview-shell preview-shell-docked" : "preview-shell"}>
         <Viewer
           key={activeItem.id}
           docked={dockedPreview}
-          blocked={quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen}
+          blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
           item={activeItem}
-          items={images}
+          items={previewItems}
           tags={lib.tags}
           projects={lib.projects}
           close={closeViewer}
@@ -1283,9 +1565,14 @@ export default function App() {
               : undefined
           }
         />
+        </div>
       )}
-      {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{await refresh();setModal(null);setNotice("Thumbnail updated");}}/>}
-      {modal?.kind==="category"&&<CategoryPicker categories={categories} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
+      {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{const next=await refresh();if(!next.undo_entries)appHistory.record({label:'Change thumbnail',kind:'library',undo:()=>runLibraryHistory(false,'Change thumbnail'),redo:()=>runLibraryHistory(true)});setModal(null);setNotice("Thumbnail updated");}}/>}
+      {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
+        const ids=modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))??[];
+        await mutate({action:remove?(isComponent(name)?"remove_component_folder":"remove_design_folder"):"set_category",ids,value:name});
+        setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from folder":"Added to folder");
+      }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
       {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
         <Dialog
           modal={modal}
@@ -1297,7 +1584,7 @@ export default function App() {
           report={report}
           project={project}
           chooseRoot={chooseRoot}
-          exportLibrary={()=>{setModal(null);setLibraryExportOpen(true);}}
+          exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
           backup={backup}
           duplicates={() => {
             setModal(null);
@@ -1314,7 +1601,10 @@ export default function App() {
       {videoDialog && <VideoDownloadDialog initialUrl={videoDialog.url} lib={lib} project={project} close={()=>setVideoDialog(null)} add={(text,projects,tags)=>{
         const result=videoQueue.add(text,projects,tags);setVideoDialog(null);setQueueOpen(true);setNotice(result.added?`${result.added} queued`:"Already queued");
       }}/>}
-      {libraryExportOpen && <LibraryExport close={()=>setLibraryExportOpen(false)}/>}
+
+      {extraDialog==="sheet"&&<ContactSheet title={title} items={sheetItems} initial={selected} close={()=>setExtraDialog(null)}/>}
+      {storageOpen&&<StoragePanel lib={lib} close={()=>setStorageOpen(false)} backup={()=>{setStorageOpen(false);setLibraryMigration(false);setLibraryExportOpen(true);}} migrate={()=>{setStorageOpen(false);setLibraryMigration(true);setLibraryExportOpen(true);}} restore={()=>void backup(true)}/>}
+      {libraryExportOpen && <LibraryExport migration={libraryMigration} close={()=>setLibraryExportOpen(false)}/>}
       {capture && (
         <CaptureDialog
           draft={capture}
@@ -1343,22 +1633,28 @@ export default function App() {
           <span>Drop to capture</span>
         </div>
       )}
-      {removedOpen && <RemovedDialog close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
-      {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu}
+      {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
+      {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Reorder folders or drop on Home</small></div>}
+      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
+      {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
+      {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu} report={report}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
+        sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}
         copy={(id) => void copyImage(id)} copying={copying !== null}
         editLink={(item) => setModal({ kind: "editLink", id: item.id })}
         editThumbnail={(item) => setModal({ kind: "thumbnail", id: item.id })}
         moveLink={(item) => void mutate({ action: "set_link_destination", target: item.id, value: isResource(item) ? "links" : "resources" }).then(() => { setUndoIds([]); setNotice(`Moved to ${isResource(item) ? "Links" : "Resources"}`); }).catch(report)}
         add={(target) => { void mutate({ action: "add_project", target, ids: itemMenu.ids }).then(() => { setUndoIds([]); setNotice(`Added to ${lib.projects.find((p) => p.id === target)?.name}`); }).catch(report); }}
         tags={() => setModal({ kind: "tags", ids: itemMenu.ids })}
-        reveal={(item) => void (item.kind === "link" ? openUrl(item.path) : revealItemInDir(item.path)).catch(report)}
+        reveal={item => item.kind === "link" ? void openUrl(item.path).then(()=>track(item)).catch(report) : void revealItemInDir(item.path).catch(report)}
         remove={() => void removeItems(itemMenu.ids)} />}
       {notice && (
         <div className="toast" role="status">
           <Check size={14} />
           {notice}
-          {(categoryUndo||undoIds.length>0)&&lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast()}>Undo</button>}
+          {receipt&&<button onClick={()=>{const ids=receipt.ids.filter(id=>lib.items.some(i=>i.id===id));if(ids.length){setReceiptBrowse(ids);setQuickPreview(ids[0]);}setNotice("");}}>{receipt.existing?"View existing":"View"}</button>}
+          {receipt?.undo&&receipt.undo===historyActions.undoLabel&&<button disabled={undoing} onClick={()=>void undoLast(receipt.undo)}>Undo move</button>}
+          {(categoryUndo||undoIds.length>0)&&lib.undo_label===historyActions.undoLabel&&lib.undo_label&&<button disabled={undoing} onClick={()=>void undoLast()}>Undo</button>}
         </div>
       )}
       {itemDrag.badge}
@@ -1366,7 +1662,12 @@ export default function App() {
   );
 }
 
+// Cache only dimensions, never image bytes or user paths. Reuse across category switches.
+const thumbnailRatios = new Map<string, number>();
 function MediaGrid({
+  removeFolder,
+  onRemoveFolder,
+  masonry,
   previewId,
   copy,
   copying,
@@ -1384,10 +1685,13 @@ function MediaGrid({
   hoverId,
   setHoverId,
 }: {
+  removeFolder?: string;
+  onRemoveFolder: (item:Item)=>Promise<void>;
+  masonry: boolean;
   previewId: number | null;
   copy: (id: number) => Promise<void>;
   copying: number | null;
-  returnTo: { id: number } | null;
+  returnTo: { id: number; offset?: number } | null;
   onReturned: () => void;
   project: number | null;
   onPin: (item: Item) => void;
@@ -1402,81 +1706,95 @@ function MediaGrid({
   setHoverId: (id: number | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [positioned, setPositioned] = useState<typeof returnTo>(null);
+  const [width, setWidth] = useState(1000);
+  const [viewport, setViewport] = useState({ top: 0, height: 1000 });
+  const [revision, setRevision] = useState(0);
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
-  const [width, setWidth] = useState(1000),
-    [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-    const observer = new ResizeObserver(() => {
-      setWidth(el.clientWidth);
-      setOffset(
-        el.getBoundingClientRect().top -
-          (parent.current?.getBoundingClientRect().top || 0) +
-          (parent.current?.scrollTop || 0),
-      );
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [parent]);
-  const columns = Math.max(1, Math.floor((width + 14) / (size + 14))),
-    tileWidth = (width - (columns - 1) * 14) / columns,
-    rowHeight = tileWidth * 0.75 + 14;
-  const virtual = useVirtualizer({
-    count: Math.ceil(items.length / columns),
-    getScrollElement: () => parent.current,
-    estimateSize: () => rowHeight,
-    overscan: 2,
-    scrollMargin: offset,
-  });
-  useEffect(() => virtual.measure(), [rowHeight, virtual]);
-  const rows = virtual.getVirtualItems();
-  useEffect(() => {
-    if (!returnTo) return;
-    const index = items.findIndex((item) => item.id === returnTo.id);
-    if (index < 0) { onReturned(); return; }
-    // Let closing the viewer remove inert before scrolling the virtual grid.
-    const frame = requestAnimationFrame(() => {
-      virtual.scrollToIndex(Math.floor(index / columns), { align: "center", behavior: "auto" });
-      setPositioned(returnTo);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [returnTo, items, columns, rowHeight, offset, virtual, onReturned]);
+  const ratioFrame = useRef(0);
+  const interruptedReturn = useRef<typeof returnTo>(null);
   useLayoutEffect(() => {
-    if (!returnTo || positioned !== returnTo) return;
-    // A distant thumbnail only exists after the virtualizer renders its row.
-    const button = ref.current?.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
-    if (!button) return;
-    button.focus({ preventScroll: true });
-    setHighlighted(returnTo);
-    onReturned();
-  }, [returnTo, positioned, rows, onReturned]);
+    // On Home -> library, the child layout effect precedes the parent ref attachment.
+    // The DOM ancestor is already present, so always attach the size observer.
+    const grid = ref.current, scroller = parent.current ?? grid?.closest<HTMLDivElement>(".content");
+    if (!grid || !scroller) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      setWidth(grid.clientWidth);
+      const offset = grid.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      setViewport({ top: scroller.scrollTop - offset, height: scroller.clientHeight });
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(grid); observer.observe(scroller);
+    scroller.addEventListener("scroll", schedule, { passive: true });
+    update();
+    return () => { observer.disconnect(); scroller.removeEventListener("scroll", schedule); cancelAnimationFrame(frame); };
+  }, [parent]);
+  useEffect(() => () => cancelAnimationFrame(ratioFrame.current), []);
+  const layout = useMemo(() => arrangeMasonry(items.map(item => thumbnailRatios.get(`${item.id}:${item.modified}`) ?? 1 / 1.4), width, size), [items, width, size, revision]);
+  const visible = layout.tiles.filter(tile => tile.top + tile.height >= viewport.top - viewport.height && tile.top <= viewport.top + viewport.height * 2);
+  useLayoutEffect(() => {
+    if (!returnTo) return;
+    interruptedReturn.current = null;
+    const scroller = parent.current ?? ref.current?.closest<HTMLDivElement>(".content");
+    if (!scroller) return;
+    // Restoring a position is temporary. A slow/failed thumbnail must never
+    // pin the viewport against user input or pull it back after they move on.
+    const cancel = () => { interruptedReturn.current = returnTo; onReturned(); };
+    const key = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Escape", " "].includes(event.key)) cancel();
+    };
+    scroller.addEventListener("wheel", cancel, { passive: true, capture: true });
+    scroller.addEventListener("touchstart", cancel, { passive: true });
+    window.addEventListener("pointerdown", cancel, true);
+    window.addEventListener("keydown", key, true);
+    const timeout = window.setTimeout(cancel, 3000);
+    return () => {
+      clearTimeout(timeout);
+      scroller.removeEventListener("wheel", cancel, true); scroller.removeEventListener("touchstart", cancel);
+      window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", key, true);
+    };
+  }, [returnTo, parent, onReturned]);
+  useLayoutEffect(() => {
+    if (!returnTo || interruptedReturn.current === returnTo) return;
+    const index = items.findIndex(item => item.id === returnTo.id);
+    if (index < 0) { onReturned(); return; }
+    const tile = layout.tiles[index], scroller = parent.current, grid = ref.current;
+    if (!scroller || !grid) return;
+    const offset = grid.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    scroller.scrollTop = Math.max(0, offset + tile.top - (returnTo.offset ?? Math.max(0, (scroller.clientHeight - tile.height) / 2)));
+    setViewport({ top: scroller.scrollTop - offset, height: scroller.clientHeight });
+    const button = grid.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
+    const image = button?.querySelector('img');
+    if (button && (returnTo.offset === undefined ? (!image || image.complete) : (image?.complete && image.naturalWidth > 0) || !!button.querySelector(".file-fallback"))) {
+      button.focus({ preventScroll: true }); if(returnTo.offset===undefined)setHighlighted(returnTo); onReturned();
+    }
+  }, [returnTo, items, layout, parent, onReturned, viewport.top]);
   useEffect(() => {
     if (!highlighted) return;
     const timer = window.setTimeout(() => setHighlighted(null), 2000);
     return () => window.clearTimeout(timer);
   }, [highlighted]);
-  return (
-    <div
-      ref={ref}
-      className="media-grid"
-      style={{ height: virtual.getTotalSize() }}
-    >
-      {rows.map((row) => (
-        <div
-          className="grid-row"
-          key={row.index}
-          style={{
-            transform: `translateY(${row.start - offset}px)`,
-            gridTemplateColumns: `repeat(${columns}, minmax(0,1fr))`,
-            height: rowHeight - 14,
-          }}
-        >
-          {items
-            .slice(row.index * columns, (row.index + 1) * columns)
-            .map((item) => (
+  return <div ref={ref} className="media-grid poster-masonry" style={{ height: layout.height }}
+    onErrorCapture={() => { if(returnTo&&!ratioFrame.current)ratioFrame.current=requestAnimationFrame(()=>{ratioFrame.current=0;setRevision(value=>value+1);}); }}
+    onLoadCapture={event => {
+      const image = event.target as HTMLImageElement;
+      if (image.tagName !== 'IMG' || image.classList.contains('hover-preview') || !image.naturalWidth || !image.naturalHeight) return;
+      const key = image.closest<HTMLElement>('[data-media-key]')?.dataset.mediaKey;
+      const ratio = image.naturalWidth / image.naturalHeight;
+      if (!key || (thumbnailRatios.get(key) === ratio && !returnTo)) return;
+      if (thumbnailRatios.size > 10000) thumbnailRatios.clear();
+      thumbnailRatios.set(key, ratio);
+      if (!ratioFrame.current) ratioFrame.current = requestAnimationFrame(() => { ratioFrame.current = 0; setRevision(value => value + 1); });
+    }}>
+    {visible.map(row => {
+      const item = items[row.index];
+      return <div className="masonry-tile" key={`${item.id}:${item.modified}`} data-media-key={`${item.id}:${item.modified}`}
+        style={{ transform: `translate(${row.left}px, ${row.top}px)`, width: row.width, height: row.height }}>
               <Card
+                removeFolder={removeFolder}
+                onRemoveFolder={()=>onRemoveFolder(item)}
                 copy={() => void copy(item.id)}
                 copying={copying !== null}
                 previewed={previewId === item.id}
@@ -1491,7 +1809,7 @@ function MediaGrid({
                 open={(e) => openItem(item, e)}
                 menu={() => onMenu(item.id)}
                 playing={hoverId === item.id}
-                hover={(value) => setHoverId(value ? item.id : null)}
+                hover={(value) => setHoverId(value && (item.kind === "video" || item.kind === "animation") ? item.id : null)}
                 drag={(e) => {
                   const ids = selected.has(item.id) ? [...selected] : [item.id];
                   e.dataTransfer.setData(
@@ -1501,13 +1819,13 @@ function MediaGrid({
                   e.dataTransfer.effectAllowed = "copyMove";
                 }}
               />
-            ))}
-        </div>
-      ))}
-    </div>
-  );
+      </div>;
+    })}
+  </div>;
 }
 function Card({
+  removeFolder,
+  onRemoveFolder,
   previewed,
   copy,
   copying,
@@ -1524,6 +1842,8 @@ function Card({
   hover,
   drag,
 }: {
+  removeFolder?: string;
+  onRemoveFolder: ()=>Promise<void>;
   copy: () => void;
   copying: boolean;
   previewed: boolean;
@@ -1540,13 +1860,19 @@ function Card({
   hover: (value: boolean) => void;
   drag: (e: React.DragEvent) => void;
 }) {
+  const [removing,setRemoving]=useState(false);
   const [thumb, setThumb] = useState(""),
     [preview, setPreview] = useState(""),
     [failed, setFailed] = useState(false),
-    [motionError, setMotionError] = useState(false);
+    [motionError, setMotionError] = useState(false),
+    [retry, setRetry] = useState(0);
   const motion = item.kind === "video" || item.kind === "animation";
   useEffect(() => {
     const abort = new AbortController();
+    setThumb("");
+    setFailed(false);
+    setPreview("");
+    setMotionError(false);
     media(item, "thumbnail", abort.signal).then(
       (url) => {
         if (!abort.signal.aborted) setThumb(url);
@@ -1556,7 +1882,7 @@ function Card({
       },
     );
     return () => abort.abort();
-  }, [item.id, item.modified]);
+  }, [item.id, item.modified, item.path, retry]);
   useEffect(() => {
     if (!playing || !motion || motionError) return;
     const abort = new AbortController();
@@ -1586,7 +1912,7 @@ function Card({
     >
       <button
         className="card-open"
-        title="Open reference · Space to peek"
+        title="Open reference · Ctrl + scroll to enlarge · Space to peek"
         aria-label={`Open ${item.name}`}
         onClick={open}
         onFocus={() => hover(false)}
@@ -1607,31 +1933,10 @@ function Card({
         ) : (
           <span className="skeleton" />
         )}
-        {playing &&
-          preview &&
-          !motionError &&
-          (item.kind === "animation" ? (
-            <img
-              src={preview}
-              alt=""
-              className="hover-preview"
-              draggable={false}
-              onError={() => setMotionError(true)}
-            />
-          ) : (
-            <video
-              src={preview}
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="hover-preview"
-              draggable={false}
-              onError={() => setMotionError(true)}
-            />
-          ))}
+        {playing && preview && !motionError && <HoverPreview key={`${item.id}:${preview}`} src={preview} animation={item.kind==='animation'} onError={()=>setMotionError(true)}/>}
       </button>
       <div className="card-shade" />
+      {failed && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
       {canPin && (
         <button
           className={`card-pin ${pinned ? "pinned" : ""}`}
@@ -1667,6 +1972,7 @@ function Card({
         </span>
       )}
       <div className="card-bottom">
+        {removeFolder&&<button className="card-remove-folder" aria-label={`Remove ${item.name} from ${removeFolder}`} title={`Remove from ${removeFolder}`} disabled={removing} onClick={async e=>{e.stopPropagation();if(removing)return;setRemoving(true);try{await onRemoveFolder();}finally{setRemoving(false);}}}><FolderMinus size={15}/></button>}
         <span title={item.name}>{item.name}</span>
         {canCopyImage(item) && <button aria-label={`Copy ${item.name} to clipboard`} title={item.kind === "animation" ? "Copy image (first frame)" : "Copy image"} disabled={copying} onClick={copy}><ClipboardCopy size={15} /></button>}
         <button
@@ -1841,7 +2147,7 @@ function Viewer({
       },
     );
     return () => abort.abort();
-  }, [item.id, item.modified]);
+  }, [item.id, item.modified, item.thumbnail]);
   const fallback = () => {
     if (compatible) {
       setError("Could not play this file.");
@@ -1873,6 +2179,7 @@ function Viewer({
           </small>
         </div>
         <div className="viewer-actions">
+          <ColourPicker projects={projects}/>
           {pin && (
             <button aria-pressed={pinned} onClick={pin}>
               <Pin size={14} fill={pinned ? "currentColor" : "none"} />
@@ -1906,8 +2213,8 @@ function Viewer({
           {canCopyImage(item) && <button className="icon-button" aria-label="Copy image" title={item.kind === "animation" ? "Copy image (first frame) · Ctrl+C" : "Copy image · Ctrl+C"} disabled={copying} onClick={copy}><ClipboardCopy size={16} /></button>}
           <IconButton title="Remove from library" onClick={remove}><Trash2 size={16} /></IconButton>
           <IconButton
-            title="Reveal in Explorer"
-            onClick={() => void revealItemInDir(item.path).catch(report)}
+            title={item.kind==="link"?"Open website":"Reveal in Explorer"}
+            onClick={() => void (item.kind==="link"?openUrl(item.path):revealItemInDir(item.path)).catch(report)}
           >
             <ExternalLink size={16} />
           </IconButton>
@@ -1929,7 +2236,7 @@ function Viewer({
             <ImageOff size={26} />
             <span>{error}</span>
             <button
-              onClick={() => void revealItemInDir(item.path).catch(report)}
+              onClick={() => void revealItemInDir(item.kind==="link"?item.thumbnail!:item.path).catch(report)}
             >
               Reveal original
             </button>
@@ -1941,7 +2248,7 @@ function Viewer({
             key={url}
             src={url}
             autoPlay
-            muted
+            muted={false}
             controls
             loop
             playsInline
@@ -2151,6 +2458,7 @@ function Dialog({
       >
         <div className="modal-heading">
           <h2 id="dialog-title">{titles[kind]}</h2>
+          {kind==="settings"&&<div className="customise-history"><HistoryButtons/></div>}
           <IconButton title="Close dialog" onClick={close}>
             <X size={17} />
           </IconButton>
@@ -2202,6 +2510,13 @@ function Dialog({
           </>
         ) : kind === "settings" ? (
           <div className="settings-content">
+            <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
+              <span className="setting-label">Keyboard shortcuts</span>
+              <div className="shortcuts">
+                {[["Search", "/ · Ctrl F · Ctrl K"],["Settings", "Ctrl ,"],["Undo", "Ctrl Z"],["Redo", "Ctrl Shift Z · Ctrl Y"],["Quick preview", "Space"],["Previous / next preview", "← / →"],["Close / clear selection", "Esc"],["Select all visible items", "Ctrl A"],["Organise selected images", "C"],["Remove selected items", "Delete"],["Copy image in viewer", "Ctrl C"],["Paste files, images or links", "Ctrl V"],["Enlarge hovered thumbnail", "Ctrl + mouse wheel"]].map(([label,keys])=><span key={label}>{label}<kbd>{keys}</kbd></span>)}
+              </div>
+              <small>Single-key shortcuts work outside text fields. Selection and preview shortcuts apply while browsing your library.</small>
+            </section>
             <div className="setting-block">
               <span className="setting-label">Storage folders</span>
               {lib.source_paths?.length ? lib.source_paths.map(([name, path]) => <div className="storage-source" key={name}>
@@ -2271,20 +2586,7 @@ function Dialog({
               <small>Original files stay in your source folder.</small>
             </div>
             <AppInfo/>
-            <div className="shortcuts">
-              <span>Quick preview <kbd>Space</kbd></span>
-              <span>Undo organisation <kbd>Ctrl Z</kbd></span>
-              <span>Redo organisation <kbd>Ctrl Shift Z</kbd></span>
-              <span>
-                Search <kbd>/</kbd>
-              </span>
-              <span>
-                Select all <kbd>Ctrl A</kbd>
-              </span>
-              <span>
-                Viewer <kbd>← → Esc</kbd>
-              </span>
-            </div>
+
           </div>
         ) : kind === "manageTags" ? (
           <>

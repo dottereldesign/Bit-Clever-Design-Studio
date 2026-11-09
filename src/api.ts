@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { Library, Item } from "./model";
+import { MediaQueue } from "./mediaQueue";
 export const openUrl = (url: string) => invoke<void>("open_external_url", { url });
 export const loadLibrary = () => invoke<Library>("get_library");
 export type Change = {
@@ -12,54 +13,27 @@ export type Change = {
 export const changeLibrary = (change: Change) =>
   invoke<void>("update", { change });
 const cache = new Map<string, string>();
-type Job = {
-  run: () => void;
-  signal?: AbortSignal;
-  reject: (reason: Error) => void;
-};
-let active = 0;
-const queue: Job[] = [];
-function pump() {
-  while (active < 3 && queue.length) {
-    const task = queue.shift()!;
-    if (task.signal?.aborted) {
-      task.reject(new Error("Cancelled"));
-      continue;
-    }
-    active++;
-    task.run();
-  }
+export const mediaQueue = new MediaQueue();
+export function forgetMedia(item: Item, mode: string) {
+  cache.delete(`${item.id}:${item.modified}:${item.path}:${item.thumbnail ?? ''}:${mode}`);
 }
 export async function media(
   item: Item,
   mode: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const key = `${item.id}:${item.modified}:${mode}`;
+  if (signal?.aborted) throw new Error("Cancelled");
+  const key = `${item.id}:${item.modified}:${item.path}:${item.thumbnail ?? ''}:${mode}`;
   if (cache.has(key)) return cache.get(key)!;
+  if (item.kind === "link" && item.thumbnail) return convertFileSrc(item.thumbnail);
   if (mode === "preview" && item.kind === "animation")
     return convertFileSrc(item.path);
   if (mode === "original" && !item.path.toLowerCase().endsWith(".mov"))
     return convertFileSrc(item.path);
-  return new Promise<string>((resolve, reject) => {
-    const task: Job = {
-      signal,
-      reject,
-      run: () => {
-        invoke<string>("get_media", { id: item.id, mode })
-          .then((path) => {
-            const url = convertFileSrc(path);
-            cache.set(key, url);
-            resolve(url);
-          }, reject)
-          .finally(() => {
-            active--;
-            pump();
-          });
-      },
-    };
-    if (mode === "thumbnail") queue.push(task);
-    else queue.unshift(task);
-    pump();
-  });
+  return mediaQueue.request(key, mode === "thumbnail", async () => {
+    const path = await invoke<string>("get_media", { id: item.id, mode });
+    const url = convertFileSrc(path);
+    cache.set(key, url);
+    return url;
+  }, signal);
 }

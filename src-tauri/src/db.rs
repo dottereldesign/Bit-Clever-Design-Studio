@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
@@ -29,6 +29,12 @@ pub struct Item {
     pub thumbnail: String,
     #[serde(default)]
     pub category: Option<String>,
+    #[serde(default)]
+    pub component_folders: Vec<String>,
+    #[serde(default)]
+    pub design_folders: Vec<String>,
+    #[serde(default)]
+    pub category_added: std::collections::HashMap<String,i64>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Label {
@@ -37,7 +43,14 @@ pub struct Label {
     pub count: i64,
 }
 #[derive(Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub id:i64,
+    pub label:String,
+}
+#[derive(Serialize, Deserialize)]
 pub struct Library {
+    #[serde(default)]
+    pub undo_entries:Vec<HistoryEntry>,
     #[serde(default)]
     pub undo_label: Option<String>,
     #[serde(default)]
@@ -104,6 +117,9 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE INDEX IF NOT EXISTS idx_file_hash ON fingerprints(file_hash);
       CREATE INDEX IF NOT EXISTS idx_pixel_hash ON fingerprints(pixel_hash);
       CREATE TABLE IF NOT EXISTS duplicate_recovery(item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,original_path TEXT NOT NULL,recovery_path TEXT NOT NULL,keeper_id INTEGER NOT NULL,removed_at INTEGER NOT NULL);").map_err(err)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS item_component_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS category_arrivals(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS item_design_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -176,6 +192,9 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
                 source_url: r.get(8)?,
                 thumbnail: r.get(9)?,
                 category: None,
+                component_folders: vec![],
+                design_folders: vec![],
+                category_added: Default::default(),
             })
         })
         .map_err(err)?
@@ -183,6 +202,11 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         .map_err(err)?;
     let lookup: std::collections::HashMap<i64, usize> =
         items.iter().enumerate().map(|(n, i)| (i.id, n)).collect();
+    {
+        let mut stmt=db.prepare("SELECT item_id,name,added FROM category_arrivals").map_err(err)?;
+        let rows=stmt.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?))).map_err(err)?;
+        for row in rows{let(id,name,added)=row.map_err(err)?;if let Some(index)=lookup.get(&id){items[*index].category_added.insert(name,added);}}
+    }
     for (table, is_tag) in [("item_tags", true), ("item_projects", false)] {
         let mut s = db
             .prepare(&format!("SELECT item_id,label_id FROM {table}"))
@@ -215,18 +239,30 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
             }
         }
     }
+    {
+        let mut stmt=db.prepare("SELECT item_id,name FROM item_component_folders ORDER BY name").map_err(err)?;
+        for row in stmt.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)? {
+            let (id,name)=row.map_err(err)?;
+            if let Some(n)=lookup.get(&id) {items[*n].component_folders.push(name);}
+        }
+    }
     let overrides = {
         let mut stmt = db.prepare("SELECT item_id,name FROM item_categories").map_err(err)?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
         rows.collect::<std::result::Result<std::collections::HashMap<_,_>,_>>().map_err(err)?
     };
+    {
+        let mut stmt=db.prepare("SELECT item_id,name FROM item_design_folders ORDER BY name").map_err(err)?;
+        let rows=stmt.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
+        for row in rows{let(id,name)=row.map_err(err)?;if let Some(n)=lookup.get(&id){items[*n].design_folders.push(name);}}
+    }
     let mut categories = {
         let mut stmt = db.prepare("SELECT name FROM categories").map_err(err)?;
         let rows = stmt.query_map([], |r| r.get::<_,String>(0)).map_err(err)?;
         rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?
     };
     for item in &mut items {
-        if item.kind != "link" {
+        if item.kind != "link" || overrides.contains_key(&item.id) {
             let initial = default_category(&item.source);
             if !initial.is_empty() { categories.push(initial.clone()); }
             let mut category = overrides.get(&item.id).cloned().unwrap_or(initial);
@@ -277,6 +313,11 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         Ok(rows)
     };
     Ok(Library {
+        undo_entries:{
+            let mut stmt=db.prepare("SELECT id,label FROM organisation_history ORDER BY id").map_err(err)?;
+            let rows=stmt.query_map([],|r|Ok(HistoryEntry{id:r.get(0)?,label:r.get(1)?})).map_err(err)?;
+            rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?
+        },
         redo_label: db.query_row("SELECT label FROM organisation_redo ORDER BY id DESC LIMIT 1",[],|r|r.get(0)).ok(),
         redo_count: db.query_row("SELECT count(*) FROM organisation_redo",[],|r|r.get(0)).map_err(err)?,
         undo_label: db.query_row("SELECT label FROM organisation_history ORDER BY id DESC LIMIT 1",[],|r|r.get(0)).ok(),
@@ -309,10 +350,63 @@ pub fn default_category(source: &str) -> String {
 }
 fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     if !name.is_empty() { valid_name(name)?; }
-    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND kind!='link' AND archived=0)",[id],|r|r.get(0)).map_err(err)?;
+    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND archived=0 AND (kind!='link' OR ? LIKE 'Components / %' OR (?='' AND EXISTS(SELECT 1 FROM item_categories WHERE item_id=items.id AND name LIKE 'Components / %'))))",params![id,name,name],|r|r.get(0)).map_err(err)?;
     if !exists { return Err("Only references still in your library can change category.".into()); }
+    materialize_design_folder(db,id)?;
+    materialize_component_folder(db,id)?;
+    if name.starts_with("Components / ") {
+        if name == "Components / Uncategorised" {db.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;}
+        db.execute("INSERT OR IGNORE INTO item_component_folders VALUES(?,?)",params![id,name]).map_err(err)?;
+        if name != "Components / Uncategorised" {db.execute("DELETE FROM item_component_folders WHERE item_id=? AND name='Components / Uncategorised'",[id]).map_err(err)?;}
+    } else {
+        if name.is_empty(){db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;}
+        db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;
+        if !name.is_empty(){db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;}
+    }
+    // A destination consumes the opposite inbox, including section-to-section drops.
+    // Only named folder memberships are shared across sections.
+    if !name.is_empty(){db.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=''",[id]).map_err(err)?;}
+    if name != "Components / Uncategorised"{db.execute("DELETE FROM item_component_folders WHERE item_id=? AND name='Components / Uncategorised'",[id]).map_err(err)?;}
+
+    let name=if name.starts_with("Components / ") {"Components / Uncategorised"} else {name};
     if !name.is_empty() { db.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[name]).map_err(err)?; }
     db.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,name]).map_err(err)?;
+    Ok(())
+}
+fn is_design_folder(name:&str)->bool{
+    !name.is_empty()&&!name.starts_with("Components / ")&&name!="All Components"&&name.to_lowercase().replace([' ','_','-'],"")!="webdesign"
+}
+pub fn design_memberships(db:&Connection,id:i64)->Result<Vec<String>>{
+    let mut query=db.prepare("SELECT name FROM item_design_folders WHERE item_id=? ORDER BY name").map_err(err)?;
+    let rows=query.query_map([id],|r|r.get(0)).map_err(err)?;rows.collect::<std::result::Result<_,_>>().map_err(err)
+}
+fn materialize_design_folder(db:&Connection,id:i64)->Result<()>{
+    let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
+    let current=assigned.unwrap_or_else(||default_category(&source));
+    if is_design_folder(&current)||(current.is_empty()&&design_memberships(db,id)?.is_empty()){db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,current]).map_err(err)?;}Ok(())
+}
+pub fn category_is_new(db:&Connection,id:i64,name:&str)->Result<bool>{
+    let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
+    let current=assigned.unwrap_or_else(||default_category(&source));let folders=component_memberships(db,id)?;
+    if name.starts_with("Components / ")&&name!="Components / Uncategorised"{return Ok(current!=name&&!folders.iter().any(|f|f==name));}
+    if is_design_folder(name){return Ok(current!=name&&!design_memberships(db,id)?.iter().any(|f|f==name));}
+    Ok(current!=name||!folders.is_empty()||!design_memberships(db,id)?.is_empty())
+}
+pub fn category_arrivals(db:&Connection,id:i64)->Result<std::collections::HashMap<String,i64>>{
+    let mut query=db.prepare("SELECT name,added FROM category_arrivals WHERE item_id=?").map_err(err)?;
+    let rows=query.query_map([id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?))).map_err(err)?;
+    rows.collect::<std::result::Result<_,_>>().map_err(err)
+}
+pub fn component_memberships(db:&Connection,id:i64)->Result<Vec<String>> {
+    let mut stmt=db.prepare("SELECT name FROM item_component_folders WHERE item_id=? ORDER BY name").map_err(err)?;
+    let rows=stmt.query_map([id],|r|r.get(0)).map_err(err)?;
+    rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)
+}
+fn materialize_component_folder(db:&Connection,id:i64)->Result<()> {
+    let previous:Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
+    if let Some(name)=previous.filter(|n|n.starts_with("Components / ")) {
+        if name!="Components / Uncategorised"||component_memberships(db,id)?.is_empty(){db.execute("INSERT OR IGNORE INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,name]).map_err(err)?;}
+    }
     Ok(())
 }
 fn valid_name(name: &str) -> Result<&str> {
@@ -349,7 +443,15 @@ pub struct Change {
 pub fn change(path: &Path, c: Change) -> Result<()> {
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
-    if c.action=="undo_organisation" {crate::history::undo(&tx)?;tx.commit().map_err(err)?;return Ok(());}
+    if c.action == "undo_organisation" {
+        if let Some(expected) = &c.value {
+            let latest: Option<String> = tx.query_row("SELECT label FROM organisation_history ORDER BY id DESC LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?;
+            if latest.as_ref() != Some(expected) { return Err("A newer change took place. Review the header Undo action.".into()); }
+        }
+        crate::history::undo(&tx)?;
+        tx.commit().map_err(err)?;
+        return Ok(());
+    }
     if c.action=="redo_organisation" {crate::history::redo(&tx)?;tx.commit().map_err(err)?;return Ok(());}
     let undo=crate::history::snapshot(&tx,&c)?;
     let target = c.target.unwrap_or(0);
@@ -361,7 +463,45 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         }
         "set_category" => {
             if c.ids.is_empty() { return Err("Select at least one reference.".into()); }
-            for id in c.ids { assign_category(&tx,id,value.trim())?; }
+            let added=now();let folder=value.trim();
+            for id in c.ids {
+                let entering=category_is_new(&tx,id,folder)?;
+                let stale_inbox=(!folder.is_empty()&&design_memberships(&tx,id)?.iter().any(|n|n.is_empty()))
+                    ||(folder!="Components / Uncategorised"&&component_memberships(&tx,id)?.iter().any(|n|n=="Components / Uncategorised"));
+                if !entering&&!stale_inbox{continue;}
+                assign_category(&tx,id,folder)?;
+                if !entering{continue;}
+
+                tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,folder,added]).map_err(err)?;
+                if folder.starts_with("Components / "){tx.execute("INSERT INTO category_arrivals VALUES(?,'All Components',?) ON CONFLICT(item_id,name) DO UPDATE SET added=excluded.added",params![id,added]).map_err(err)?;}
+            }
+        }
+        "remove_design_folder" => {
+            if !is_design_folder(value){return Err("Choose a Design Inspo folder.".into());}
+            for id in c.ids{
+                let (source,assigned):(String,Option<String>)=tx.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=? AND i.archived=0 AND i.kind!='link'",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
+                let current=assigned.unwrap_or_else(||default_category(&source));
+                materialize_component_folder(&tx,id)?;
+                materialize_design_folder(&tx,id)?;
+                tx.execute("DELETE FROM item_design_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;
+                let remaining=design_memberships(&tx,id)?;
+                let primary=if current!=value&&remaining.contains(&current){current}else{remaining.first().cloned().unwrap_or_default()};
+                tx.execute("INSERT INTO item_categories VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,primary]).map_err(err)?;
+            }
+        }
+        "remove_component_folder" => {
+            if !value.starts_with("Components / ") || value=="Components / Uncategorised" {return Err("Choose a component folder.".into());}
+            for id in c.ids {
+                let category:Option<String>=tx.query_row("SELECT c.name FROM item_categories c JOIN items i ON i.id=c.item_id WHERE i.id=? AND i.archived=0",[id],|r|r.get(0)).optional().map_err(err)?;
+                if category.is_none() && component_memberships(&tx,id)?.is_empty() {return Err("Select a component still in your library.".into());}
+                materialize_design_folder(&tx,id)?;
+                materialize_component_folder(&tx,id)?;
+                if ["Components / Headers","Components / Header","Components / Heroes","Components / Hero"].contains(&value){
+                    tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name IN ('Components / Headers','Components / Header','Components / Heroes','Components / Hero')",[id]).map_err(err)?;
+                }else{tx.execute("DELETE FROM item_component_folders WHERE item_id=? AND name=?",params![id,value]).map_err(err)?;}
+
+                tx.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=?",[id]).map_err(err)?;
+            }
         }
         "restore_categories" => {
             let previous: Vec<(i64,String)> = serde_json::from_str(value).map_err(err)?;
@@ -423,7 +563,9 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
             )
             .map_err(err)?;
             let id = tx.last_insert_rowid();
+            let mut patches=vec![crate::history::Patch::Archived(id,true)];
             if target > 0 {
+                patches.push(crate::history::Patch::Member(true,id,target,None));
                 touch_project(&tx, target)?;
                 tx.execute(
                     "INSERT INTO item_projects(item_id,label_id) VALUES(?,?)",
@@ -431,6 +573,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
                 )
                 .map_err(err)?;
             }
+            crate::history::record(&tx,"Create link",patches)?;
         }
         "pin_project" | "unpin_project" => {
             for id in c.ids {
@@ -461,6 +604,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         "set_link_destination" => {
             let source = match value {
                 "resources" => "Resources",
+                "websites" => "Websites",
                 "fonts" => "Fonts",
                 "codepen" => "CodePen",
                 "brand-guidelines" => "Brand Guidelines",
@@ -535,7 +679,8 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         return Err("Unsupported backup version".into());
     }
     if backup.portable {
-        let base=source.parent().ok_or("Missing backup folder")?.canonicalize().map_err(err)?;
+        let parent=source.parent().ok_or("Missing backup folder")?;
+        let base=if parent.file_name().is_some_and(|n|n=="Library Data"){parent.parent().ok_or("Missing library folder")?}else{parent}.canonicalize().map_err(err)?;
         for item in &mut backup.library.items {
             if item.kind!="link" {item.path=crate::library_export::resolve_relative(&base,&item.path)?;}
             if !item.thumbnail.is_empty() {item.thumbnail=crate::library_export::resolve_relative(&base,&item.thumbnail)?;}
@@ -543,6 +688,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         backup.library.root=crate::library_export::resolve_relative(&base,&backup.library.root)?;
         for (_,path) in &mut backup.library.source_paths {*path=crate::library_export::resolve_relative(&base,path)?;}
     }
+    if let Some(folder)=crate::managed_library::root(path)?{crate::managed_library::own_import(&folder,&mut backup.library.items)?;}
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
     if backup.portable && setting(&tx,"root").is_none() {
@@ -599,15 +745,27 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             // thumbnails, including resources already seeded by a fresh app.
             tx.execute("UPDATE items SET name=?,source=?,source_url=?,thumbnail=?,archived=0 WHERE id=?",params![item.name,item.source,item.source_url,item.thumbnail,id]).map_err(err)?;
         }
-        if item.kind != "link" {
+        if item.kind != "link" || item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")) {
             if let Some(category) = &item.category {
                 // Archived items keep their category too when merging a backup.
                 if !category.is_empty() { valid_name(category)?; tx.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[category]).map_err(err)?; }
                 tx.execute("INSERT INTO item_categories(item_id,name) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![id,category]).map_err(err)?;
             }
         }
+        tx.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;
+        {
+            for folder in &item.design_folders{if is_design_folder(folder)||folder.is_empty(){if !folder.is_empty(){valid_name(folder)?;tx.execute("INSERT OR IGNORE INTO categories VALUES(?)",[folder]).map_err(err)?;}tx.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,folder]).map_err(err)?;}}
+        }
+        tx.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;
+        {
+            for folder in &item.component_folders {
+                if !folder.starts_with("Components / ") {continue;}
+                valid_name(folder)?;
+                tx.execute("INSERT OR IGNORE INTO item_component_folders(item_id,name) VALUES(?,?)",params![id,folder]).map_err(err)?;
+            }
+        }
         if item.kind == "link"
-            && (["Resources", "Fonts", "CodePen", "Brand Guidelines"].contains(&item.source.as_str()) || item.source.starts_with("Resources/"))
+            && (["Resources", "Websites", "Fonts", "CodePen", "Brand Guidelines"].contains(&item.source.as_str()) || item.source.starts_with("Resources/"))
         {
             tx.execute(
                 "UPDATE items SET source=? WHERE id=? AND kind='link'",
@@ -639,6 +797,9 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
                 }
             }
         }
+        for (name,added) in item.category_added {
+            tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=MAX(category_arrivals.added,excluded.added)",params![id,name,added]).map_err(err)?;
+        }
         for old in item.favourites {
             if let Some(project) = projects.get(&old) {
                 tx.execute(
@@ -653,4 +814,82 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
     tx.execute("DELETE FROM organisation_redo",[]).map_err(err)?;
     tx.commit().map_err(err)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod arrival_tests {
+    use super::*;
+    #[test]
+    fn folder_arrivals_survive_backup_and_undo_redo(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");init(&path).unwrap();
+        let conn=connect(&path).unwrap();conn.execute("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'test.png','Reference','image','Design/Captures',10)",[]).unwrap();drop(conn);
+        let change_to=|value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[1],"value":value})).unwrap()).unwrap();
+        change_to("Components / Navbars");let before=load(&path,false).unwrap().items[0].category_added.clone();
+        change_to("Components / Headers");let after=load(&path,false).unwrap().items[0].clone();assert_eq!(after.added,10);assert!(after.category_added["Components / Headers"]>10);assert_eq!(after.category_added["Components / Navbars"],before["Components / Navbars"]);
+        change(&path,serde_json::from_value(serde_json::json!({"action":"undo_organisation"})).unwrap()).unwrap();assert_eq!(load(&path,false).unwrap().items[0].category_added,before);
+        change(&path,serde_json::from_value(serde_json::json!({"action":"redo_organisation"})).unwrap()).unwrap();assert_eq!(load(&path,false).unwrap().items[0].category_added,after.category_added);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();assert_eq!(load(&restored,false).unwrap().items[0].category_added,after.category_added);
+        change_to("Branding");let design=load(&path,false).unwrap().items[0].clone();assert!(design.category_added["Branding"]>10);assert_eq!(design.added,10);
+    }
+    #[test]
+    fn header_removal_removes_both_legacy_names_and_undo_restores_them(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("headers.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'one.png','One','image','',10);INSERT INTO item_categories VALUES(1,'Components / Heroes');INSERT INTO item_component_folders VALUES(1,'Components / Headers'),(1,'Components / Navbars');INSERT INTO item_design_folders VALUES(1,'Illustration');").unwrap();
+        change(&path,serde_json::from_value(serde_json::json!({"action":"remove_component_folder","ids":[1],"value":"Components / Headers"})).unwrap()).unwrap();
+        let item=load(&path,false).unwrap().items.remove(0);assert_eq!(item.component_folders,vec!["Components / Navbars"]);assert_eq!(item.design_folders,vec!["Illustration"]);
+        change(&path,serde_json::from_value(serde_json::json!({"action":"undo_organisation"})).unwrap()).unwrap();let item=load(&path,false).unwrap().items.remove(0);assert_eq!(item.category.as_deref(),Some("Components / Heroes"));assert_eq!(item.component_folders,vec!["Components / Headers","Components / Navbars"]);
+    }
+    #[test]
+    fn filing_from_either_inbox_consumes_inbox_but_preserves_named_folders(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("inbox.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'one.png','One','image','',10);INSERT INTO item_categories VALUES(1,'');INSERT INTO item_design_folders VALUES(1,'');").unwrap();
+        let apply=|action:&str,value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":action,"ids":[1],"value":if action.ends_with("organisation"){None}else{Some(value)}})).unwrap()).unwrap();
+        let read=||load(&path,false).unwrap().items.remove(0);
+        apply("set_category","Components / Uncategorised");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);
+        apply("set_category","");assert!(read().component_folders.is_empty());assert_eq!(read().design_folders,vec![""]);
+        apply("set_category","Components / Templates");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders,vec!["Components / Templates"]);
+        apply("undo_organisation","");assert_eq!(read().design_folders,vec![""]);assert_eq!(read().category.as_deref(),Some(""));
+        apply("redo_organisation","");assert!(read().design_folders.is_empty());
+        apply("set_category","Components / Uncategorised");apply("set_category","Data");assert!(read().component_folders.is_empty());assert_eq!(read().category.as_deref(),Some("Data"));
+        apply("undo_organisation","");assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);apply("redo_organisation","");assert!(read().component_folders.is_empty());
+        apply("set_category","Components / Templates");assert_eq!(read().design_folders,vec!["Data"]);assert_eq!(read().component_folders,vec!["Components / Templates"]);
+        let arrival=read().category_added["Components / Templates"];
+        connect(&path).unwrap().execute("INSERT INTO item_design_folders VALUES(1,'')",[]).unwrap();
+        apply("set_category","Components / Templates");assert_eq!(read().design_folders,vec!["Data"]);assert_eq!(read().category_added["Components / Templates"],arrival);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();let saved=load(&restored,false).unwrap().items.remove(0);assert_eq!(saved.design_folders,read().design_folders);assert_eq!(saved.component_folders,read().component_folders);
+    }
+    #[test]
+    fn shared_sections_preserve_folders_removal_history_and_backup(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("shared.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'hero.png','Hero','image','',10);INSERT INTO item_categories VALUES(1,'Components / Heroes');").unwrap();
+        let apply=|action:&str,value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":action,"ids":[1],"value":if action.ends_with("organisation"){None}else{Some(value)}})).unwrap()).unwrap();
+        let read=||load(&path,false).unwrap().items.remove(0);
+        apply("set_category","Illustration");assert_eq!(read().component_folders,vec!["Components / Heroes"]);assert_eq!(read().design_folders,vec!["Illustration"]);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restore.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();let saved=load(&restored,false).unwrap().items.remove(0);assert_eq!(saved.component_folders,read().component_folders);assert_eq!(saved.design_folders,read().design_folders);
+        apply("remove_design_folder","Illustration");assert_eq!(read().component_folders,vec!["Components / Heroes"]);assert_eq!(read().category.as_deref(),Some(""));
+        apply("undo_organisation","");assert_eq!(read().design_folders,vec!["Illustration"]);apply("redo_organisation","");assert!(read().design_folders.is_empty());apply("undo_organisation","");
+        apply("remove_component_folder","Components / Heroes");assert_eq!(read().design_folders,vec!["Illustration"]);assert!(read().component_folders.is_empty());
+        apply("set_category","Components / Headers");assert_eq!(read().design_folders,vec!["Illustration"]);assert_eq!(read().component_folders,vec!["Components / Headers"]);
+        apply("set_category","");assert_eq!(read().component_folders,vec!["Components / Headers"]);assert_eq!(read().design_folders,vec![""]);
+        apply("set_category","Components / Footers");assert!(read().design_folders.is_empty());assert_eq!(read().component_folders.len(),2);
+        apply("set_category","Illustration");apply("set_category","Components / Uncategorised");assert_eq!(read().design_folders,vec!["Illustration"]);assert_eq!(read().component_folders,vec!["Components / Uncategorised"]);
+    }
+    #[test]
+    fn designs_support_multiple_folders_inbox_history_and_backup(){
+        let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");init(&path).unwrap();
+        connect(&path).unwrap().execute("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'design.png','Design','image','Design/Branding',10)",[]).unwrap();
+        let apply=|action:&str,value:&str|change(&path,serde_json::from_value(serde_json::json!({"action":action,"ids":[1],"value":if action.ends_with("organisation"){None}else{Some(value)}})).unwrap()).unwrap();
+        let read=||load(&path,false).unwrap().items.remove(0);
+        apply("set_category","Social Media");assert_eq!(read().design_folders,vec!["Branding","Social Media"]);assert_eq!(read().added,10);
+        let backup=temp.path().join("backup.json");export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");init(&restored).unwrap();import(&restored,backup).unwrap();assert_eq!(load(&restored,false).unwrap().items[0].design_folders,read().design_folders);
+        apply("remove_design_folder","Social Media");assert_eq!(read().design_folders,vec!["Branding"]);assert_eq!(read().category.as_deref(),Some("Branding"));
+        apply("remove_design_folder","Branding");assert!(read().design_folders.is_empty());assert_eq!(read().category.as_deref(),Some(""));
+        apply("undo_organisation","");assert_eq!(read().design_folders,vec!["Branding"]);apply("redo_organisation","");assert!(read().design_folders.is_empty());
+        apply("set_category","Social Media");apply("set_category","Packaging");assert_eq!(read().design_folders.len(),2);
+        apply("set_category","Components / Headers");assert_eq!(read().design_folders.len(),2);assert_eq!(read().component_folders,vec!["Components / Headers"]);
+        apply("undo_organisation","");assert_eq!(read().design_folders.len(),2);assert!(read().component_folders.is_empty());
+        apply("set_category","");assert_eq!(read().design_folders,vec![""]);assert_eq!(read().category.as_deref(),Some(""));
+        init(&path).unwrap();assert_eq!(read().design_folders,vec![""]);assert_eq!(read().category.as_deref(),Some(""));
+    }
+
 }

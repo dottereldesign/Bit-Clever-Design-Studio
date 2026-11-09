@@ -2,6 +2,8 @@
 
 Design uses Tauri, React, Rust, SQLite, TanStack Virtual, Lucide and other open-source dependencies. Exact versions are recorded in `package-lock.json` and `src-tauri/Cargo.lock`.
 
+When changing bundled tools, check the version and notice filenames against `scripts/prepare-media.mjs`, `scripts/prepare-downloader.mjs` and the resources in `src-tauri/tauri.conf.json`. Verify the notice files in the packaged output before publishing.
+
 ## FFmpeg
 
 The installer includes FFmpeg supplied through [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static). Its licence and build/source information are installed as `binaries/ffmpeg-license.txt` and `binaries/ffmpeg-readme.txt`.

@@ -81,9 +81,13 @@ fn scan_named(db_path: &Path, root: &Path, prefix: &str) -> Result<usize> {
         ));
     }
     let mut db = db::connect(db_path)?;
+    let managed=db::setting(&db,"managed_root").is_some();
     let tx = db.transaction().map_err(err)?;
     for (path, name, kind, source, modified) in &records {
-        tx.execute("INSERT INTO items(path,name,kind,source,modified,added,missing) VALUES(?,?,?,?,?,?,0) ON CONFLICT(path) DO UPDATE SET kind=excluded.kind,source=excluded.source,modified=excluded.modified,missing=0",params![path,name,kind,source,modified,db::now()]).map_err(err)?;
+        tx.execute("INSERT INTO items(path,name,kind,source,modified,added,missing) VALUES(?,?,?,?,?,?,0) ON CONFLICT(path) DO UPDATE SET kind=excluded.kind,source=CASE WHEN ? THEN items.source ELSE excluded.source END,modified=excluded.modified,missing=0",params![path,name,kind,source,modified,db::now(),managed]).map_err(err)?;
+    }
+    if managed && prefix=="App Components" {
+        tx.execute("INSERT OR IGNORE INTO item_categories(item_id,name) SELECT id,'Components / Uncategorised' FROM items WHERE source='App Components'",[]).map_err(err)?;
     }
     let existing: Vec<(i64, String)> = {
         let mut stmt = tx
@@ -146,6 +150,18 @@ pub(crate) fn run_ffmpeg(ffmpeg: &Path, args: &[&str], timeout: u64) -> Result<(
         }
     }
 }
+// Masonry displays a fixed column width, including very long website screenshots.
+// A landscape height cap would turn a 1200x6000 page into a blurry 108x540 image.
+pub(crate) fn image_thumbnail_size(width: u32, height: u32) -> (u32, u32) {
+    let w = width.max(1) as f64;
+    let h = height.max(1) as f64;
+    let scale = (720.0 / w)
+        .min(16_384.0 / h)
+        .min((8_000_000.0 / (w * h)).sqrt())
+        .min(1.0);
+    ((w * scale).floor().max(1.0) as u32, (h * scale).floor().max(1.0) as u32)
+}
+
 pub fn media(db_path: &Path, cache: &Path, ffmpeg: &Path, id: i64, mode: &str) -> Result<String> {
     let db = db::connect(db_path)?;
     let (path, kind, modified): (String, String, i64) = db
@@ -170,7 +186,10 @@ pub fn media(db_path: &Path, cache: &Path, ffmpeg: &Path, id: i64, mode: &str) -
     }
     let meta = fs::metadata(source).map_err(err)?;
     let suffix = if mode == "thumbnail" { "jpg" } else { "mp4" };
-    let target = cache.join(format!("v1-{id}-{modified}-{}-{mode}.{suffix}", meta.len()));
+    // Rebuild old low-resolution image thumbnails lazily, without deleting caches
+    // used by older app builds or invalidating expensive video previews.
+    let version = if mode == "thumbnail" && kind != "video" { "v2" } else { "v1" };
+    let target = cache.join(format!("{version}-{id}-{modified}-{}-{mode}.{suffix}", meta.len()));
     if target.is_file() {
         return Ok(target.to_string_lossy().into_owned());
     }
@@ -188,8 +207,9 @@ pub fn media(db_path: &Path, cache: &Path, ffmpeg: &Path, id: i64, mode: &str) -
             None
         };
         if let Some(image) = decoded {
+            let (width, height) = image_thumbnail_size(image.width(), image.height());
             let small = image
-                .thumbnail(image.width().min(720), image.height().min(540))
+                .thumbnail(width, height)
                 .to_rgba8();
             let mut canvas = image::RgbImage::new(small.width(), small.height());
             for (x, y, p) in small.enumerate_pixels() {
@@ -205,7 +225,7 @@ pub fn media(db_path: &Path, cache: &Path, ffmpeg: &Path, id: i64, mode: &str) -
                 );
             }
             let file = fs::File::create(&temp).map_err(err)?;
-            image::codecs::jpeg::JpegEncoder::new_with_quality(file, 82)
+            image::codecs::jpeg::JpegEncoder::new_with_quality(file, 90)
                 .encode_image(&canvas)
                 .map_err(err)
         } else {

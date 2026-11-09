@@ -3,6 +3,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '/src/App.tsx';
 import '/src/style.css';
+import {sites} from '/src/Shortcuts.tsx';
+localStorage.setItem('site-shortcuts',JSON.stringify(sites.filter(site=>site.key!=='codepen')));
 const image = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300"><rect width="500" height="300" fill="#c9dac0"/></svg>');
 const item = (id, name, kind = 'image', source = 'Design', path = `C:/mock/${id}.png`) => ({ id, name, kind, source, path, added: id, modified: 1, missing: false, tags: [], projects: [], favourites: [] });
 const library = { items: [item(1, 'Alpha'), item(2, 'Video', 'video'), item(3, 'Motion', 'animation'), item(4, 'Old link', 'link', '', 'https://old.example/reference'), item(5, 'Existing resource', 'link', 'Resources/Websites', 'https://resource.example/')], projects: [{ id: 7, name: 'Example project', count: 0 }], tags: [{ id: 1, name: 'School', count: 0 }], sources: ['Design', 'Photography', 'Videos'], root: 'C:/mock', scanning: false };
@@ -15,6 +17,7 @@ window.isTauri = true;
 window.__TAURI_INTERNALS__ = {
   transformCallback: () => ++callbackId, convertFileSrc: () => image,
   invoke: async (command, args) => {
+ if(command==="capture_items_progress")command="capture_items";
     calls.push({ command, args });
     if (command === 'get_library') return structuredClone(library);
     if (command === 'get_media') return 'mock.png';
@@ -36,7 +39,7 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App,{startOnHome:false})));
 function assert(value, label) { if (!value) throw Error(label); }
 async function until(test, label) { const start = performance.now(); while (!test()) { if (performance.now() - start > 5000) throw Error(`Timed out: ${label}`); await pause(20); } }
 const countCopies = () => calls.filter(call => call.command === 'copy_image').length;
@@ -66,18 +69,19 @@ try {
   await until(() => document.querySelector('.resources-view'), 'resources view');
   const favourites = document.querySelector('[aria-label="Favourite websites"]');
   assert(favourites && favourites.getBoundingClientRect().bottom <= document.querySelector('.resources-filter').getBoundingClientRect().top,'Favourite row is not above filter');
+  window.__screenshotReady=true;await pause(550);
   const favouriteButtons = [...favourites.querySelectorAll('button')];
-  assert(favouriteButtons.map(button=>button.textContent).join(',') === 'Pinterest,Dribbble,Awwwards','Wrong favourite order or labels');
+  assert(favouriteButtons.map(button=>button.textContent).join(',') === 'Pinterest,Dribbble,Awwwards,CodePen','Wrong favourite order or labels');
   for (const button of favouriteButtons) { assert(button.querySelector('svg'),'Shortcut icon missing'); button.click(); }
-  await until(()=>calls.filter(call=>call.command==='open_external_url').length===3,'Shortcut links open');
-  assert(JSON.stringify(calls.filter(call=>call.command==='open_external_url').map(call=>call.args.url)) === JSON.stringify(['https://www.pinterest.com/','https://dribbble.com/','https://www.awwwards.com/']),'Shortcut destination incorrect');
-  checks.push('Coloured favourite shortcuts sit above the filter and open Pinterest, Dribbble and Awwwards');
+  await until(()=>calls.filter(call=>call.command==='open_external_url').length===4,'Shortcut links open');
+  assert(JSON.stringify(calls.filter(call=>call.command==='open_external_url').map(call=>call.args.url)) === JSON.stringify(['https://www.pinterest.com/','https://dribbble.com/','https://www.awwwards.com/','https://codepen.io/']),'Shortcut destination incorrect');
+  checks.push('Coloured favourite shortcuts sit above the filter and open Pinterest, Dribbble, Awwwards and CodePen');
   const category = document.querySelector('[aria-label="Resource category"]');
   assert([...category.options].some(option=>option.value==='Photography'),'Photography filter missing');
   category.value='Photography'; category.dispatchEvent(new Event('change',{bubbles:true}));
   await until(()=>document.querySelector('.resources-table tbody tr')?.textContent.includes('Photography inspiration'),'Photography filter shows inspiration link');
   assert(document.querySelectorAll('.resources-table tbody tr').length===1,'Photography filter includes other resources');
-  assert(favourites.querySelectorAll('button').length===3,'Category filter hides favourites');
+  assert(favourites.querySelectorAll('button').length===4,'Category filter hides favourites');
   checks.push('Photography resource category filters inspiration sites');
   assert([...category.options].some(option=>option.value==='Patterns & Textures'),'Patterns & Textures filter missing');
   category.value='Patterns & Textures'; category.dispatchEvent(new Event('change',{bubbles:true}));

@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Thumbnail loading check</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from '/src/App.tsx';
+import '/src/style.css';
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const image = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="#dce5d3"/><circle cx="300" cy="400" r="160" fill="#c1d0b4"/></svg>');
+const library = { items: Array.from({length:24}, (_,n)=>({id:n+1,name:`Reference ${n+1}`,path:`C:/mock/${n+1}.png`,kind:'image',source:'Design',modified:1,added:n,missing:false,tags:[],projects:[],favourites:[]})), projects:[],tags:[],sources:['Design'],root:'C:/mock',scanning:false };
+let callback=0, calls=0, failed=false;
+const requests=new Map();
+window.isTauri=true;
+window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+  if(command==='get_library') return library;
+  if(command==='get_media') {
+    calls++;
+    requests.set(args.id,(requests.get(args.id)||0)+1);
+    await pause(300);
+    if(args.id===24&&!failed){failed=true;throw Error('Temporary decoder error');}
+    return 'thumbnail.jpg';
+  }
+  if(command.startsWith('plugin:event|'))return ++callback;
+  throw Error(command);
+}};
+window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>12000)throw Error(label);await pause(20);}}
+const assert=(test,label)=>{if(!test)throw Error(label);};
+try {
+  await until(()=>document.querySelector('.thumbnail-progress progress')?.value>0,'Determinate progress');
+  const progress=document.querySelector('.thumbnail-progress');
+  assert(/\d+%/.test(progress.textContent),'Visible percent');
+  const box=progress.getBoundingClientRect(), search=document.querySelector('.search').getBoundingClientRect();
+  assert(box.right<search.left&&box.left>document.querySelector('.sidebar').getBoundingClientRect().right,'Header fits');
+  window.__screenshotReady=true;
+  await pause(450);
+  await until(()=>document.querySelector('.thumbnail-retry'),'Failed thumbnail offers retry');
+  document.querySelector('.thumbnail-retry').click();
+  await until(()=>!document.querySelector('.thumbnail-retry')&&document.querySelectorAll('.card-open>img').length===document.querySelectorAll('.card').length,'Retry recovers without restarting');
+  await until(()=>!document.querySelector('.thumbnail-progress'),'Progress disappears when done');
+  assert(calls===requests.size+1,`StrictMode must share decodes: ${calls} calls for ${requests.size} files plus one retry`);
+  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Visible percentage and header fit','StrictMode shares native requests','Failed thumbnail retries successfully','Progress clears after completion'],calls});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),calls});}
+</script></body></html>

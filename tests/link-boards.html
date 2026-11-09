@@ -5,12 +5,21 @@ import App from '/src/App.tsx';
 import '/src/style.css';
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
 const library={items:[],projects:[{id:7,name:'Website',count:0}],tags:[{id:1,name:'Sports',count:0}],sources:['Design'],root:'C:/mock',scanning:false};
-const history=[];const calls=[],removedIds=new Set();let clipboard={files:[],url:''},callbackId=0,screenResult={path:'C:/staging/screen.png',name:'Screenshot.png'};
+const converted=[];const history=[];const calls=[],removedIds=new Set();let clipboard={files:[],url:''},callbackId=0,screenResult={path:'C:/staging/screen.png',name:'Screenshot.png'};
+let capturePending;
 window.isTauri=true;
-window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()=>image,invoke:async(command,args)=>{
+window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:path=>{converted.push(path);return image;},invoke:async(command,args)=>{
+ if(command==="capture_items_progress")command="capture_items";
   calls.push({command,args});
+  if(command==='website_capture_browsers')return [{id:'chrome',name:'Chrome'},{id:'edge',name:'Edge'}];
+  if(command==='website_thumbnail')return 'C:/cache/website-preview.png';
+  if(command==='open_website_screenshot'||command==='save_library_preferences')return;
+  if(command==='library_preferences')return null;
+  if(command==='storage_usage')return {bytes:1024,app_bytes:512,data_bytes:256,library_bytes:256,partial:false};
+  if(command==='capture_website'){args.onProgress.onmessage({phase:'attention',message:'Handle the cookie notice, then Continue.'});return new Promise((resolve,reject)=>{capturePending={resolve,reject};});}
+  if(command==='website_capture_control'){if(args.action==='cancel')capturePending?.reject('Capture cancelled');else capturePending?.resolve({path:'C:/staging/full-page.png',name:'Website.png'});capturePending=null;return;}
   if(command==='get_library')return {...structuredClone(library),items:structuredClone(library.items.filter(i=>!removedIds.has(i.id))),undo_label:history.length?'Remove from library':null};
-  if(command==='update'){if(args.change.action==='undo_organisation'){removedIds.clear();for(const id of history.pop())removedIds.add(id);return;}if(args.change.action==='remove_items')history.push([...removedIds]);for(const id of args.change.ids??[]){if(args.change.action==='remove_items')removedIds.add(id);else if(args.change.action==='restore_items')removedIds.delete(id);}return;}
+  if(command==='update'){if(args.change.action==='add_tag'){for(const id of args.change.ids)library.items.find(i=>i.id===id).tags.push(args.change.target);return;}if(args.change.action==='undo_organisation'){removedIds.clear();for(const id of history.pop())removedIds.add(id);return;}if(args.change.action==='remove_items')history.push([...removedIds]);for(const id of args.change.ids??[]){if(args.change.action==='remove_items')removedIds.add(id);else if(args.change.action==='restore_items')removedIds.delete(id);}return;}
   if(command.startsWith('plugin:event|'))return ++callbackId;
   if(command==='read_clipboard'){await new Promise(r=>setTimeout(r,40));return structuredClone(clipboard);}
   if(command==='capture_screen')return screenResult;
@@ -19,13 +28,13 @@ window.__TAURI_INTERNALS__={transformCallback:()=>++callbackId,convertFileSrc:()
   if(command==='discard_capture'||command==='open_external_url')return;
   if(command==='capture_items'){
     const c=args.input,id=library.items.length+1;
-    library.items.push({id,path:c.url,name:c.name||'Reference',kind:'link',source:({fonts:'Fonts',codepen:'CodePen','brand-guidelines':'Brand Guidelines'})[c.destination],thumbnail:'C:/saved/thumb.png',modified:0,added:id,missing:false,tags:c.tags,projects:c.projects});
+    library.items.push({id,path:c.url,name:c.name||'Reference',kind:'link',source:({websites:'Websites',fonts:'Fonts',codepen:'CodePen','brand-guidelines':'Brand Guidelines'})[c.destination],thumbnail:'C:/saved/thumb.png',modified:0,added:id,missing:false,tags:c.tags,projects:c.projects});
     return {ids:[id],added:1,reused:0,destination:c.destination};
   }
   throw Error(`Unexpected ${command}`);
 }};
 window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){let start=performance.now();while(!test()){if(performance.now()-start>5000)throw Error(`Timed out: ${label}`);await pause(20);}}
@@ -33,9 +42,9 @@ const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')]
 const paste=()=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));
 const checks=[];
 try{
-  await until(()=>document.querySelector('nav[aria-label=Library]'),'navigation');await pause(100);
+  await until(()=>document.querySelector('nav[aria-label=Library] button span'),'navigation');await pause(100);
   const names=[...document.querySelectorAll('nav[aria-label=Library] button span')].map(e=>e.textContent);
-  assert(names.slice(names.indexOf('Resources')+1).join('|')==='Fonts|CodePen|Brand Guidelines|Facebook Videos|Photography','Sidebar order');
+  assert(names.slice(names.indexOf('Resources')+1).join('|')==='Fonts|CodePen|Brand Guidelines|Facebook Videos|Recently added|Recently viewed','Sidebar order: '+names.join('|'));
   for (const name of ['fonts','codepen','facebook','brand-guidelines','resources']) {
     const icon=document.querySelector(`[data-sidebar-icon="${name}"]`);
     assert(icon && icon.getBoundingClientRect().width===16 && icon.getAttribute('aria-hidden')==='true', `Missing or incorrectly sized ${name} icon`);
@@ -148,6 +157,49 @@ try{
   assert(crop.width===400&&crop.height===300&&crop.x===0&&crop.y===0,'Whole image should not crop');
   assert(library.items[3].path==='https://codepen.io/example/pen/captured'&&library.items[3].thumbnail==='C:/staging/cropped.png','Editing thumbnail changed URL or failed to persist');
   checks.push('Edit thumbnail opens the crop directly; whole-image save replaces only the thumbnail');
+  assert(names[0]==='Websites'&&names[1]==='Links','Websites should lead General');
+  nav('Websites');await until(()=>!document.querySelector('.link-card'),'Empty Websites');
+  clipboard={files:[],url:'https://inspiring.example/'};document.querySelector('.link-board').tabIndex=-1;document.querySelector('.link-board').focus();paste();
+  await until(()=>document.querySelector('[aria-label="Website URL"]')?.value===clipboard.url,'Website URL prompt');
+  assert(!document.querySelector('.website-capture [type=submit]'),'Website flow requires confirmation');
+  const before=library.items.length;clipboard={files:[{path:'C:/staging/website.png',name:'Website.png'}],url:''};paste();
+  await until(()=>!document.querySelector('.website-capture')&&library.items.length===before+1,'Image paste auto saves website');
+  const website=library.items.at(-1);assert(website.source==='Websites'&&website.path==='https://inspiring.example/'&&website.thumbnail,'Website metadata incorrect');
+  const externalBefore=calls.filter(c=>c.command==='open_external_url').length;converted.length=0;
+  document.querySelector('.link-card-open').click();await until(()=>document.querySelector('.website-thumbnail[data-active=true]'),'Thumbnail scrolling activated');assert(!document.querySelector('.viewer'),'Thumbnail click opened side viewer');document.querySelector('.website-card-actions .subtle-button').click();await until(()=>document.querySelector('.viewer .zoom-image img'),'Full screenshot preview');
+  assert(calls.filter(c=>c.command==='open_external_url').length===externalBefore,'Thumbnail opened browser');
+  assert(converted.includes(website.thumbnail),'Preview did not use full-resolution image');
+  assert(!!document.querySelector('.viewer-docked')===(innerWidth>=1600),'Preview did not use standard responsive side layout');
+  assert(document.querySelector('.viewer header small').textContent==='1 / 1','Website preview count incorrect');window.__screenshotReady=true;await pause(700);
+  document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close preview');await pause(100);
+  document.querySelector('.website-card-actions .subtle-button').click();await until(()=>document.querySelector('.viewer'),'Preview button');
+  document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close button preview');await pause(100);
+  document.querySelector('.website-card-external').click();await until(()=>calls.some(c=>c.command==='open_external_url'&&c.args.url===website.path),'External icon opens browser');
+  assert(!document.querySelector('.viewer'),'External icon opened preview');
+  checks.push('Website thumbnail activates scrolling; Preview opens the full-resolution viewer; external icon opens the browser');
+  document.querySelector('.link-card-menu').click();await until(()=>button('Tags'),'Website tags action');button('Tags').click();await until(()=>button('Sports'),'Tag picker');button('Sports').click();await until(()=>library.items.at(-1).tags.includes(1),'Website tag persisted');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  checks.push('Websites leads General; URL then image paste saves once without confirmation; cards preview screenshots and offer tags');
+  document.querySelector('.link-card-menu').click();await until(()=>button('Open full-page screenshot'),'Screenshot action');button('Open full-page screenshot').click();await until(()=>calls.some(c=>c.command==='open_website_screenshot'),'Screenshot opens');
+  clipboard={files:[],url:'https://capture.example/'};document.querySelector('.link-board').focus();paste();
+  await until(()=>button('Capture with Chrome'),'Browser choice');button('Capture with Chrome').click();await until(()=>button('Continue capture'),'Attention pause');
+  const count=library.items.length;assert(document.querySelector('[aria-label="Close capture"]').disabled,'Running capture can be dismissed');
+  button('Cancel capture').click();await until(()=>document.querySelector('.website-auto-capture [role=alert]')?.textContent.includes('cancelled'),'Cancellation');
+  assert(library.items.length===count,'Cancelled capture saved an item');
+  button('Capture with Edge').click();await until(()=>button('Continue capture'),'Retry attention');button('Continue capture').click();
+  await until(()=>!document.querySelector('.website-capture')&&library.items.length===count+1,'Capture auto saves');
+  assert(calls.filter(c=>c.command==='capture_items').at(-1).args.input.thumbnail.path==='C:/staging/full-page.png','Full page not saved');
+  await pause(100);clipboard={files:[],url:'https://remembered.example/'};document.querySelector('.link-board').tabIndex=-1;document.querySelector('.link-board').focus();paste();
+  await until(()=>button('Continue capture'),'Remembered browser starts');
+  assert(calls.filter(c=>c.command==='capture_website').at(-1).args.browser==='edge','Browser preference not remembered');
+  button('Cancel capture').click();await until(()=>button('Capture with Chrome'),'Cancel remembered capture');
+  const checkbox=document.querySelector('.website-auto-capture input');checkbox.click();assert(!localStorage.getItem('website-capture-browser'),'Remember preference not cleared');
+  clipboard={files:[{path:'C:/staging/manual.png',name:'Manual.png'}],url:''};paste();await until(()=>!document.querySelector('.website-capture')&&library.items.length===count+2,'Manual fallback after cancel');
+  await pause(100);const cards=[...document.querySelectorAll('.link-card')];cards[0].querySelector('.website-card-actions .subtle-button').click();await until(()=>document.querySelector('.viewer'),'Multiple website preview');
+  const first=document.querySelector('.viewer').dataset.itemId;document.querySelector('[aria-label="Next image"]').click();await until(()=>document.querySelector('.viewer')?.dataset.itemId!==first,'Next website screenshot');
+  document.querySelector('[aria-label="Previous image"]').click();await until(()=>document.querySelector('.viewer')?.dataset.itemId===first,'Previous website screenshot');
+  document.querySelector('[aria-label="Close viewer"]').click();await until(()=>!document.querySelector('.viewer'),'Close navigation preview');
+  checks.push('Next and previous navigate website screenshots without leaving the app');
+  checks.push('Automatic capture supports browser choice, progress, attention/continue, cancel without saving, retry, remembered browser, full-page action and manual fallback');
   document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,checks,error:String(error),calls:calls.slice(-6)});}
 </script></body></html>

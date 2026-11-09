@@ -2,6 +2,55 @@ use super::{content, db, library};
 use db::Change;
 use std::fs;
 #[test]
+fn image_thumbnail_geometry_keeps_tall_pages_sharp_without_unbounded_images() {
+    assert_eq!(library::image_thumbnail_size(1200, 6000), (720, 3600));
+    assert_eq!(library::image_thumbnail_size(1200, 900), (720, 540));
+    assert_eq!(library::image_thumbnail_size(320, 2000), (320, 2000));
+    assert_eq!(library::image_thumbnail_size(20, 30), (20, 30));
+    for (width, height) in [(1200, 50000), (10000, 10000), (1, u32::MAX), (u32::MAX, 1), (u32::MAX, u32::MAX)] {
+        let (w, h) = library::image_thumbnail_size(width, height);
+        assert!(w > 0 && h > 0 && w <= 720 && h <= 16384);
+        assert!(w <= width && h <= height);
+        assert!((w as u64) * (h as u64) <= 8_000_000);
+    }
+}
+
+#[test]
+fn image_thumbnail_rebuilds_old_tall_cache_and_preserves_the_original() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("images");fs::create_dir(&root).unwrap();
+    let original = root.join("long-website.png");
+    // Fine rules and blocks stand in for text at the scale of a long web page.
+    let image = image::RgbImage::from_fn(1200, 6000, |x, y| {
+        let line = y % 90 < 5 && x > 100 && x < 1060;
+        let block = y % 600 > 80 && y % 600 < 310 && x > 100 && x < 570;
+        image::Rgb(if line { [25, 25, 25] } else if block { [82, 112, 148] } else { [250, 250, 250] })
+    });
+    image.save(&original).unwrap();
+    let original_bytes = fs::read(&original).unwrap();
+    let dbpath = temp.path().join("test.sqlite");db::init(&dbpath).unwrap();library::scan(&dbpath, &root).unwrap();
+    let item = db::load(&dbpath, false).unwrap().items.remove(0);
+    let cache = temp.path().join("cache");fs::create_dir(&cache).unwrap();
+    let old = cache.join(format!("v1-{}-{}-{}-thumbnail.jpg",item.id,item.modified,original_bytes.len()));
+    let old_image = image::DynamicImage::ImageRgb8(image).thumbnail(720,540);
+    image::codecs::jpeg::JpegEncoder::new_with_quality(fs::File::create(&old).unwrap(),82).encode_image(&old_image).unwrap();
+    assert_eq!(image::image_dimensions(&old).unwrap(), (108,540));
+    let generated = library::media(&dbpath, &cache, std::path::Path::new("unused"), item.id, "thumbnail").unwrap();
+    assert_ne!(std::path::Path::new(&generated), old);
+    assert_eq!(image::image_dimensions(&generated).unwrap(), (720,3600));
+    assert_eq!(fs::read(&original).unwrap(), original_bytes);
+    assert!(old.is_file());
+    let reuse = library::media(&dbpath, &cache, std::path::Path::new("unused"), item.id, "thumbnail").unwrap();
+    assert_eq!(reuse, generated);
+    db::connect(&dbpath).unwrap().execute("UPDATE items SET kind='video' WHERE id=?",[item.id]).unwrap();
+    assert_eq!(std::path::Path::new(&library::media(&dbpath, &cache, std::path::Path::new("unused"), item.id, "thumbnail").unwrap()),old.as_path(),"Video thumbnails retain the existing cache");
+    if let Some(output) = std::env::var_os("DESIGN_THUMBNAIL_QA_DIR") {
+        let output = std::path::PathBuf::from(output);fs::create_dir_all(&output).unwrap();
+        fs::copy(&old,output.join("before.jpg")).unwrap();fs::copy(&generated,output.join("after.jpg")).unwrap();
+    }
+}
+
+#[test]
 fn captures_stay_uncategorised_through_rescans_and_preserve_chosen_categories() {
     let temp=tempfile::tempdir().unwrap();let root=temp.path().join("Design");fs::create_dir(&root).unwrap();
     let path=temp.path().join("library.sqlite");db::init(&path).unwrap();let conn=db::connect(&path).unwrap();
@@ -125,8 +174,52 @@ fn replacing_thumbnail_preserves_link_and_memberships() {
     fs::remove_file(&file.path).unwrap();
     let (url,source,thumbnail):(String,String,String) = connection.query_row("SELECT path,source,thumbnail FROM items WHERE id=?",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
     assert_eq!(url,"https://codepen.io/a/pen/b"); assert_eq!(source,"CodePen");
-    assert_eq!(image::image_dimensions(thumbnail).unwrap(),(160,90));
+    assert_eq!(image::image_dimensions(&thumbnail).unwrap(),(160,90));
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    assert!(db::load(&path,false).unwrap().items[0].thumbnail.is_empty());
+    db::init(&path).unwrap();
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();
+    assert_eq!(db::load(&path,false).unwrap().items[0].thumbnail,thumbnail);
+    assert!(std::path::Path::new(&thumbnail).is_file());
     assert!(crate::thumbnail::replace(&path,id+1,&file).is_err());
+}
+#[test]
+fn creating_a_link_can_be_undone_and_redone_without_losing_its_project() {
+    let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");db::init(&path).unwrap();
+    db::change(&path,change("create_project",vec![],None,Some("Board"),None)).unwrap();
+    let project=db::load(&path,false).unwrap().projects[0].id;
+    db::change(&path,change("create_link",vec![],Some(project),Some("Example"),Some("https://example.com"))).unwrap();
+    let original=db::load(&path,false).unwrap().items.remove(0);
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    assert!(db::load(&path,false).unwrap().items.is_empty());
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    assert!(db::load(&path,false).unwrap().projects.is_empty());
+    db::init(&path).unwrap();
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();
+    let restored=db::load(&path,false).unwrap().items.remove(0);
+    assert_eq!(restored.id,original.id);assert_eq!(restored.path,original.path);assert_eq!(restored.projects,vec![project]);
+}
+#[test]
+fn captured_references_and_link_updates_roundtrip_without_deleting_originals() {
+    let temp=tempfile::tempdir().unwrap();let path=temp.path().join("library.sqlite");let root=temp.path().join("Design");fs::create_dir(&root).unwrap();db::init(&path).unwrap();
+    let conn=db::connect(&path).unwrap();db::set_setting(&conn,"root",root.to_str().unwrap()).unwrap();
+    let original=temp.path().join("reference.png");image::RgbImage::new(8,12).save(&original).unwrap();
+    db::change(&path,change("create_project",vec![],None,Some("Board"),None)).unwrap();let project=db::load(&path,false).unwrap().projects[0].id;
+    let file=content::capture(&path,capture_request(&original,vec![project],vec![])).unwrap();assert_eq!(file.history_labels,vec!["Add reference"]);
+    let stored=db::load(&path,false).unwrap().items[0].path.clone();
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();assert!(db::load(&path,false).unwrap().items.is_empty());
+    assert!(original.is_file());assert!(std::path::Path::new(&stored).is_file());
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();assert!(db::load(&path,false).unwrap().projects.is_empty());
+    for _ in 0..2{db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();}
+    assert_eq!(db::load(&path,false).unwrap().items[0].projects,vec![project]);
+    let mut request=capture_request(&original,vec![project],vec![]);request.files.clear();request.url="https://example.com/".into();
+    let link=content::capture(&path,request).unwrap();assert_eq!(link.history_labels,vec!["Create link"]);
+    let mut update=capture_request(&original,vec![],vec![]);update.files.clear();update.url="https://example.com/".into();update.destination="fonts".into();update.thumbnail=Some(content::CaptureFile{path:original.to_string_lossy().into_owned(),name:"reference.png".into()});
+    let changed=content::capture(&path,update).unwrap();assert_eq!(changed.history_labels.len(),1);
+    let after=db::load(&path,false).unwrap().items.into_iter().find(|i|i.id==link.ids[0]).unwrap();assert_eq!(after.source,"Fonts");assert!(!after.thumbnail.is_empty());
+    db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();let before=db::load(&path,false).unwrap().items.into_iter().find(|i|i.id==link.ids[0]).unwrap();assert!(before.source.is_empty());assert!(before.thumbnail.is_empty());
+    db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();let restored=db::load(&path,false).unwrap().items.into_iter().find(|i|i.id==link.ids[0]).unwrap();assert_eq!(restored.thumbnail,after.thumbnail);assert_eq!(restored.source,"Fonts");
 }
 #[test]
 fn clipboard_image_contains_original_pixels_and_transparency_without_writing_clipboard() {
@@ -203,6 +296,10 @@ fn resource_capture_seeding_move_restore_and_backup_preserve_destination() {
     assert_eq!(item.source, "Resources");
     assert_eq!(item.projects, vec![project]);
     assert_eq!(item.tags, vec![tag]);
+    assert_eq!(resource.moved_from.as_deref(), Some("Links"));
+    db::change(&path, change("undo_organisation", vec![], None, None, None)).unwrap();
+    assert_eq!(db::load(&path, false).unwrap().items.iter().find(|i| i.id == id).unwrap().source, "");
+    db::change(&path, change("redo_organisation", vec![], None, None, None)).unwrap();
     let backup = temp.path().join("metadata.json");
     db::export(&path, backup.clone()).unwrap();
     db::change(
@@ -803,18 +900,46 @@ fn chunked_capture_stays_in_staging_and_preserves_bytes() {
 }
 
 #[test]
+fn web_image_staging_preserves_original_and_rejects_pages() {
+    let temp = tempfile::tempdir().unwrap();
+    let original = temp.path().join("original.png");
+    image::RgbaImage::from_pixel(4, 3, image::Rgba([12,34,56,255])).save(&original).unwrap();
+    let bytes = fs::read(original).unwrap();
+    let staged = content::stage_image_bytes(temp.path(), &bytes).unwrap();
+    assert!(staged.name.ends_with(".png"));
+    assert_eq!(fs::read(staged.path).unwrap(), bytes);
+    assert!(content::stage_image_bytes(temp.path(), b"<html>Access denied</html>").is_err());
+    assert!(content::stage_web_image(temp.path(), "file:///private/image.png").is_err());
+    // Exercise HTTP without depending on a public website.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/image", listener.local_addr().unwrap());
+    let served = bytes.clone();
+    let server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 4096];
+        stream.read(&mut request).unwrap();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", served.len()).unwrap();
+        stream.write_all(&served).unwrap();
+    });
+    let downloaded = content::stage_web_image(temp.path(), &address).unwrap();
+    server.join().unwrap();
+    assert_eq!(fs::read(downloaded.path).unwrap(), bytes);
+}
+
+#[test]
 fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("boards.sqlite");
     db::init(&path).unwrap();
     assert!(db::load(&path, false).unwrap().items.is_empty());
     let original = temp.path().join("pasted.png");
-    image::RgbaImage::from_pixel(1600, 1000, image::Rgba([12,34,56,78])).save(&original).unwrap();
+    image::RgbaImage::from_pixel(1600, 4200, image::Rgba([12,34,56,78])).save(&original).unwrap();
     db::change(&path, change("create_project",vec![],None,Some("Website"),None)).unwrap();
     let lib=db::load(&path,false).unwrap();
     let project=lib.projects[0].id;
     let tag=lib.tags[0].id;
-    for (destination, source, url) in [("fonts","Fonts","https://fonts.example/typeface"),("codepen","CodePen","https://codepen.io/example/pen/123"),("brand-guidelines","Brand Guidelines","https://brand.example/guidelines")] {
+    for (destination, source, url) in [("websites","Websites","https://inspiring.example/"),("fonts","Fonts","https://fonts.example/typeface"),("codepen","CodePen","https://codepen.io/example/pen/123"),("brand-guidelines","Brand Guidelines","https://brand.example/guidelines")] {
         let mut c=capture_request(&original,vec![project],vec![tag]);
         c.files.clear();c.source_url.clear();c.url=url.into();c.destination=destination.into();
         c.thumbnail=Some(content::CaptureFile{path:original.to_string_lossy().into_owned(),name:"pasted.png".into()});
@@ -825,23 +950,36 @@ fn thumbnail_collections_capture_reuse_and_backup_without_media_import() {
         assert_eq!(item.source,source);assert_eq!(item.kind,"link");
         assert_eq!(item.projects,vec![project]);assert_eq!(item.tags,vec![tag]);
         let thumbnail=image::open(&item.thumbnail).unwrap();
-        assert_eq!((thumbnail.width(),thumbnail.height()),(1600,1000));
+        assert_eq!((thumbnail.width(),thumbnail.height()),if destination=="websites"{(1600,4200)}else{(610,1600)});
         assert_eq!(thumbnail.to_rgba8().get_pixel(0,0).0,[12,34,56,78]);
         assert!(std::path::Path::new(&item.thumbnail).starts_with(temp.path().join("link-thumbnails")));
         let mut c=capture_request(&original,vec![],vec![]);c.files.clear();c.source_url.clear();c.url=url.into();c.destination=destination.into();
+        if destination=="websites"{c.thumbnail=Some(content::CaptureFile{path:original.to_string_lossy().into_owned(),name:"pasted.png".into()});}
         assert_eq!(content::capture(&path,c).unwrap().reused,1);
     }
-    assert_eq!(db::load(&path,false).unwrap().items.len(),3);
+    assert_eq!(db::load(&path,false).unwrap().items.len(),4);
     fs::remove_file(&original).unwrap();
     let backup=temp.path().join("boards-backup.json");db::export(&path,backup.clone()).unwrap();
     let restored=temp.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();
     let lib=db::load(&restored,false).unwrap();
-    assert_eq!(lib.items.len(),3);
+    assert_eq!(lib.items.len(),4);
     assert!(lib.items.iter().any(|i|i.source=="Fonts"));
     for item in &lib.items {assert!(!item.thumbnail.is_empty());assert!(std::path::Path::new(&item.thumbnail).is_file());assert_eq!(item.projects.len(),1);assert_eq!(item.tags.len(),1);}
     assert!(lib.items.iter().any(|i|i.source=="CodePen"));assert!(lib.items.iter().any(|i|i.source=="Brand Guidelines"));
     let mut invalid=capture_request(temp.path(),vec![],vec![]);invalid.files.clear();invalid.url="https://valid.example/".into();invalid.destination="unknown".into();
     assert!(content::capture(&path,invalid).is_err());
+    let mut missing_image=capture_request(temp.path(),vec![],vec![]);missing_image.files.clear();missing_image.url="https://new.example/".into();missing_image.destination="websites".into();assert!(content::capture(&path,missing_image).is_err());
+    let mut invalid_url=capture_request(temp.path(),vec![],vec![]);invalid_url.files.clear();invalid_url.url="not a URL".into();invalid_url.destination="websites".into();assert!(content::capture(&path,invalid_url).is_err());
+    assert!(lib.items.iter().any(|i|i.source=="Websites"));
+    let drive=tempfile::tempdir().unwrap();
+    let exported=crate::library_export::export(&path,drive.path(),"Websites",&std::sync::atomic::AtomicBool::new(false),&mut |_|{}).unwrap();
+    let moved=drive.path().join("External Drive");fs::rename(exported.path,&moved).unwrap();
+    crate::library_export::verify(&moved).unwrap();
+    let portable=temp.path().join("portable.sqlite");db::init(&portable).unwrap();db::import(&portable,crate::library_export::metadata_path(&moved)).unwrap();
+    let lib=db::load(&portable,false).unwrap();let website=lib.items.iter().find(|i|i.source=="Websites").unwrap();
+    let image=image::open(&website.thumbnail).unwrap();assert_eq!((image.width(),image.height()),(1600,4200));
+    assert!(std::path::Path::new(&website.thumbnail).starts_with(moved.canonicalize().unwrap()));
+    assert_eq!(website.tags.len(),1);assert_eq!(website.projects.len(),1);
 }
 
 #[test]
@@ -979,7 +1117,7 @@ fn organisation_history_redo_roundtrips_all_actions_and_survives_restarts() {
       (3,'https://old.example/','Old link','link','',3);").unwrap();
     let state=|| {
         let mut value=serde_json::to_value(db::load(&path,false).unwrap()).unwrap();
-        for key in ["undo_label","undo_count","redo_label","redo_count","recent_projects"] {value.as_object_mut().unwrap().remove(key);}
+        for key in ["undo_entries","undo_label","undo_count","redo_label","redo_count","recent_projects"] {value.as_object_mut().unwrap().remove(key);}
         value
     };
     let mut states=vec![state()];
@@ -1073,4 +1211,70 @@ fn pattern_texture_resources_upgrade_once_and_preserve_user_changes() {
     db::change(&path, change("remove_items", vec![promoted.id], None, None, None)).unwrap();
     crate::resources::seed(&conn).unwrap();
     assert!(!db::load(&path, false).unwrap().items.iter().any(|i| i.id == promoted.id));
+}
+
+#[test]
+fn contact_sheet_saves_a_decodable_png_and_preserves_other_destinations() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("Sheet.png");
+    std::fs::write(&path, b"previous sheet").unwrap();
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(20, 10).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    crate::write_contact_sheet(&path, png.get_ref()).unwrap();
+    assert_eq!(image::open(&path).unwrap().width(), 20);
+    let other = temp.path().join("notes.txt");
+    std::fs::write(&other, b"original").unwrap();
+    assert!(crate::write_contact_sheet(&other, png.get_ref()).is_err());
+    assert_eq!(std::fs::read(&other).unwrap(), b"original");
+}
+
+
+#[test]
+fn component_folders_add_remove_undo_and_category_moves_are_atomic() {
+    let temp=tempfile::tempdir().unwrap();let path=temp.path().join("components.sqlite");db::init(&path).unwrap();
+    let conn=db::connect(&path).unwrap();
+    conn.execute_batch("INSERT INTO items(id,path,name,kind,source,added) VALUES (1,'one.png','One','image','Design/web_design',1),(2,'two.png','Two','image','Design/branding',2),(3,'https://example.com','Link','link','',3); INSERT INTO item_categories VALUES(1,'Components / Navbars');").unwrap();
+    let apply=|action,ids,value|db::change(&path,change(action,ids,None,None,value));
+    let folders=||db::load(&path,false).unwrap().items[0].component_folders.clone();
+    apply("set_category",vec![1],Some("Components / Headers")).unwrap();
+    assert_eq!(folders(),vec!["Components / Headers","Components / Navbars"]);
+    db::init(&path).unwrap();assert_eq!(folders().len(),2);
+    apply("set_category",vec![1],Some("Components / Headers")).unwrap();assert_eq!(folders().len(),2);
+    apply("remove_component_folder",vec![1],Some("Components / Headers")).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    apply("undo_organisation",vec![],None).unwrap();assert_eq!(folders().len(),2);
+    apply("redo_organisation",vec![],None).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    apply("remove_component_folder",vec![1],Some("Components / Navbars")).unwrap();assert!(folders().is_empty());
+    assert_eq!(db::load(&path,false).unwrap().items[0].category.as_deref(),Some("Components / Uncategorised"));
+    apply("undo_organisation",vec![],None).unwrap();
+    apply("set_category",vec![1],Some("branding")).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    apply("set_category",vec![1],Some("photography")).unwrap();
+    assert_eq!(db::load(&path,false).unwrap().items[0].category.as_deref(),Some("photography"));
+    apply("undo_organisation",vec![],None).unwrap();
+    apply("undo_organisation",vec![],None).unwrap();assert_eq!(folders(),vec!["Components / Navbars"]);
+    assert!(apply("set_category",vec![1,999999],Some("Components / Footers")).is_err());assert_eq!(folders(),vec!["Components / Navbars"]);
+    assert!(apply("set_category",vec![3],Some("Components / Headers")).is_ok());
+    assert!(apply("remove_component_folder",vec![1],Some("branding")).is_err());
+    // Adding across a mixed selection preserves each item's existing memberships.
+    apply("set_category",vec![1,2],Some("Components / Headers")).unwrap();assert_eq!(folders().len(),2);
+    assert_eq!(db::load(&path,false).unwrap().items[1].component_folders,vec!["Components / Headers"]);
+}
+
+#[test]
+fn component_links_persist_and_undo_memberships() {
+ let temp=tempfile::tempdir().unwrap();let path=temp.path().join("links.sqlite");db::init(&path).unwrap();
+ db::connect(&path).unwrap().execute("INSERT INTO items(id,path,name,kind,source,added) VALUES(1,'https://webflow.com/blog/404','404 inspiration','link','',1)",[]).unwrap();
+ let apply=|action,value|db::change(&path,change(action,vec![1],None,None,value));
+ apply("set_category",Some("Components / 404 pages")).unwrap();
+ let read=||db::load(&path,false).unwrap().items.remove(0);
+ assert_eq!(read().category.as_deref(),Some("Components / Uncategorised"));
+ assert_eq!(read().component_folders,vec!["Components / 404 pages"]);
+ apply("undo_organisation",None).unwrap();assert!(read().category.is_none());
+ apply("redo_organisation",None).unwrap();assert_eq!(read().component_folders.len(),1);
+ apply("set_category",Some("Components / Headers")).unwrap();assert_eq!(read().component_folders.len(),2);
+ apply("remove_component_folder",Some("Components / Headers")).unwrap();assert_eq!(read().component_folders,vec!["Components / 404 pages"]);
+ assert!(apply("set_category",Some("branding")).is_err());
+ db::init(&path).unwrap();assert_eq!(read().path,"https://webflow.com/blog/404");assert_eq!(read().component_folders.len(),1);
+ let backup=temp.path().join("links.json");db::export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();
+ let link=db::load(&restored,false).unwrap().items.remove(0);assert_eq!(link.category.as_deref(),Some("Components / Uncategorised"));assert_eq!(link.component_folders,vec!["Components / 404 pages"]);
+
 }

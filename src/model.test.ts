@@ -59,6 +59,12 @@ it("Captures is a storage folder; unassigned captures belong to Uncategorised",(
   equal(filterItems([capture],{...defaults,category:""}).length,1);
 });
 describe("combined library views", () => {
+  it("matches all selected tags across collections in the recent views", () => {
+    const board = {...items[2], source:"Fonts", tags:[1,2]};
+    const library = [items[0],board];
+    equal(filterItems(library,{...defaults,tags:[1,2],includeCollections:true}).length,2);
+    equal(filterItems(library,{...defaults,tags:[1,2],includeCollections:true,tagMode:"all"}),[board]);
+  });
   it("uses category overrides instead of disk folders, including explicit uncategorised",()=>{
     const original={...items[0],source:"Design/3d/components"};
     const moved={...original,category:"branding"};
@@ -162,4 +168,82 @@ it("Photography is a category, with explicit moves taking precedence",()=>{
   equal(categoryOf({...photo,category:""}),"");
   equal(categoryOf({...photo,category:"branding"}),"branding");
   equal(filterItems([photo],{...defaults,category:"Photography"}).map(i=>i.id),[1]);
+});
+
+
+describe("component folder memberships",()=>{
+  it("shows one component in both folders, once in All Components, and not in the inbox",()=>{
+    const item={...items[0],category:"Components / Uncategorised",component_folders:["Components / Navbars","Components / Headers"]};
+    for(const category of ["Components / Navbars","Components / Headers","All Components"])
+      equal(filterItems([item],{...defaults,category}).map(i=>i.id),[item.id]);
+    equal(filterItems([item],{...defaults,category:"Components / Uncategorised"}),[]);
+    equal(filterItems([{...item,component_folders:[]}],{...defaults,category:"Components / Uncategorised"}).length,1);
+  });
+  it("keeps legacy and cross-section folder memberships visible",()=>{
+    equal(filterItems([{...items[0],category:"Components / Navbars"}],{...defaults,category:"Components / Navbars"}).length,1);
+    const regular={...items[0],category:"branding",component_folders:["Components / Navbars"]};
+    equal(filterItems([regular],{...defaults,category:"Components / Navbars"}).length,1);
+    equal(filterItems([regular],{...defaults,category:"branding"}).length,1);
+  });
+});
+
+it("component links appear in their folder and aggregate, separately from ordinary Links",()=>{
+ const link={...items[0],kind:'link' as const,path:'https://webflow.com/blog/404',source:'',category:'Components / Uncategorised',component_folders:['Components / 404 pages']};
+ for(const category of ['Components / 404 pages','All Components'])equal(filterItems([link],{...defaults,category}).length,1);
+ equal(filterItems([link],{...defaults,category:'Components / Headers'}).length,0);
+ equal(filterItems([link],{...defaults,linksOnly:true}).length,0);
+});
+
+it("recent sorting uses destination arrival without changing import order or other component folders",()=>{
+ const older={...items[0],id:10,added:10,category:"Components / Uncategorised",component_folders:["Components / Headers","Components / Navbars"],category_added:{"Components / Headers":300}};
+ const newer={...older,id:20,added:200,category_added:{}};
+ equal(filterItems([older,newer],{...defaults,category:"Components / Headers"}).map(i=>i.id),[10,20]);
+ equal(filterItems([older,newer],{...defaults,category:"Components / Navbars"}).map(i=>i.id),[20,10]);
+ equal(filterItems([older,newer],defaults).map(i=>i.id),[20,10]);
+ const design={...older,category:"Branding",component_folders:[],category_added:{Branding:300}};
+ equal(filterItems([design,{...newer,category:"Branding",component_folders:[]}],{...defaults,category:"Branding"}).map(i=>i.id),[10,20]);
+});
+
+it("design folders filter independently and Uncategorised excludes filed designs",()=>{
+ const design={...items[0],category:"Social Media",design_folders:["Branding","Social Media"]};
+ equal(filterItems([design],{...defaults,category:"Branding"}).length,1);
+ equal(filterItems([design],{...defaults,category:"Social Media"}).length,1);
+ equal(filterItems([design],{...defaults,category:""}).length,0);
+ equal(filterItems([{...design,category:"",design_folders:[]}],{...defaults,category:""}).length,1);
+ equal(filterItems([{...design,category:"Components / Uncategorised",design_folders:[]}],{...defaults,category:""}).length,0);
+});
+
+it("shared references appear in both sections with independent inboxes",()=>{
+ const shared={...items[0],category:"Illustration",design_folders:["Illustration"],component_folders:["Components / Heroes"]};
+ for(const category of ["Illustration","Components / Heroes","All Components"])equal(filterItems([shared],{...defaults,category}).length,1);
+ for(const category of ["","Components / Uncategorised"])equal(filterItems([shared],{...defaults,category}).length,0);
+ const designInbox={...shared,category:"Components / Uncategorised",design_folders:[""]};
+ equal(filterItems([designInbox],{...defaults,category:""}).length,0);
+ equal(filterItems([designInbox],{...defaults,category:"Components / Heroes"}).length,1);
+ const componentInbox={...shared,component_folders:["Components / Uncategorised"]};
+ equal(filterItems([componentInbox],{...defaults,category:"Components / Uncategorised"}).length,0);
+ equal(filterItems([componentInbox],{...defaults,category:"Illustration"}).length,1);
+});
+
+it("Hero and Headers share one Header folder without duplicate references",()=>{
+ const hero={...items[0],id:21,category:"Components / Heroes",component_folders:["Components / Heroes","Components / Headers"],category_added:{"Components / Heroes":400}};
+ const header={...items[0],id:22,category:"Components / Headers",added:300};
+ for(const category of ["Components / Headers","Components / Heroes","Components / Header"]){equal(filterItems([header,hero],{...defaults,category}).map(i=>i.id),[21,22]);}
+ equal(filterItems([hero],{...defaults,category:"Components / Uncategorised"}),[]);
+});
+
+it("stale inbox markers cannot keep a moved reference in the previous section",()=>{
+ const templates={...items[0],category:"Components / Uncategorised",component_folders:["Components / Templates"],design_folders:[""]};
+ equal(filterItems([templates],{...defaults,category:""}).length,0);
+ equal(filterItems([templates],{...defaults,category:"Components / Templates"}).length,1);
+ const design={...templates,category:"Illustration",design_folders:["Illustration"],component_folders:["Components / Uncategorised"]};
+ equal(filterItems([design],{...defaults,category:"Components / Uncategorised"}).length,0);
+ equal(filterItems([design],{...defaults,category:"Illustration"}).length,1);
+});
+
+it("Websites stays separate from Links and filters by existing tags",()=>{
+ const website={...items[0],kind:'link' as const,path:'https://inspiring.example/',source:'Websites',thumbnail:'thumb.png',tags:[4]};
+ equal(filterItems([website],{...defaults,collection:'Websites',tags:[4]}).length,1);
+ equal(filterItems([website],{...defaults,collection:'Websites',tags:[5]}).length,0);
+ equal(filterItems([website],{...defaults,linksOnly:true}).length,0);
 });

@@ -22,7 +22,7 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
-createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App)));
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode, null, React.createElement(App,{startOnHome:false})));
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(test, label) {
   const start = performance.now();
@@ -34,12 +34,14 @@ function key(value) { document.activeElement.dispatchEvent(new KeyboardEvent('ke
 async function advance(count, direction = 'ArrowRight') {
   await pause(100);
   for (let n = 0; n < count; n++) {
+    window.__checkProgress = `advance ${n}/${count}`;
     const before = viewer()?.dataset.itemId;
     key(direction);
     await until(() => viewer()?.dataset.itemId !== before, 'advance viewer');
   }
 }
 async function returned(id, close = 'Escape') {
+  window.__checkProgress = `return ${id}`;
   if (close === 'Escape') key('Escape');
   else document.querySelector('.viewer [aria-label="Close viewer"]').click();
   await until(() => !viewer() && document.activeElement?.closest('.card')?.dataset.itemId === String(id), `focus item ${id}`);

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { componentInbox } from "./componentsLibrary";
 import { categoryLabel } from "./model";
 
 type Feedback = { count: number; x: number; y: number; action: string };
@@ -20,14 +21,14 @@ export default function useItemDragFeedback(options:Options) {
       if(session?.host.hasPointerCapture(session.id))session.host.releasePointerCapture(session.id);
       document.body.classList.remove('dragging-items');
       count.current=0;setFeedback(null);ghost.current?.remove();ghost.current=null;
-      document.querySelectorAll('.project-row.drop-target,.source-item.drop-target').forEach(row=>row.classList.remove('drop-target'));
+      document.querySelectorAll('.project-row.drop-target,.general-nav.drop-target,.source-item.drop-target,.sidebar-heading.drop-target').forEach(row=>row.classList.remove('drop-target'));
     };
     const show=(element:Element|null,x:number,y:number)=>{
       if(!count.current)return;
       const sidebar=element?.closest('.sidebar');
       const target=element?.closest<HTMLElement>('[data-category],[data-project-id]');
       const category=target?.dataset.category;
-      const action=category!==undefined?`Move to ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
+      const action=target?.dataset.sectionLabel?`Add to ${target.dataset.sectionLabel} · Uncategorised`:category!==undefined?`${category&&category!==componentInbox?"Add to":"Set"} ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
       // Keep the badge outside the sidebar so every destination stays readable.
       const left=sidebar?sidebar.getBoundingClientRect().right+12:x+18;
       setFeedback({count:count.current,x:Math.max(8,Math.min(left,window.innerWidth-272)),y:Math.max(8,Math.min(y+18,window.innerHeight-48)),action});
@@ -38,12 +39,13 @@ export default function useItemDragFeedback(options:Options) {
     const highlight=(session:PointerDrag)=>{
       const element=document.elementFromPoint(session.x,session.y);
       const target=element?.closest('[data-category],[data-project-id]');
-      document.querySelectorAll('.source-item.drop-target,.project-row.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
+      document.querySelectorAll('.source-item.drop-target,.sidebar-heading.drop-target,.project-row.drop-target,.general-nav.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
       target?.classList.add('drop-target');show(element,session.x,session.y);
     };
     const scroll=()=>{
       const session=pointer.current;if(!session?.active)return;
-      const list=document.querySelector<HTMLElement>('.source-list');
+      const inner=document.elementFromPoint(session.x,session.y)?.closest<HTMLElement>('.section-reveal-inner > nav,.sidebar-section-body');
+      const list=inner&&inner.scrollHeight>inner.clientHeight?inner:document.querySelector<HTMLElement>('.sidebar-scroll');
       if(list){const rect=list.getBoundingClientRect();if(session.x>=rect.left&&session.x<=rect.right&&session.y>=rect.top&&session.y<=rect.bottom){
         const speed=session.y<rect.top+28?-Math.ceil((rect.top+28-session.y)/3):session.y>rect.bottom-28?Math.ceil((session.y-rect.bottom+28)/3):0;
         if(speed){list.scrollTop+=speed;highlight(session);}
@@ -102,8 +104,8 @@ export default function useItemDragFeedback(options:Options) {
     suppressClick.current=false;
     if(!latest.current.enabled||e.button!==0||!e.isPrimary)return;
     const target=e.target instanceof Element?e.target:null;
-    const card=target?.closest<HTMLElement>('.card[data-item-id]');
-    if(!card||target?.closest('button:not(.card-open),input,textarea,select'))return;
+    const card=target?.closest<HTMLElement>('.card[data-item-id],.collection-reference[data-item-id]');
+    if(!card||target?.closest('button:not(.card-open):not(.collection-reference-open),input,textarea,select'))return;
     pointer.current={id:e.pointerId,ids:latest.current.ids(Number(card.dataset.itemId)),startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,active:false,host:e.currentTarget};
   };
   const start=(e:DragEvent)=>{

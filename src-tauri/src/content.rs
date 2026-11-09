@@ -2,7 +2,7 @@ use crate::{
     db::{self, err, Result},
     library,
 };
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -72,10 +72,6 @@ fn store(db: &Connection, id: i64, fp: &Fingerprint) -> Result<()> {
     db.execute("INSERT INTO fingerprints VALUES(?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET size=excluded.size,modified=excluded.modified,file_hash=excluded.file_hash,pixel_hash=excluded.pixel_hash",params![id,fp.size,fp.modified,fp.file,fp.pixels]).map_err(err)?;
     Ok(())
 }
-pub fn index(db_path: &Path) -> Result<usize> {
-    index_with_progress(db_path, &mut |_| {})
-}
-
 #[derive(Clone, Serialize, Debug)]
 pub struct DuplicateProgress {
     pub phase: &'static str,
@@ -301,6 +297,9 @@ pub struct Capture {
 }
 #[derive(Serialize)]
 pub struct CaptureResult {
+    pub history_labels: Vec<String>,
+    pub move_label: Option<String>,
+    pub moved_from: Option<String>,
     pub destination: Option<&'static str>,
     pub ids: Vec<i64>,
     pub added: usize,
@@ -337,12 +336,31 @@ pub(crate) fn attach(db: &Connection, id: i64, c: &Capture) -> Result<()> {
     }
     Ok(())
 }
+fn attachment_history(db:&Connection,id:i64,c:&Capture)->Result<Vec<crate::history::Patch>> {
+    use crate::history::Patch;
+    let mut patches=vec![];
+    for (project,ids) in [(true,&c.projects),(false,&c.tags)] {
+        let mut seen=HashSet::new();
+        for label in ids {
+            if !seen.insert(label) {continue;}
+            let sql=if project {"SELECT favourite FROM item_projects WHERE item_id=? AND label_id=?"}else{"SELECT 0 FROM item_tags WHERE item_id=? AND label_id=?"};
+            let previous:Option<i64>=db.query_row(sql,params![id,label],|r|r.get(0)).optional().map_err(err)?;
+            if previous.is_none(){patches.push(Patch::Member(project,id,*label,previous));}
+        }
+    }
+    let source:String=db.query_row("SELECT source_url FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?;
+    if source.is_empty()&&!c.source_url.trim().is_empty(){patches.push(Patch::SourceUrl(id,source));}
+    Ok(patches)
+}
 // Remove a newly written thumbnail if metadata saving fails at any point.
 struct PendingThumbnail(Option<PathBuf>);
 impl Drop for PendingThumbnail {
     fn drop(&mut self) { if let Some(path) = &self.0 { let _ = fs::remove_file(path); } }
 }
 pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
+    capture_with_progress(db_path,c,&mut |_|{})
+}
+pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMut(DuplicateProgress)) -> Result<CaptureResult> {
     if !c.source_url.trim().is_empty() {
         db::valid_url(&c.source_url)?;
     }
@@ -363,6 +381,9 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
         }
     }
     let mut result = CaptureResult {
+        history_labels: vec![],
+        move_label: None,
+        moved_from: None,
         destination: None,
         ids: vec![],
         added: 0,
@@ -370,6 +391,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
     };
     if c.files.is_empty() {
         let (destination, collection) = match c.destination.as_str() {
+            "websites" => ("websites", "Websites"),
             "fonts" => ("fonts", "Fonts"),
             "codepen" => ("codepen", "CodePen"),
             "brand-guidelines" => ("brand-guidelines", "Brand Guidelines"),
@@ -377,6 +399,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             "links" | "" => if c.resource { ("resources", "Resources") } else { ("links", "") },
             _ => return Err("Unknown link collection".into()),
         };
+        if destination=="websites"&&c.thumbnail.is_none(){return Err("Add an image for this website.".into());}
         result.destination = Some(destination);
         let url = url::Url::parse(db::valid_url(&c.url)?)
             .map_err(err)?
@@ -392,7 +415,7 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             fs::create_dir_all(&directory).map_err(err)?;
             let path = directory.join(format!("{}.png", nonce()));
             thumbnail.0 = Some(path.clone());
-            image.thumbnail(image.width().min(1600), image.height().min(1600)).save(&path).map_err(err)?;
+            if destination=="websites"{image.save(&path).map_err(err)?;}else{image.thumbnail(image.width().min(1600), image.height().min(1600)).save(&path).map_err(err)?;}
         }
         let mut stmt = db
             .prepare("SELECT id,path FROM items WHERE kind='link'")
@@ -431,8 +454,25 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             result.added = 1;
             tx.last_insert_rowid()
         };
+        let mut patches=attachment_history(&tx,id,&c)?;
+        if existing.is_none(){patches.push(crate::history::Patch::Archived(id,true));}
+        if existing.is_some(){
+            let archived:bool=tx.query_row("SELECT archived FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?;
+            if archived {patches.push(crate::history::Patch::Archived(id,true));}
+            if thumbnail.0.is_some(){let previous=tx.query_row("SELECT thumbnail FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?;patches.push(crate::history::Patch::Thumbnail(id,previous));}
+        }
         tx.execute("UPDATE items SET archived=0 WHERE id=?", [id])
             .map_err(err)?;
+        if existing.is_some() {
+            let previous: String = tx.query_row("SELECT source FROM items WHERE id=?", [id], |r| r.get(0)).map_err(err)?;
+            if previous != collection && !(collection == "Resources" && previous.starts_with("Resources/")) {
+                let label = if previous.is_empty() { "Links" } else { &previous };
+                let move_label = format!("Move {} from {}", url, label);
+                patches.push(crate::history::Patch::Source(id,previous.clone()));
+                result.move_label = Some(move_label);
+                result.moved_from = Some(label.to_string());
+            }
+        }
         if collection == "Resources" {
             tx.execute(
                 "UPDATE items SET source='Resources' WHERE id=? AND source NOT LIKE 'Resources/%'",
@@ -447,38 +487,52 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             tx.execute("UPDATE items SET thumbnail=? WHERE id=?", params![path.to_string_lossy(), id]).map_err(err)?;
         }
         attach(&tx, id, &c)?;
+        if !patches.is_empty(){
+            let label=result.move_label.clone().unwrap_or_else(||if existing.is_some(){"Update saved link"}else{"Create link"}.to_owned());
+            crate::history::record(&tx,&label,patches)?;result.history_labels.push(label);
+        }
         tx.commit().map_err(err)?;
         thumbnail.0.take();
         result.ids.push(id);
         return Ok(result);
     }
-    index(db_path)?;
+    index_with_progress(db_path,&mut |mut p|{p.phase="checking";progress(p);})?;
+    let started=Instant::now();
+    let mut report=|checked:usize,current:String|{let elapsed=started.elapsed().as_millis() as u64;progress(DuplicateProgress{phase:"saving",checked,total:c.files.len(),current,elapsed_ms:elapsed,remaining_seconds:if checked>0&&elapsed>=2000{Some(((c.files.len()-checked) as u64*elapsed/checked as u64).div_ceil(1000))}else{None}});};
     let root = crate::sources::root(&db, &c.source)?
         .canonicalize()
         .map_err(err)?;
-    let destination = root.join("Captures");
+    let managed=db::setting(&db,"managed_root").is_some();
+    let destination = if managed {root.clone()}else{root.join("Captures")};
     fs::create_dir_all(&destination).map_err(err)?;
     let destination = destination.canonicalize().map_err(err)?;
     if !destination.starts_with(&root) {
         return Err("Captures must be inside your source folder.".into());
     }
-    for input in &c.files {
+    for (position,input) in c.files.iter().enumerate() {
+        report(position,input.name.clone());
         let path = PathBuf::from(&input.path).canonicalize().map_err(err)?;
         let kind = library::kind(&path).ok_or("Unsupported file type")?;
         let fp = fingerprint(&path)?;
         if let Some(id) = matching(&db, &fp, &root)? {
             let tx = db.transaction().map_err(err)?;
+            let patches=attachment_history(&tx,id,&c)?;
             attach(&tx, id, &c)?;
+            if !patches.is_empty(){crate::history::record(&tx,"Update captured reference",patches)?;result.history_labels.push("Update captured reference".to_owned());}
             tx.commit().map_err(err)?;
             result.ids.push(id);
             result.reused += 1;
+            report(position+1,input.name.clone());
             continue;
         }
         let original = Path::new(&input.name)
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("Capture.png");
-        let target = destination.join(format!("{}-{original}", nonce()));
+        let target = if managed {
+            let mut used=fs::read_dir(&destination).map_err(err)?.filter_map(|e|e.ok()).map(|e|format!("/{0}",e.file_name().to_string_lossy()).to_lowercase()).collect();
+            destination.join(crate::library_export::allocate_filename(if c.name.trim().is_empty(){Path::new(original).file_stem().and_then(|s|s.to_str()).unwrap_or("Saved Image")}else{&c.name},Path::new(original),"",&mut used))
+        }else{destination.join(format!("{}-{original}", nonce()))};
         let temporary = target.with_extension("pending");
         fs::copy(&path, &temporary).map_err(err)?;
         if hash_file(&temporary)? != fp.file {
@@ -530,16 +584,58 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
             params![name, c.source_url.trim(), id],
         )
         .map_err(err)?;
+        let mut patches=attachment_history(&tx,id,&c)?;
+        patches.push(crate::history::Patch::Archived(id,true));
         attach(&tx, id, &c)?;
         store(&tx, id, &Fingerprint { modified, ..fp })?;
+        crate::history::record(&tx,"Add reference",patches)?;
+        result.history_labels.push("Add reference".to_owned());
         tx.commit().map_err(err)?;
         result.ids.push(id);
         result.added += 1;
+        report(position+1,input.name.clone());
     }
     result.ids.sort();
     result.ids.dedup();
     Ok(result)
 }
+pub fn stage_web_image(data: &Path, address: &str) -> Result<CaptureFile> {
+    let url = url::Url::parse(address).map_err(err)?;
+    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
+        return Err("Drop a public HTTP or HTTPS image.".into());
+    }
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build().map_err(err)?
+        .get(url).send().map_err(err)?.error_for_status().map_err(err)?;
+    const LIMIT: u64 = 40 * 1024 * 1024;
+    if response.content_length().is_some_and(|size| size > LIMIT) {
+        return Err("This image exceeds the 40 MB download limit.".into());
+    }
+    let mut bytes = Vec::new();
+    response.take(LIMIT + 1).read_to_end(&mut bytes).map_err(err)?;
+    if bytes.len() as u64 > LIMIT { return Err("This image exceeds the 40 MB download limit.".into()); }
+    stage_image_bytes(data, &bytes)
+}
+
+pub(crate) fn stage_image_bytes(data: &Path, bytes: &[u8]) -> Result<CaptureFile> {
+    let format = image::guess_format(bytes).map_err(|_| "The website did not provide an image. Try copying the image instead.".to_string())?;
+    let extension = match format {
+        image::ImageFormat::Jpeg => "jpg", image::ImageFormat::Png => "png",
+        image::ImageFormat::Gif => "gif", image::ImageFormat::WebP => "webp",
+        image::ImageFormat::Bmp => "bmp", image::ImageFormat::Tiff => "tif",
+        image::ImageFormat::Ico => "ico", image::ImageFormat::Avif => "avif",
+        _ => return Err("This image format is not supported.".into()),
+    };
+    let staged = stage_begin(data, &format!("Web image-{}.{}", db::now(), extension))?;
+    if let Err(error) = fs::write(&staged.path, bytes) {
+        let _ = fs::remove_file(&staged.path);
+        return Err(err(error));
+    }
+    Ok(staged)
+}
+
 pub fn stage_begin(data: &Path, name: &str) -> Result<CaptureFile> {
     let name = Path::new(name)
         .file_name()
@@ -789,4 +885,20 @@ pub fn restore(db_path: &Path, id: i64) -> Result<()> {
         return Err(err(e));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod capture_progress_tests {
+    use super::*;
+    #[test]
+    fn progress_counts_saved_and_reused_files_to_completion(){
+        let temp=tempfile::tempdir().unwrap();let db_path=temp.path().join("library.sqlite");db::init(&db_path).unwrap();
+        let root=temp.path().join("Design");fs::create_dir(&root).unwrap();db::set_setting(&db::connect(&db_path).unwrap(),"root",root.to_str().unwrap()).unwrap();
+        let source=temp.path().join("image.png");image::RgbaImage::from_pixel(2,2,image::Rgba([10,20,30,255])).save(&source).unwrap();
+        let input:Capture=serde_json::from_value(serde_json::json!({"files":[{"path":source,"name":"First.png"},{"path":source,"name":"Duplicate.png"}]})).unwrap();
+        let mut events=vec![];let result=capture_with_progress(&db_path,input,&mut |p|events.push(p)).unwrap();
+        assert_eq!((result.added,result.reused),(1,1));let saving:Vec<_>=events.iter().filter(|p|p.phase=="saving").collect();
+        assert_eq!(saving.first().unwrap().checked,0);assert_eq!(saving.last().unwrap().checked,2);assert_eq!(saving.last().unwrap().total,2);
+        assert!(saving.windows(2).all(|p|p[0].checked<=p[1].checked));assert_eq!(saving.last().unwrap().current,"Duplicate.png");
+    }
 }
