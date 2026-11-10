@@ -793,14 +793,21 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   },[lib.items]);
   const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
   const dropQueue = useRef(Promise.resolve());
+  const [pendingImports,setPendingImports]=useState(0);
+  const enqueueImport=useCallback((operation:()=>Promise<void>)=>{
+    setPendingImports(count=>count+1);
+    dropQueue.current=dropQueue.current.then(async()=>{
+      setReadingCapture(true);setImportProgress(null);
+      try{await operation();}catch(error){report(error);}
+      finally{setPendingImports(count=>count-1);setReadingCapture(false);setImportProgress(null);}
+    });
+  },[report]);
   const queueImageDrop = useCallback((data:DataTransfer, destination:string|null) => {
     // Read immediately: browser drag data is unavailable after the drop event returns.
     const payload = readWebDrop(data);
-    dropQueue.current = dropQueue.current.then(async () => {
+    enqueueImport(async () => {
       let files:CaptureDraft['files'] = [];
       try {
-        setReadingCapture(true);
-        setImportProgress(null);
         if(payload.files.length) files = (await stageFiles(payload.files,setImportProgress)).files;
         else if(payload.imageUrl) files = [await invoke('stage_web_image',{url:payload.imageUrl})];
         else if(!payload.sourceUrl) throw new Error('Drag the image itself, or copy and paste it into this folder.');
@@ -817,35 +824,42 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       } catch(error){report(error);}
       finally {
         await invoke('discard_capture',{paths:files.map(file=>file.path)}).catch(report);
-        setReadingCapture(false);setImportProgress(null);
       }
     });
-  },[mutate,recordCapture,refresh,report,showCaptureReceipt]);
+  },[mutate,recordCapture,refresh,report,showCaptureReceipt,enqueueImport]);
   const pasteCapture = useCallback(async () => {
+    if(category!==null&&!resourcesView&&!boardView&&!videoView&&!linksOnly){
+      // Read now, not when the import reaches the front of the queue. The clipboard
+      // helper still orders native reads behind preceding app copy operations.
+      const snapshot=readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error}));
+      const destination=category;
+      enqueueImport(async()=>{
+        const {draft,error}=await snapshot;
+        if(!draft)throw error;
+        try{
+          if(!draft.files.length&&!(draft.url&&(isComponent(destination)||destination===allComponents))){
+            setCapture({...draft,destination:linkDestination});return;
+          }
+          const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+          setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
+          const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
+            files:draft.files,url:draft.files.length?'':draft.url,name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/,''):'',
+            source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:'',resource:false,
+          }}));
+          recordCapture(result);
+          setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
+          if(result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+          showCaptureReceipt(result,await refresh(),destination);
+        }finally{await invoke('discard_capture',{paths:draft.files.map(file=>file.path)}).catch(report);}
+      });
+      return;
+    }
     if(pasteBusy.current)return;
     pasteBusy.current=true;
     try {
       setReadingCapture(true);
       const draft = await readClipboard<CaptureDraft>();
-      if(category!==null && (isComponent(category)||category===allComponents) && draft.url && !draft.files.length){
-        const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{files:[],url:draft.url,name:'',source:'Design',projects:[],tags:[],source_url:'',resource:false}}));
-        recordCapture(result);
-        if(result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(category)});
-        showCaptureReceipt(result,await refresh(),filingCategory(category));return;
-      }
       if(videoView && draft.url){setVideoDialog({url:draft.url});return;}
-      if(category!==null && draft.files.length && !resourcesView && !boardView && !videoView && !linksOnly){
-        try {
-          const result=await appHistory.perform(()=>invoke<CaptureResult>("capture_items",{input:{
-            files:draft.files,url:"",name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/, ""):"",
-            source:category==="Photography"?"Photography":"Design",projects:[],tags:[],source_url:"",resource:false,
-          }}));
-          recordCapture(result);
-          if(result.ids.length)await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
-          showCaptureReceipt(result,await refresh(),category);
-        } finally {await invoke("discard_capture",{paths:draft.files.map(file=>file.path)}).catch(report);}
-        return;
-      }
       setCapture(boardView ? { ...draft, files: [], thumbnail: draft.files[0], destination: linkDestination } : { ...draft, destination: linkDestination });
     } catch (e) {
       report(e);
@@ -853,7 +867,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       pasteBusy.current=false;
       setReadingCapture(false);
     }
-  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture]);
+  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
   const chooseCaptureFiles = async () => {
     try {
       const paths = await open({
@@ -898,7 +912,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     const paste = (e: KeyboardEvent) => {
       if (
         (e.ctrlKey || e.metaKey) &&
-        e.key.toLowerCase() === "v" &&
+        e.key.toLowerCase() === "v" && !e.repeat &&
         !(e.target as HTMLElement).closest(
           "input,textarea,select,[contenteditable=true]",
         ) &&
@@ -1374,9 +1388,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           </div>
         )}
         {project!==null&&<ProjectColours key={project} project={project}/>}
-        {readingCapture && (
+        {(readingCapture||pendingImports>0) && (
           <div className="capture-reading">
-            <CaptureProgress progress={importProgress}/>
+            <CaptureProgress progress={importProgress} queued={Math.max(0,pendingImports-1)}/>
           </div>
         )}
         {selected.size > 0 && !originalResources && (
