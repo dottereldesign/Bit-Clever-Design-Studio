@@ -1881,3 +1881,13 @@ main {
 @media(prefers-reduced-motion:reduce) { .project-colour { transition:none; } }
 
 .links-table .link-category-column { width:160px;min-width:110px;white-space:normal;overflow-wrap:anywhere; }
+
+.settings-page-shell { flex:1;min-height:0;overflow:auto;padding:28px;scrollbar-width:thin; }
+.settings-page { width:100%;min-width:0; }
+.settings-page .modal-heading { margin-bottom:28px; }
+.settings-page .modal-heading h2 { font-size:22px; }
+.settings-page .settings-content { width:100%;gap:28px; }
+.settings-page .setting-block { width:100%; }
+.settings-page .shortcuts { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));width:100%;gap:10px 28px; }
+.settings-page .diagnostic-events { max-height:none;overflow:visible; }
+@media(max-width:800px){.settings-page-shell{padding:20px}.settings-page .shortcuts{grid-template-columns:1fr}}

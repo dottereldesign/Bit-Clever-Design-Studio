@@ -1115,6 +1115,31 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     unfileProject:(ids,target)=>void mutate({action:'unfile_project_folder',ids,target}).then(()=>{setUndoIds([]);setNotice('Moved to Unfiled');}).catch(report),
     started:()=>setHoverId(null),
   });
+  const libraryDialog = modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
+        <Dialog
+          modal={modal}
+          projectFolder={projectFolder}
+          lib={lib}
+          close={() => setModal(null)}
+          mutate={mutate}
+          busy={busy}
+          setBusy={setBusy}
+          report={report}
+          project={project}
+          chooseRoot={chooseRoot}
+          exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
+          backup={backup}
+          duplicates={() => {
+            setModal(null);
+            setDuplicatesOpen(true);
+          }}
+          removed={() => { setModal(null); setRemovedOpen(true); }}
+          setModal={setModal}
+          onDeleteProject={(id) => {
+            if (project === id) navigate(null);
+          }}
+        />
+      );
   return (
     <div
       className="app" data-sidebar-layout={sidebarLayout} data-sidebar-brand={navLayout.brand} data-sidebar-counts={navLayout.counts!==false} data-sidebar-compact={sidebarWidth<200}
@@ -1136,7 +1161,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     >
       <aside
         className="sidebar"
-        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
+        onClickCapture={e=>{if(modal?.kind==='settings'&&(e.target as HTMLElement).closest('.nav-item,.brand'))setModal(null);}}
+        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
@@ -1227,8 +1253,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           aria-orientation="vertical"
         />
       </aside>
-      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
-        {homeView?<><HomeDashboard headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
+      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
+        {modal?.kind==='settings'?libraryDialog:<>{homeView?<><HomeDashboard headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
         <header className="topbar">
           <div className="view-title">
             <h1>{title}</h1>
@@ -1483,6 +1509,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           )}
         </div>
         </>}
+      </>}
       </main>
       <ThumbnailEnlargement items={lib.items} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
         enabled={!homeView&&!customTab&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!folderMenu&&!libraryExportOpen&&!extraDialog}/>
@@ -1492,7 +1519,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         <Viewer
           key={activeItem.id}
           docked={dockedPreview}
-          blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
+          blocked={thumbnailEnlarged || quickPreview !== null || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
           item={activeItem}
           items={previewItems}
           tags={lib.tags}
@@ -1530,31 +1557,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from folder":"Added to folder");
       }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
       {folderMembers&&<OrganiseProjectFolders folders={lib.project_folders??[]} projects={lib.projects} items={lib.items.filter(i=>folderMembers.includes(i.id))} mutate={mutate} close={()=>setFolderMembers(null)}/>}
-      {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
-        <Dialog
-          modal={modal}
-          projectFolder={projectFolder}
-          lib={lib}
-          close={() => setModal(null)}
-          mutate={mutate}
-          busy={busy}
-          setBusy={setBusy}
-          report={report}
-          project={project}
-          chooseRoot={chooseRoot}
-          exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
-          backup={backup}
-          duplicates={() => {
-            setModal(null);
-            setDuplicatesOpen(true);
-          }}
-          removed={() => { setModal(null); setRemovedOpen(true); }}
-          setModal={setModal}
-          onDeleteProject={(id) => {
-            if (project === id) navigate(null);
-          }}
-        />
-      )}
+      {modal?.kind!=='settings'&&libraryDialog}
       {queueOpen && !videoDialog && !capture && !modal && viewer===null && !duplicatesOpen && !removedOpen && <VideoDownloadQueue queue={videoQueue} project={project} close={()=>setQueueOpen(false)}/>}
       {videoDialog && <VideoDownloadDialog initialUrl={videoDialog.url} lib={lib} project={project} close={()=>setVideoDialog(null)} add={(text,projects,tags)=>{
         const result=videoQueue.add(text,projects,tags);setVideoDialog(null);setQueueOpen(true);setNotice(result.added?`${result.added} queued`:"Already queued");
@@ -2448,23 +2451,23 @@ function Dialog({
   };
   return (
     <div
-      className="modal-backdrop"
+      className={kind==='settings'?'settings-page-shell':'modal-backdrop'}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) close();
+        if (kind!=='settings'&&e.target === e.currentTarget && !busy) close();
       }}
     >
       <div
         ref={dialogRef}
-        className={`modal ${kind === "settings" ? "settings-modal" : ""}`}
-        role="dialog"
-        aria-modal="true"
+        className={kind==='settings'?'settings-page':'modal'}
+        role={kind==='settings'?'region':'dialog'}
+        aria-modal={kind==='settings'?undefined:true}
         aria-labelledby="dialog-title"
-        onKeyDown={trap}
+        onKeyDown={kind==='settings'?undefined:trap}
       >
         <div className="modal-heading">
           <h2 id="dialog-title">{titles[kind]}</h2>
           {kind==="settings"&&<div className="customise-history"><HistoryButtons/></div>}
-          <IconButton title="Close dialog" onClick={close}>
+          <IconButton title={kind==='settings'?'Back to library':'Close dialog'} onClick={close}>
             <X size={17} />
           </IconButton>
         </div>
