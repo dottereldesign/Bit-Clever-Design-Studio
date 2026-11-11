@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Real pointer category moves</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
+const library={items:Array.from({length:350},(_,n)=>({id:n+1,name:`Reference ${n+1}`,source:'Design/3D',category:'3D',kind:n%3===0?'animation':'image',path:`C:/Design/${n+1}.png`,modified:1,added:n+1,missing:false,tags:[1],projects:[7]})),categories:['3D','Branding','Logo',...Array.from({length:24},(_,n)=>`Other ${String(n).padStart(2,'0')}`)],projects:[{id:7,name:'Website',count:350},{id:8,name:'New project',count:0}],tags:[{id:1,name:'Keep',count:350}],sources:['Design/3D'],root:'C:/Design',scanning:false};
+const history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Change category':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';
+ if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){library.items=history.pop();return;}history.push(structuredClone(library.items));if(c.action==='set_category')for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.category=c.value;else if(c.action==='add_project')for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.projects.push(c.target);else throw Error(c.action);return;}throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+library.items[0].category='Components / Pricing';library.items[0].component_folders=['Components / Pricing'];
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>10000)throw Error('Timed out: '+label);await pause(20);}}
+const category=name=>document.querySelector(`[data-category="${name}"]`),checks=[];
+
+try{
+ await until(()=>document.querySelector('.card-open'),'Library');
+ let action=0;
+ for(const section of ['3D','Components / Pricing','project']){
+  if(section==='project')document.querySelector('[data-project-id="7"]').click();else category(section).click();
+  await pause(180);await until(()=>document.querySelector('.card-open'),'Gallery');
+  const button=document.querySelector('.card-open'),r=button.getBoundingClientRect(),point={x:r.left+r.width/2,y:r.top+r.height/2};
+  window.__pointerAction={id:++action,from:point,to:point,click:true};await until(()=>window.__pointerActionDone===action,'Mouse click');await pause(100);
+  assert(!document.querySelector('.viewer')&&!document.querySelector('.quick-preview'),'Click opened preview in '+section);
+  button.focus();button.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await until(()=>document.querySelector('.quick-preview'),'Space preview '+section);
+  document.querySelector('[aria-label="Close quick preview"]').click();await until(()=>!document.querySelector('.quick-preview'),'Close preview');
+  button.dispatchEvent(new MouseEvent('click',{ctrlKey:true,bubbles:true}));await until(()=>button.closest('.card').classList.contains('selected'),'Modifier selection');
+  assert(!document.querySelector('.viewer'),'Selection opened viewer');
+  checks.push(section+': real click does nothing, Space preview and Ctrl selection work');
+ }
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks});}
+</script></body></html>

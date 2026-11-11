@@ -658,6 +658,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       select(item.id, e.shiftKey);
       return;
     }
+    // Gallery clicks only focus the thumbnail for Space preview. Keep explicit
+    // link actions and modifier-key selection available.
+    if(item.kind!=="link"&&(project!==null||category!==null||allCategoriesView))return;
     if (item.kind === "link" && !(item.source === "Websites" && item.thumbnail)) {
       void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
@@ -1927,8 +1930,8 @@ function Card({
     >
       <button
         className="card-open"
-        title="Open reference · Ctrl + scroll to enlarge · Space to peek"
-        aria-label={`Open ${item.name}`}
+        title="Space to preview · Ctrl + scroll to enlarge"
+        aria-label={`${item.name} · Space to preview`}
         onClick={open}
         onFocus={() => hover(false)}
       >
