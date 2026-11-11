@@ -1464,6 +1464,8 @@ main {
   text-align: left;
   border-radius: 4px;
 }
+.item-context-menu .link-rating { display:flex; padding:0 3px; }
+.item-context-menu .link-rating button { width:auto; flex:0 0 auto; padding:6px; }
 .item-context-menu button > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-context-menu button:hover, .item-context-menu button:focus-visible { background: #edf0e6; outline: none; }
 .item-context-menu button:disabled { opacity: .45; }

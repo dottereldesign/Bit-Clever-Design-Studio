@@ -1,5 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ClipboardCopy, ExternalLink, Tag, Trash2 } from "lucide-react";
 import { componentFoldersOf, designFoldersOf, canCopyImage, isResource, isTableLink, orderedProjects, type Item, type Library } from "./model";
@@ -7,7 +7,8 @@ import { componentFoldersOf, designFoldersOf, canCopyImage, isResource, isTableL
 
 
 export type ItemMenuTarget = { x: number; y: number; ids: number[] };
-export default function ItemMenu({ target, lib, close, add, tags, reveal, remove, copy, copying, moveLink, editLink, editThumbnail, category, sendToSection, report }: {
+export default function ItemMenu({ target, lib, close, add, tags, reveal, remove, copy, copying, moveLink, editLink, editThumbnail, category, sendToSection, report, organisationActions }: {
+  organisationActions?:ReactNode;
   target: ItemMenuTarget; lib: Library; close: () => void;
   add: (project: number) => void; tags: () => void;
   reveal: (item: Item) => void; remove: () => void;
@@ -72,6 +73,7 @@ export default function ItemMenu({ target, lib, close, add, tags, reveal, remove
     {items.some(i=>i.kind!=="link")&&<button role="menuitem" onClick={()=>{close();category();}}>Organise folders…</button>}
     {designIds.length>0&&<button role="menuitem" onClick={()=>{close();sendToSection(designIds,true);}}>Add to App Components</button>}
     {componentIds.length>0&&<button role="menuitem" onClick={()=>{close();sendToSection(componentIds,false);}}>Add to Design Inspo</button>}
+    {organisationActions}
     <button role="menuitem" onClick={() => { close(); tags(); }}><Tag size={13} /> Tags</button>
     {items.length === 1 && items[0].kind === "link" && <button role="menuitem" onClick={() => { close(); editLink(items[0]); }}>Edit link</button>}
     {items.length === 1 && items[0].kind === "link" && !isTableLink(items[0]) && <button role="menuitem" onClick={() => { close(); editThumbnail(items[0]); }}>Edit thumbnail</button>}

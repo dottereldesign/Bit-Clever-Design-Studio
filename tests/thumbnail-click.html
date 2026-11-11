@@ -22,6 +22,10 @@ try{
   window.__pointerAction={id:++action,from:point,to:point,click:true};await until(()=>window.__pointerActionDone===action,'Mouse click');await pause(100);
   assert(!document.querySelector('.viewer')&&!document.querySelector('.quick-preview'),'Click opened preview in '+section);
   assert(button.closest('.card').classList.contains('selected'),'Plain click did not select');
+  assert(!document.querySelector('.selection-bar'),'Selection toolbar appeared');
+  button.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:400,clientY:300}));await until(()=>document.querySelector('.item-context-menu'),'Right-click menu');
+  for(const text of ['Project folders','Organise folders…','Tags','Remove from library'])assert(document.querySelector('.item-context-menu').textContent.includes(text),'Missing right-click action: '+text);
+  document.querySelector('.item-context-menu').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>!document.querySelector('.item-context-menu'),'Menu closed');
   button.focus();button.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await until(()=>document.querySelector('.quick-preview'),'Space preview '+section);
   document.querySelector('[aria-label="Close quick preview"]').click();await until(()=>!document.querySelector('.quick-preview'),'Close preview');
   button.dispatchEvent(new MouseEvent('click',{ctrlKey:true,bubbles:true}));await until(()=>!button.closest('.card').classList.contains('selected'),'Modifier deselection');button.dispatchEvent(new MouseEvent('click',{ctrlKey:true,bubbles:true}));await until(()=>button.closest('.card').classList.contains('selected'),'Modifier selection');

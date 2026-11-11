@@ -1383,64 +1383,6 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             <CaptureProgress progress={importProgress} queued={Math.max(0,pendingImports-1)}/>
           </div>
         )}
-        {selected.size > 0 && !originalResources && (
-          <div className="selection-bar">
-            <IconButton
-              title="Clear selection"
-              onClick={() => setSelected(new Set())}
-            >
-              <X size={14} />
-            </IconButton>
-            <span>{selected.size} selected</span>
-            <button onClick={()=>setFolderMembers([...selected])}><FolderPlus size={14}/>Project folders</button>
-            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind==='link'))&&<><span>Rate links</span><LinkRating onChange={value=>void perform({action:'rate_links',ids:[...selected],value:value===null?'':String(value)})}/><button onClick={()=>void perform({action:'rate_links',ids:[...selected],value:''})}>Clear rating</button></>}
-            {project!==null&&typeof projectFolder==='number'&&<button className="danger" onClick={()=>void perform({action:'remove_project_folder',target:projectFolder,ids:[...selected]})}><FolderMinus size={14}/>Remove from folder</button>}
-            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Organise folders (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Organise folders</button>}
-            <button
-              onClick={() => setModal({ kind: "projects", ids: [...selected] })}
-            >
-              <FolderPlus size={14} /> Add to project
-            </button>
-            <button
-              onClick={() => setModal({ kind: "tags", ids: [...selected] })}
-            >
-              <Tag size={14} /> Tags
-            </button>
-            {project && (
-              <button
-                onClick={() =>
-                  void perform({
-                    action: "pin_project",
-                    target: project,
-                    ids: [...selected],
-                  })
-                }
-              >
-                <Pin size={14} /> Pin
-              </button>
-            )}
-            {project && (
-              <button
-                onClick={() =>
-                  void perform({
-                    action: "remove_project",
-                    target: project,
-                    ids: [...selected],
-                  }).then(() => setSelected(new Set()))
-                }
-              >
-                Remove from project
-              </button>
-            )}
-            <button
-              className="select-all"
-              onClick={() => setSelected(new Set(filtered.map((i) => i.id)))}
-            >
-              Select all
-            </button>
-            <button onClick={() => void removeItems([...selected])}><Trash2 size={14} /> Remove from library</button>
-          </div>
-        )}
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
@@ -1648,6 +1590,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
       {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu} report={report}
+        organisationActions={<>
+          <button role="menuitem" onClick={()=>{setFolderMembers(itemMenu.ids);closeItemMenu();}}><FolderPlus size={13}/>Project folders</button>
+          {project!==null&&typeof projectFolder==='number'&&<button role="menuitem" onClick={()=>{void perform({action:'remove_project_folder',target:projectFolder,ids:itemMenu.ids});closeItemMenu();}}>Remove from folder</button>}
+          {project!==null&&<><button role="menuitem" onClick={()=>{void perform({action:'pin_project',target:project,ids:itemMenu.ids});closeItemMenu();}}><Pin size={13}/>Pin in project</button><button role="menuitem" onClick={()=>{void perform({action:'remove_project',target:project,ids:itemMenu.ids}).then(()=>setSelected(new Set()));closeItemMenu();}}>Remove from project</button></>}
+          {itemMenu.ids.some(id=>lib.items.some(i=>i.id===id&&i.kind==='link'))&&<><div className="context-section">Rate links</div><LinkRating onChange={value=>{void perform({action:'rate_links',ids:itemMenu.ids,value:value===null?'':String(value)});closeItemMenu();}}/><button role="menuitem" onClick={()=>{void perform({action:'rate_links',ids:itemMenu.ids,value:''});closeItemMenu();}}>Clear rating</button></>}
+          <button role="menuitem" onClick={()=>{setSelected(new Set(filtered.map(i=>i.id)));closeItemMenu();}}>Select all</button>
+          {selected.size>0&&<button role="menuitem" onClick={()=>{setSelected(new Set());closeItemMenu();}}>Clear selection</button>}
+        </>}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
         sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}
         copy={(id) => void copyImage(id)} copying={copying !== null}
