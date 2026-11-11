@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type ReactNode, type HTMLAttributes } from 'react';
+import { useEffect, useMemo, useState, useRef, type ReactNode, type HTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Folder, MoreHorizontal, X } from 'lucide-react';
 import type { Item, Label, ProjectFolder } from './model';
@@ -35,7 +35,8 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
   useFolderDialogFocus(dialog!==null);
   const tree=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(!active||!expanded||typeof scope!=='number')return;let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>{const row=tree.current?.querySelector<HTMLElement>(`[data-project-folder-id="${scope}"]`),body=tree.current?.closest<HTMLElement>('.sidebar-section-body');if(!row||!body)return;const rect=row.getBoundingClientRect(),bounds=body.getBoundingClientRect();if(rect.bottom>bounds.bottom)body.scrollTop+=rect.bottom-bounds.bottom+4;else if(rect.top<bounds.top)body.scrollTop+=rect.top-bounds.top-4;});});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[active,scope,expanded,folders]);
-  const own=folders.filter(f=>f.project_id===project.id);
+  const own=useMemo(()=>folders.filter(f=>f.project_id===project.id),[folders,project.id]);
+  const counts=useMemo(()=>{const ownIds=new Set(own.map(f=>f.id)),byFolder=new Map<number,number>();let unfiled=0;for(const item of items){for(const id of item.project_folders??[])byFolder.set(id,(byFolder.get(id)??0)+1);if(item.projects.includes(project.id)&&!item.project_folders?.some(id=>ownIds.has(id)))unfiled++;}return {byFolder,unfiled};},[items,own,project.id]);
   useEffect(()=>{if(active)setExpanded(true);},[active]);
   useEffect(()=>{if(!menu&&!dialog)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){setMenu(null);if(!busy)setDialog(null);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[menu,dialog,busy]);
   const edit=(action:'create'|'rename'|'move'|'delete',id:number|null)=>{const f=own.find(f=>f.id===id);setDialog({action,id});setName(action==='rename'?f?.name??'':'');setParent(action==='create'?String(id??''):String(f?.parent_id??''));setError('');setMenu(null);};
@@ -56,7 +57,7 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
   const row=(f:ProjectFolder,depth:number):ReactNode=><div key={f.id}>
     <div className={`project-folder-row ${active&&scope===f.id?'active':''}`} style={{paddingLeft:12+depth*12}} data-project-folder-target={f.id} data-project-folder-name={f.name} {...dragProps(f.id)} onContextMenu={e=>context(e,f.id)}>
       <button className="folder-chevron" aria-expanded={!closed.has(f.id)} aria-label={`${closed.has(f.id)?'Expand':'Collapse'} ${f.name}`} onClick={()=>setClosed(prev=>{const next=new Set(prev);next.has(f.id)?next.delete(f.id):next.add(f.id);return next;})} style={{visibility:own.some(p=>p.parent_id===f.id)?'visible':'hidden'}}><ChevronRight size={12} style={{transform:closed.has(f.id)?undefined:'rotate(90deg)'}}/></button>
-      <button className="nav-item" title={folderPath(f,folders)} data-project-folder-id={f.id} draggable onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData('application/project-folder',String(f.id));e.dataTransfer.effectAllowed='move';}} onClick={()=>open(f.id)}><Folder size={14}/><span>{f.name}</span><small>{items.filter(i=>i.project_folders?.includes(f.id)).length||''}</small></button>
+      <button className="nav-item" title={folderPath(f,folders)} data-project-folder-id={f.id} draggable onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData('application/project-folder',String(f.id));e.dataTransfer.effectAllowed='move';}} onClick={()=>open(f.id)}><Folder size={14}/><span>{f.name}</span><small>{counts.byFolder.get(f.id)||''}</small></button>
       <button className="folder-more" aria-label={`Options for ${f.name}`} onClick={e=>context(e,f.id)}><MoreHorizontal size={13}/></button>
     </div>
     {!closed.has(f.id)&&orderedFolders(own.filter(p=>p.parent_id===f.id)).map(child=>row(child,depth+1))}
@@ -68,7 +69,7 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
       <button className="folder-more" aria-label={`Options for ${project.name}`} onClick={e=>context(e,null)}><MoreHorizontal size={15}/></button>
     </div>
     {expanded&&<div className="project-folder-list">
-      <button className={`nav-item project-scope ${active&&scope==='unfiled'?'active':''}`} data-project-unfiled={project.id} {...dragProps('unfiled')} onClick={()=>open('unfiled')}>Unfiled<small>{items.filter(i=>i.projects.includes(project.id)&&!i.project_folders?.some(id=>own.some(f=>f.id===id))).length||''}</small></button>
+      <button className={`nav-item project-scope ${active&&scope==='unfiled'?'active':''}`} data-project-unfiled={project.id} {...dragProps('unfiled')} onClick={()=>open('unfiled')}>Unfiled<small>{counts.unfiled||''}</small></button>
       {orderedFolders(own.filter(f=>f.parent_id===null)).map(f=>row(f,0))}
     </div>}
     {menu&&createPortal(<><div className="project-menu-dismiss" onClick={()=>setMenu(null)}/><div className="project-folder-menu" style={{left:menu.x,top:menu.y}} role="menu">

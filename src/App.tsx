@@ -474,8 +474,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     () => filtered.filter((i) => i.kind === "link" && (componentFoldersOf(i).length>0 || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
+  const navigationStart=useRef<number|null>(null);
   const viewState=useMemo<ViewState>(()=>({projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
-  useEffect(()=>{const start=performance.now();const operation=crypto.randomUUID();const fields={view:homeView?'home':project!==null?'project':category!==null?'folder':boardView??(linksOnly?'links':'designs'),project,folder:typeof projectFolder==='number'?projectFolder:null,items:filtered.length};recordDiagnostic('navigation','started',0,fields,operation);let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>recordDiagnostic('navigation','success',performance.now()-start,fields,operation));});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[homeView,project,projectFolder,category,boardView,linksOnly]);
+  useLayoutEffect(()=>{const start=navigationStart.current??performance.now();navigationStart.current=null;const operation=crypto.randomUUID();const fields={view:modal?.kind==='settings'?'settings':homeView?'home':project!==null?'project':category!==null?'folder':boardView??(resourcesView?'resources':recent??(linksOnly?'links':videoView?'videos':'designs')),project,folder:typeof projectFolder==='number'?projectFolder:category!==null?'category-'+Array.from(category).reduce((hash,char)=>(Math.imul(hash,31)+char.charCodeAt(0))>>>0,0).toString(16):null,items:filtered.length};recordDiagnostic('navigation','started',0,fields,operation);let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>recordDiagnostic('navigation','success',performance.now()-start,fields,operation));});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[homeView,project,projectFolder,category,boardView,linksOnly,resourcesView,recent,videoView,modal?.kind]);
   useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
   useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
@@ -550,22 +551,25 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     }
     return counts;
   }, [lib.items]);
-  const homeDestinations:HomeDestination[]=[
+  const generalCounts=useMemo(()=>{const counts=new Map<string,number>();for(const item of lib.items){counts.set(item.source,(counts.get(item.source)??0)+1);if(item.kind==='link'&&!isCollectionLink(item))counts.set('__links',(counts.get('__links')??0)+1);if(item.kind==='video'&&(item.source==='Videos'||item.source.startsWith('Videos/')))counts.set('__videos',(counts.get('__videos')??0)+1);}return counts;},[lib.items]);
+  const homeDestinations=useMemo<HomeDestination[]>(()=>[
     {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&designFoldersOf(i).length>0).length},
     {id:"group:general",label:"General",kind:"group",value:"general",group:"general"},
     {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
     ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
     ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?categoryLabel(name).slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
-  ];
-  const generalOptions:GeneralOption[]=[
+  ],[lib.items,lib.projects,collectionPrefs,categories,folderLabels,categoryCounts]);
+  const generalOptions=useMemo<GeneralOption[]>(()=>[
     ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
     {label:'Design Inspo / All',target:{kind:'category',value:'__all__'}},{label:'App Components / All',target:{kind:'category',value:allComponents}},
     ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
     ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
-  ];
-  const iconTargets=[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
-    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))];
+  ],[lib.projects,categories,folderLabels]);
+  const iconTargets=useMemo(()=>[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))],[collectionPrefs,sitePrefs,lib.projects,categories,folderLabels]);
+  const designRows=useMemo(()=>sortedFolders([...categories,''],'design'),[categories,folderOrder,folderLabels]);
+  const componentRows=useMemo(()=>sortedFolders(componentFolders,'components'),[folderOrder,folderLabels]);
   const saveGeneral=async(draft:GeneralDraft,key?:string)=>{
     if(!draft.name)throw Error('Enter a name for the entry.');
     let target:GeneralTarget;
@@ -1161,7 +1165,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     >
       <aside
         className="sidebar"
-        onClickCapture={e=>{if(modal?.kind==='settings'&&(e.target as HTMLElement).closest('.nav-item,.brand'))setModal(null);}}
+        onClickCapture={e=>{if((e.target as HTMLElement).closest('.nav-item,.brand,[aria-label=Settings]')){const stamp=performance.now();navigationStart.current=stamp;setTimeout(()=>{if(navigationStart.current===stamp)navigationStart.current=null;},0);}if(modal?.kind==='settings'&&(e.target as HTMLElement).closest('.nav-item,.brand'))setModal(null);}}
         inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
@@ -1173,7 +1177,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
             const {key,name,pinned}=entry,target=entry.target??{kind:'view',value:key},view=target.kind==='view'?target.value:'',board=isBoardDestination(view);
-            const count=target.kind==='project'?lib.projects.find(p=>String(p.id)===target.value)?.count:target.kind==='category'?categoryCounts.get(target.value):view==='links'?lib.items.filter(i=>i.kind==='link'&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[view]).length:view==='facebook'?lib.items.filter(i=>i.kind==='video'&&(i.source==='Videos'||i.source.startsWith('Videos/'))).length:0;
+            const count=target.kind==='project'?lib.projects.find(p=>String(p.id)===target.value)?.count:target.kind==='category'?categoryCounts.get(target.value):view==='links'?generalCounts.get('__links')??0:board?generalCounts.get(boardNames[view])??0:view==='facebook'?generalCounts.get('__videos')??0:0;
             const folder=target.kind==='category'?(target.value==='__all__'?'':target.value===allComponents?componentInbox:target.value):undefined;
             const projectProps=target.kind==='project'?{'data-project-id':Number(target.value),'data-project-name':name,onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes('application/design-items')){e.preventDefault();e.currentTarget.classList.add('drop-target');}},onDragLeave:(e:React.DragEvent)=>e.currentTarget.classList.remove('drop-target'),onDrop:(e:React.DragEvent)=>drop(e,Number(target.value))}:{};
             return <button className={`nav-item general-nav ${!homeView&&generalKey===key?'active':''}`} key={key} {...homeDrag(`collection:${key}`)} {...projectProps} {...(folder!==undefined?{'data-category':folder,...categoryDropProps(folder)}:{})} onClick={()=>openGeneral(entry)} title={name}><GeneralEntryIcon entry={entry} preferences={icons}/><span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||''}</small></button>;
@@ -1223,13 +1227,13 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
               All Designs
             </span>
           </button>
-          {sortedFolders([...categories, ''],'design').map(folderRow)}
+          {designRows.map(folderRow)}
         </nav>
         </SidebarSection>
         <SidebarSection name="Components" label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
           <nav aria-label="App Components">
             {folderRow(allComponents)}
-            {sortedFolders(componentFolders,'components').map(folderRow)}
+            {componentRows.map(folderRow)}
           </nav>
         </SidebarSection>
         </SidebarNavigation>

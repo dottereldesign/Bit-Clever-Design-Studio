@@ -115,7 +115,8 @@ export const categoryOf = (item: Item): string => {
   const name=item.category ?? (item.source === "Photography" || item.source.startsWith("Photography/") ? "Photography" : item.source.startsWith("Design/") ? item.source.slice(7).split('/')[0] : "");
   return name.toLowerCase()==="captures"?"":filingCategory(name);
 };
-export const readFolderLabels=():Record<string,string>=>{try{const value=JSON.parse(localStorage.getItem('folder-labels')??'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch{return {};}};
+let labelText:string|null=null,labelCache:Record<string,string>={};
+export const readFolderLabels=():Record<string,string>=>{try{const text=localStorage.getItem('folder-labels')??'{}';if(text!==labelText){const value=JSON.parse(text);labelCache=value&&typeof value==='object'&&!Array.isArray(value)?value:{};labelText=text;}return labelCache;}catch{return {};}};
 export const categoryLabel = (name: string): string => {
  const label=readFolderLabels()[name];if(typeof label==='string'&&label.trim())return isComponent(name)?`Components / ${label}`:label;
  if(/^business[ _-]+cards$/i.test(name.trim()))return "Cards";
