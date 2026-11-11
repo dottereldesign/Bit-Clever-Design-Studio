@@ -108,7 +108,7 @@ import { appHistory } from "./appHistory";
 import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
 import { allComponents, componentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
-import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
+import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink, createMembershipIndex} from "./model";
 
 const empty: Library = {
   items: [],
@@ -437,12 +437,19 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     const item=id===null?null:lib.items.find(i=>i.id===id);if(item)track(item);
   },[lib.items,quickPreview,viewer,track]);
   useEffect(()=>{if(project!==null&&typeof projectFolder==='number'&&lib.items.length&&!(lib.project_folders??[]).some(f=>f.id===projectFolder&&f.project_id===project))setProjectFolder(null);},[project,projectFolder,lib.project_folders,lib.items.length]);
-  const sheetItems=useMemo(()=>lib.items.filter(i=>project!==null&&i.projects.includes(project)),[lib.items,project]);
+  const membershipIndex=useMemo(()=>{
+    const start=performance.now(),index=createMembershipIndex(lib.items);
+    recordDiagnostic('library.membership_index','success',performance.now()-start,{items:lib.items.length});
+    return index;
+  },[lib.items]);
+  const sheetItems=useMemo(()=>project!==null?membershipIndex.projects.get(project)??[]:[],[membershipIndex,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
   const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
   const filtered = useMemo(
     () => {
+      const start=performance.now();
       const matches=filterItems(lib.items, {
+        designsOnly:allCategoriesView,
         projectFolder:project!==null?projectFolder:null,projectFolderIds:(lib.project_folders??[]).filter(f=>f.project_id===project).map(f=>f.id),rating:ratingFilter,
         tagMode, includeCollections:!!recent||resourcesView||generalEntry?.target?.kind==='project',
         category,
@@ -454,14 +461,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         project,
         linksOnly,
         sort:recent?"recent":sort, seed,
-      });
+      },membershipIndex);
+      recordDiagnostic('library.filter','success',performance.now()-start,{items:lib.items.length,count:matches.length});
       if(generalMissing)return [];
-      if(allCategoriesView)return matches.filter(i=>designFoldersOf(i).length>0);
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
     },
-    [lib.items, lib.project_folders, projectFolder, ratingFilter, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
+    [lib.items, membershipIndex, lib.project_folders, projectFolder, ratingFilter, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
   );
   useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
@@ -545,15 +552,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     return ()=>{document.removeEventListener('keydown',key,true);document.removeEventListener('keyup',end,true);document.removeEventListener('pointerdown',down,true);document.removeEventListener('pointerup',end);document.removeEventListener('pointercancel',end);window.removeEventListener('blur',end);};
   },[]);
   const categories = useMemo(()=>libraryCategories(lib),[lib]);
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of lib.items) {
-      if (item.kind === "link" && !componentFoldersOf(item).length) continue;
-      for (const folder of [...componentFoldersOf(item),...designFoldersOf(item)]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
-      if (componentFoldersOf(item).length) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
-    }
-    return counts;
-  }, [lib.items]);
+  const categoryCounts = useMemo(() => new Map([...membershipIndex.categories].map(([name,items])=>[name,items.length])), [membershipIndex]);
   const generalCounts=useMemo(()=>{const counts=new Map<string,number>();for(const item of lib.items){counts.set(item.source,(counts.get(item.source)??0)+1);if(item.kind==='link'&&!isCollectionLink(item))counts.set('__links',(counts.get('__links')??0)+1);if(item.kind==='video'&&(item.source==='Videos'||item.source.startsWith('Videos/')))counts.set('__videos',(counts.get('__videos')??0)+1);}return counts;},[lib.items]);
   const homeDestinations=useMemo<HomeDestination[]>(()=>[
     {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&designFoldersOf(i).length>0).length},

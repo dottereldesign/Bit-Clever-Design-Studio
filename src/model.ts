@@ -55,6 +55,7 @@ export function orderedProjects(projects: Label[], recent: number[] = []) {
   return [...projects].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.name.localeCompare(b.name));
 }
 export type Filters = {
+  designsOnly?: boolean;
   projectFolder?: number|"unfiled"|null;
   projectFolderIds?:number[];
   rating?:string;
@@ -71,10 +72,52 @@ export type Filters = {
   sort: string;
   seed: number;
 };
-export function filterItems(items: Item[], f: Filters): Item[] {
+// Derived from one immutable library snapshot. Never persisted or incrementally
+// patched: imports, edits, undo/redo and restores all replace the item array.
+export type MembershipIndex = {
+  items: Item[];
+  categories: ReadonlyMap<string, Item[]>;
+  projects: ReadonlyMap<number, Item[]>;
+  projectFolders: ReadonlyMap<number, Item[]>;
+  designs: Item[];
+};
+export function createMembershipIndex(items: Item[]): MembershipIndex {
+  const categories = new Map<string, Item[]>();
+  const projects = new Map<number, Item[]>();
+  const projectFolders = new Map<number, Item[]>();
+  const designs: Item[] = [];
+  const add = <K,>(map: Map<K, Item[]>, key: K, item: Item) => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(item);
+    else map.set(key, [item]);
+  };
+  for (const item of items) {
+    const components = componentFoldersOf(item), folders = designFoldersOf(item);
+    if (folders.length) designs.push(item);
+    // Match the existing folder visibility rule for ordinary links.
+    if (item.kind !== 'link' || components.length) {
+      for (const folder of [...components, ...folders]) add(categories, folder, item);
+      if (components.length) add(categories, allComponents, item);
+    }
+    for (const project of new Set(item.projects)) add(projects, project, item);
+    for (const folder of new Set(item.project_folders)) add(projectFolders, folder, item);
+  }
+  return { items, categories, projects, projectFolders, designs };
+}
+
+export function filterItems(items: Item[], f: Filters, index?: MembershipIndex): Item[] {
   if(f.category!=null&&isHeaderFolder(f.category))f={...f,category:filingCategory(f.category)};
+  // A stale index must never hide a newly imported or restored item.
+  if (index?.items !== items) index = undefined;
+  let candidates = items;
+  const categoryItems = index && f.category != null ? index.categories.get(f.category) ?? [] : undefined;
+  const designItems = index && f.designsOnly ? index.designs : undefined;
+  const options = [categoryItems, designItems,
+    index && f.project ? index.projects.get(f.project) ?? [] : undefined,
+    index && typeof f.projectFolder === 'number' ? index.projectFolders.get(f.projectFolder) ?? [] : undefined];
+  for (const bucket of options) if (bucket && bucket.length <= candidates.length) candidates = bucket;
   const query = f.search.toLocaleLowerCase().trim();
-  const result = items.filter(
+  const result = candidates.filter(
     (i) =>
       (f.collection ? i.kind === "link" && i.source === f.collection : (f.includeCollections || (f.category && (isComponent(f.category) || f.category === allComponents)) || !isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
       (!f.project || i.projects.includes(f.project)) &&
@@ -82,7 +125,8 @@ export function filterItems(items: Item[], f: Filters): Item[] {
       (!f.rating || (i.kind==='link' && (f.rating==='unrated' ? !i.rating : f.rating==='4+' ? (i.rating??0)>=4 : i.rating===Number(f.rating)))) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
-      (f.category == null || ((i.kind !== "link" || componentFoldersOf(i).length>0) && (f.category === allComponents ? componentFoldersOf(i).length>0 : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
+      (f.category == null || candidates === categoryItems || ((i.kind !== "link" || componentFoldersOf(i).length>0) && (f.category === allComponents ? componentFoldersOf(i).length>0 : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
+      (!f.designsOnly || candidates === designItems || designFoldersOf(i).length > 0) &&
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&

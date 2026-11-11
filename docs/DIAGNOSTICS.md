@@ -20,6 +20,8 @@ Gallery readiness is measured separately from navigation. `thumbnails.first_visi
 
 Visible thumbnails take priority over queued off-screen thumbnails, and interactive previews take priority over both. Already-running native decodes finish normally. `layout.masonry` records layout calculations exceeding 8 ms; ordinary fast layouts are not logged.
 
+`library.membership_index` measures rebuilding the in-memory folder lookup after a library snapshot changes. Folder navigation reuses it. `library.filter` measures filtering and sorting separately from rendering and image loading, with total library size and match count. React development checks may run these calculations more than once. The index stores references to existing items, preserves multiple memberships and project-only items, and is never saved to disk or included in backups. Restore and undo/redo rebuild it from the returned library, rather than maintaining a second persisted source of truth. Run `npx tsx scripts/benchmark-folder-filter.ts` to compare indexed and full-scan filtering against a synthetic 4,000-item library without reading personal data.
+
 ## Reading and interpreting
 
 The UI analyses the newest 20,000 retained events and explicitly reports truncation. Export includes up to one million events (the storage size cap normally binds first), with `total` for comparison. Group counts are operation counts, not unique human actions; phase durations are elapsed time since operation start. Usage is evidence to discuss, not an automatic feature recommendation. Filtering an operation ID links its frontend and native records. `started` without a terminal outcome can mean interruption, recent buffered writes or dropped diagnostics.
