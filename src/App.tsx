@@ -1,3 +1,4 @@
+import {useVirtualizer} from '@tanstack/react-virtual';
 import {ProjectTree, OrganiseProjectFolders, folderPath, type FolderScope} from './ProjectFolders';
 import LinkRating from './LinkRating';
 import {useSelectionAppearance} from './SelectionStyles';
@@ -1974,8 +1975,32 @@ function LinksTable({
   onTags: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
+  const table = useRef<HTMLTableElement>(null);
+  const [scrollMargin,setScrollMargin]=useState(0);
+  const virtual=items.length>80;
+  const rows=useVirtualizer<HTMLDivElement,HTMLTableRowElement>({
+    count:virtual?items.length:0,
+    getScrollElement:()=>table.current?.closest<HTMLDivElement>('.content')??null,
+    estimateSize:()=>35,
+    getItemKey:index=>items[index].id,
+    overscan:8,
+    scrollMargin,
+  });
+  useLayoutEffect(()=>{
+    const element=table.current,scroller=element?.closest<HTMLDivElement>('.content');
+    if(!element||!scroller||!virtual)return;
+    const measure=()=>setScrollMargin(element.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop+(element.tHead?.offsetHeight??0));
+    const observer=new ResizeObserver(measure);observer.observe(scroller);observer.observe(element);
+    if(element.previousElementSibling)observer.observe(element.previousElementSibling);
+    measure();return()=>observer.disconnect();
+  },[virtual,items]);
+  const visibleRows=rows.getVirtualItems();
+  const top=visibleRows.length?Math.max(0,visibleRows[0].start-scrollMargin):0;
+  const bottom=visibleRows.length?Math.max(0,rows.getTotalSize()-(visibleRows.at(-1)!.end-scrollMargin)):0;
+  const rendered=virtual?visibleRows.map(row=>({item:items[row.index],index:row.index})):items.map((item,index)=>({item,index}));
+  const spacer=(height:number)=>height>0?<tr aria-hidden="true"><td colSpan={showCategories?6:5} style={{height,padding:0,border:0}}/></tr>:null;
   return (
-    <table className="links-table">
+    <table ref={table} className="links-table" aria-rowcount={items.length+1}>
       <thead>
         <tr>
           <th className="check-col" />
@@ -1986,9 +2011,13 @@ function LinksTable({
         </tr>
       </thead>
       <tbody>
-        {items.map((item) => (
+        {virtual&&spacer(top)}
+        {rendered.map(({item,index}) => (
           <tr
             key={item.id}
+            ref={virtual?rows.measureElement:undefined}
+            data-index={index}
+            aria-rowindex={index+2}
             data-item-id={item.id}
             className={selected.has(item.id) ? "selected" : ""}
             draggable
@@ -2052,6 +2081,7 @@ function LinksTable({
             </td>
           </tr>
         ))}
+        {virtual&&spacer(bottom)}
       </tbody>
     </table>
   );

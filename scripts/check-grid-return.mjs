@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['project-folder-drag', 'project-folders', 'link-categories', 'thumbnail-click', 'colour-picker', 'website-scroll', 'hover-preview', 'image-drop', 'clipboard-scroll', 'view-session', 'thumbnail-enlargement', 'component-links', 'customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+if (!['project-folder-drag', 'project-navigation', 'project-folders', 'link-categories', 'thumbnail-click', 'colour-picker', 'website-scroll', 'hover-preview', 'image-drop', 'clipboard-scroll', 'view-session', 'thumbnail-enlargement', 'component-links', 'customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
 const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
