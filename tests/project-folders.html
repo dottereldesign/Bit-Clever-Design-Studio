@@ -8,7 +8,7 @@ window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback
  calls.push({command,args});if(command==='get_library')return structuredClone(lib);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='save_library_preferences'||command==='discard_capture')return;
  if(command==='storage_usage')return {bytes:100,data_bytes:10,library_bytes:80,app_bytes:10,partial:false};
  if(command==='read_clipboard')return structuredClone(clipboard);
- if(command==='capture_items_progress'){if(hold){hold=false;await new Promise(r=>release=r);}const id=lib.items.length+100;lib.items.push({...item(id,args.input.projects,[]),kind:args.input.files.length?'image':'link',name:args.input.name||'Pasted link',path:args.input.url||'C:/mock/'+id+'.png',source:''});return {ids:[id],added:1,reused:0};}
+ if(command==='capture_items_progress'){if(hold){hold=false;await new Promise(r=>release=r);}const id=lib.items.length+100;lib.items.push({...item(id,args.input.projects,[]),kind:args.input.files.length?'image':'link',name:args.input.name||'Pasted link',path:args.input.url||'C:/mock/'+id+'.png',source:''});return {ids:[id],added:1,reused:0,destination:args.input.destination};}
  if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){redo.push(structuredClone(lib));lib=undo.pop();return;}if(c.action==='redo_organisation'){undo.push(structuredClone(lib));lib=redo.pop();return;}undo.push(structuredClone(lib));redo.length=0;
    if(c.action==='rate_links')lib.items.filter(i=>c.ids.includes(i.id)&&i.kind==='link').forEach(i=>i.rating=c.value?Number(c.value):null);
    else if(c.action==='create_project_folder')lib.project_folders.push({id:Math.max(...lib.project_folders.map(f=>f.id))+1,project_id:c.target,parent_id:c.value?Number(c.value):null,name:c.name,position:null});
@@ -46,6 +46,20 @@ try{
  const firstId=Number(rows()[0].dataset.itemId);rows()[0].querySelector('[aria-label="3 stars"]').focus();window.__awaitNativeEnter=true;await until(()=>lib.items.find(i=>i.id===firstId).rating===3,'Keyboard rating');
  const reorder=new DataTransfer();reorder.setData('application/project-folder','10');folder(12).dispatchEvent(new DragEvent('drop',{dataTransfer:reorder,bubbles:true,cancelable:true,clientY:0}));await until(()=>lib.project_folders.find(f=>f.id===10).position===0,'Folder reorder');
  document.querySelector('.selection-bar [title="Clear selection"]').click();window.__screenshotReady=true;await pause(700);document.querySelector('button[data-category=""]').click();await until(()=>document.querySelector('[aria-label="Sort items"]')?.value==='recent','Return to media sort');
- document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation']});
+ // Dialog saves return a link destination too; it must not replace the project route.
+ for(const scope of [null,'unfiled',11]){
+  project(7).click();await pause(120);if(scope==='unfiled')document.querySelector('[data-project-unfiled="7"]').click();else if(scope!==null)folder(scope).click();await pause(120);
+  for(let n=0;n<2;n++){
+   const before=lib.items.length;findButton('Link').click();await until(()=>document.querySelector('.capture-modal'),'Link dialog');
+   setValue(document.querySelector('.capture-modal input[type="url"]'),`https://example.org/modal-${scope}-${n}`);
+   const name=[...document.querySelectorAll('.capture-modal .field')].find(f=>f.textContent.trim()==='Name')?.querySelector('input');if(name)setValue(name,'Saved project link');
+   await pause(30);document.querySelector('.capture-modal form').requestSubmit();await until(()=>!document.querySelector('.capture-modal')&&lib.items.length===before+1,'Link saved');
+   assert(document.querySelector('.project-breadcrumb')?.textContent.includes('AANZPA'),'Saving link left the project');
+   if(scope==='unfiled')assert(document.querySelector('.project-breadcrumb').textContent.includes('Unfiled'),'Saving left Unfiled');
+   if(scope===11)assert(lib.items.at(-1).project_folders.includes(11)&&document.querySelector('.project-breadcrumb').textContent.includes('Psychodrama'),'Saving left project subfolder');
+   assert(lib.items.at(-1).projects.includes(7),'Saved link lost project membership');
+  }
+ }
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation','Repeated link-dialog saves stay in project, Unfiled and subfolder']});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,calls:calls.map(c=>c.command)});}
 </script></body></html>

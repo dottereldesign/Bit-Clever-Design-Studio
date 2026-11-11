@@ -1007,13 +1007,13 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         paths: capture.files.map((f) => f.path),
       }).catch(report);
     setCapture(null);
-    if (result.destination) {
+    if (result.destination && project===null) {
       navigate(null, result.destination === "links");
       setResourcesView(result.destination === "resources");
       if (result.destination && isBoardDestination(result.destination)) setBoardView(result.destination);
       if (result.destination === "resources") setResourceVersion(version => version + 1);
     }
-    showCaptureReceipt(result,next,result.destination?null:category);
+    showCaptureReceipt(result,next,result.destination?null:category,project!==null?{project,folder:typeof projectFolder==='number'?projectFolder:null}:undefined);
   };
   useEffect(() => {
     setSelected((prev) => {
