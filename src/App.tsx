@@ -1,3 +1,5 @@
+import Diagnostics from './DiagnosticsPanel';
+import {record as recordDiagnostic,errorCode} from './diagnostics';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {ProjectTree, OrganiseProjectFolders, folderPath, type FolderScope} from './ProjectFolders';
 import LinkRating from './LinkRating';
@@ -24,7 +26,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "./diagnostics";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -378,7 +380,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setReady(true);
     return next;
   }, []);
-  const report = useCallback((e: unknown) => setError(tidyError(e)), []);
+  const report = useCallback((e: unknown) => {recordDiagnostic('ui.error','error',0,{error_code:errorCode(e)});setError(tidyError(e));}, []);
   useEffect(()=>trackLibraryPreferences(report),[report]);
   const videoQueue = useVideoQueue(ready && isTauri(), refresh, report);
   useEffect(() => {
@@ -473,6 +475,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     [filtered],
   );
   const viewState=useMemo<ViewState>(()=>({projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  useEffect(()=>{const start=performance.now();const operation=crypto.randomUUID();const fields={view:homeView?'home':project!==null?'project':category!==null?'folder':boardView??(linksOnly?'links':'designs'),project,folder:typeof projectFolder==='number'?projectFolder:null,items:filtered.length};recordDiagnostic('navigation','started',0,fields,operation);let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>recordDiagnostic('navigation','success',performance.now()-start,fields,operation));});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[homeView,project,projectFolder,category,boardView,linksOnly]);
   useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
   useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
@@ -816,10 +819,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const dropQueue = useRef(Promise.resolve());
   const [pendingImports,setPendingImports]=useState(0);
   const enqueueImport=useCallback((operation:()=>Promise<void>)=>{
+    const queuedAt=performance.now();const operationId=crypto.randomUUID();recordDiagnostic('import.queue','started',0,{},operationId);
     setPendingImports(count=>count+1);
     dropQueue.current=dropQueue.current.then(async()=>{
       setReadingCapture(true);setImportProgress(null);
-      try{await operation();}catch(error){report(error);}
+      try{recordDiagnostic('import.queue','success',performance.now()-queuedAt,{},operationId);await operation();recordDiagnostic('import.workflow','success',performance.now()-queuedAt,{},operationId);}catch(error){recordDiagnostic('import.workflow','error',performance.now()-queuedAt,{error_code:errorCode(error)},operationId);report(error);}
       finally{setPendingImports(count=>count-1);setReadingCapture(false);setImportProgress(null);}
     });
   },[report]);
@@ -2511,6 +2515,7 @@ function Dialog({
           </>
         ) : kind === "settings" ? (
           <div className="settings-content">
+            <Diagnostics/>
             <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
               <span className="setting-label">Keyboard shortcuts</span>
               <div className="shortcuts">

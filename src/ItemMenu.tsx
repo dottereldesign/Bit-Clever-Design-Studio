@@ -1,4 +1,4 @@
-import {invoke} from '@tauri-apps/api/core';
+import {invoke} from "./diagnostics";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ClipboardCopy, ExternalLink, Tag, Trash2 } from "lucide-react";

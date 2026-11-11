@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {invoke} from '@tauri-apps/api/core';
+import {invoke} from "./diagnostics";
 import {HardDrive} from 'lucide-react';
 import './storageBar.css';
 type Usage={bytes:number;data_bytes:number;library_bytes:number;app_bytes:number;partial:boolean};

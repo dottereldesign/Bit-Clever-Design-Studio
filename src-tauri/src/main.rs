@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod diagnostics;
 mod browser;
 mod website_capture;
 mod storage;
@@ -159,9 +160,15 @@ async fn get_library(state: tauri::State<'_, State>) -> Result<db::Library> {
         .map_err(err)?
 }
 #[tauri::command]
-async fn update(change: db::Change, state: tauri::State<'_, State>) -> Result<()> {
+async fn update(change: db::Change, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<()> {
     let s=state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {let _guard=s.content_lock.lock().map_err(err)?;db::change(&s.db,change)?;managed_library::organise(&s.db)})
+    tauri::async_runtime::spawn_blocking(move || {
+        let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();
+        let log=|name:&str,status:&str,duration:f64|diagnostics::record(diagnostics::Event{time:0,name:name.into(),operation:operation.clone(),status:status.into(),duration,fields:serde_json::json!({})});
+        let _guard=s.content_lock.lock().map_err(err)?;log("native.lock_wait","success",start.elapsed().as_secs_f64()*1000.);
+        let start=std::time::Instant::now();let result=db::change(&s.db,change);log("native.database_change",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result?;
+        let start=std::time::Instant::now();let result=managed_library::organise(&s.db);log("native.organise_files",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result
+    })
         .await
         .map_err(err)?
 }
@@ -524,10 +531,11 @@ fn main() {
                 .map(PathBuf::from)
                 .unwrap_or(data);
             std::fs::create_dir_all(&data)?;
+            diagnostics::init(&data);
             let config=data.clone();
             let selected=managed_library::selected_db(&config);
             app.manage(LibraryLocation{config:config.clone(),error:selected.as_ref().err().cloned()});
-            let db_path=match selected {Ok(path)=>path,Err(_)=>return Ok(())};
+            let db_path=match selected {Ok(path)=>path,Err(_)=>{diagnostics::event("library.open","error",0.,serde_json::json!({"error_code":"library_unavailable"}));return Ok(())}};
             let library_data=db_path.parent().unwrap().to_path_buf();
             db::init(&db_path)?;
             let db = db::connect(&db_path)?;
@@ -629,7 +637,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(tauri::generate_handler![diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
             website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
             library_overview,
             library_preferences,
@@ -674,8 +682,9 @@ fn main() {
             duplicate_recovery,
             restore_duplicate
         ])
-        .run(tauri::generate_context!())
-        .expect("Could not start Design");
+        .build(tauri::generate_context!())
+        .expect("Could not start Design")
+        .run(|_,event|{if matches!(event,tauri::RunEvent::Exit){diagnostics::shutdown();}});
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./diagnostics";
 import { RotateCcw, X } from "lucide-react";
 import { HistoryButtons } from "./useAppHistory";
 

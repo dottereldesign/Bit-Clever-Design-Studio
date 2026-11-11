@@ -1,4 +1,4 @@
-import {invoke} from "@tauri-apps/api/core";
+import {invoke} from "./diagnostics";
 import type {CaptureFile,CaptureDraft} from "./CaptureDialog";
 import type {ImportProgress} from "./CaptureProgress";
 export async function stageFiles(files: File[], progress?:(value:ImportProgress)=>void): Promise<CaptureDraft> {

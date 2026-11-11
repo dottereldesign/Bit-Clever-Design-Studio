@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from "./diagnostics";
 import SidebarIcon from './SidebarIcon';
 import { isBoardDestination } from './model';
 import type { Shortcut } from './Shortcuts';

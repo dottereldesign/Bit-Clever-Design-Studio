@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "./diagnostics";
 import { enqueueVideos, persistVideoQueue, restoreVideoQueue, videoRequests, type VideoJob, type VideoProgress } from "./videoQueue";
 
 const storageKey = 'video-download-queue-v1';

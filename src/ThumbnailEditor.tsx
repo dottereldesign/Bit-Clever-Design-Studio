@@ -1,6 +1,6 @@
 import { readClipboard } from "./clipboard";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "./diagnostics";
 import type { CaptureDraft, CaptureFile } from "./CaptureDialog";
 import type { Item } from "./model";
 import { appHistory } from "./appHistory";

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "./diagnostics";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Grip, Palette, Plus, SlidersHorizontal, X, Folder, Layers, LayoutGrid } from "lucide-react";
 import "./homeDashboard.css";

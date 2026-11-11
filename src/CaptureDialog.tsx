@@ -3,7 +3,7 @@ import {stageFiles} from "./captureImport";
 import CaptureProgress, {type ImportProgress} from "./CaptureProgress";
 import { readClipboard } from "./clipboard";
 import { useEffect, useRef, useState } from "react";
-import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "./diagnostics";
 import { Check, FileImage, LoaderCircle, X } from "lucide-react";
 import { boardNames, isBoardDestination, isTableCollection, type Library, type LinkDestination } from "./model";
 import { RatioSelect, ThumbnailCrop } from "./ThumbnailEditor";

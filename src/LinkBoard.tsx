@@ -1,5 +1,5 @@
 import {useEffect,useState} from "react";
-import { convertFileSrc,invoke } from "@tauri-apps/api/core";
+import { convertFileSrc,invoke } from "./diagnostics";
 import { ExternalLink, Eye, MoreHorizontal, Plus } from "lucide-react";
 import { openUrl } from "./api";
 import type { Item } from "./model";

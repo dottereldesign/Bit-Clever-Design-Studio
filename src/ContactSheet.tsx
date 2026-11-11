@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./diagnostics";
 import { media } from "./api";
 import type { Item } from "./model";
 import { StudioDialog } from "./Shortcuts";

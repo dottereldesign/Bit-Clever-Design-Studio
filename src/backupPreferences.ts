@@ -1,4 +1,5 @@
-import {invoke,isTauri} from "@tauri-apps/api/core";
+import {record} from './diagnostics';
+import {invoke,isTauri} from "./diagnostics";
 import {appHistory} from "./appHistory";
 const keys=['selection-style','colour-history','collection-shortcuts','site-shortcuts','tile-size','sidebar-width','sidebar-section-style','home-style','home-appearance','reduce-motion','sidebar-layout','app-icons','folder-labels','folder-appearance','sidebar-folder-order','home-plan','home-tiles'];
 const allowed=(key:string)=>keys.includes(key)||key.startsWith('sidebar-open:');
@@ -20,7 +21,7 @@ let pending:Promise<void>|null=null,dirty=false,last='';
 export async function flushLibraryPreferences(){
  if(!isTauri())return;
  dirty=true;if(pending)return pending;
- pending=(async()=>{try{while(dirty){dirty=false;const preferences=collectBackupPreferences(),text=JSON.stringify(preferences);if(text!==last){await invoke('save_library_preferences',{preferences});last=text;}}}finally{pending=null;}})();
+ pending=(async()=>{try{while(dirty){dirty=false;const preferences=collectBackupPreferences(),text=JSON.stringify(preferences);if(text!==last){await invoke('save_library_preferences',{preferences});record('settings.saved','success',0,{count:Object.keys(preferences).length});last=text;}}}finally{pending=null;}})();
  return pending;
 }
 export function trackLibraryPreferences(report:(e:unknown)=>void){return appHistory.subscribe(()=>{void flushLibraryPreferences().catch(report);});}

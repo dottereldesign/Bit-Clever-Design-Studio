@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {Pipette,X,Copy} from 'lucide-react';
-import {invoke} from '@tauri-apps/api/core';
+import {invoke} from "./diagnostics";
 import {useHistoryState} from './useAppHistory';
 import type {Label} from './model';
 type Colour={hex:string;projects:string[]};

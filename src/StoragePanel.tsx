@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {invoke} from '@tauri-apps/api/core';
+import {invoke} from "./diagnostics";
 import {open} from '@tauri-apps/plugin-dialog';
 import {FolderOpen,Download,ShieldCheck,Upload,Layers,Palette,Folder} from 'lucide-react';
 import {StudioDialog} from './Shortcuts';

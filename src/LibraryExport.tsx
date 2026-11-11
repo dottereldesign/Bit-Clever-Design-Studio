@@ -1,6 +1,6 @@
 import {collectBackupPreferences} from "./backupPreferences";
 import { useEffect, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "./diagnostics";
 import { homeDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
