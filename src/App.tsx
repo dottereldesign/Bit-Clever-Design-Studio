@@ -1,3 +1,4 @@
+import {useThumbnailReadiness} from './useThumbnailReadiness';
 import Diagnostics from './DiagnosticsPanel';
 import {record as recordDiagnostic,errorCode} from './diagnostics';
 import {useVirtualizer} from '@tanstack/react-virtual';
@@ -18,6 +19,7 @@ import {applyBackupPreferences,trackLibraryPreferences} from './backupPreference
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -66,7 +68,7 @@ import {
   Undo2,
   Redo2,
 } from "lucide-react";
-import { changeLibrary, loadLibrary, media, forgetMedia, type Change } from "./api";
+import { changeLibrary, loadLibrary, media, cachedMedia, prioritizeThumbnail, forgetMedia, type Change } from "./api";
 import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
@@ -325,7 +327,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const libRef=useRef(lib);libRef.current=lib;
   const historyReady=useRef(false);
   const pasteBusy=useRef(false);
-  const [hoverId, setHoverId] = useState<number | null>(null);
+  const stopHoverRef=useRef<()=>void>(()=>{});
+  const setHoverId=useCallback((_id:null)=>stopHoverRef.current(),[]);
   const [category,setCategory] = useState<string|null>(savedView?.category??null);
   const [categoryUndo,setCategoryUndo] = useState<[number,string][]|null>(null);
   const categoryUndoNotice = useRef("");
@@ -1501,8 +1504,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                       ids: [item.id],
                     })
                   }
-                  hoverId={hoverId}
-                  setHoverId={setHoverId}
+                  stopHoverRef={stopHoverRef}
                 />
               )}
               {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length)} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
@@ -1655,8 +1657,7 @@ function MediaGrid({
   select,
   openItem,
   onMenu,
-  hoverId,
-  setHoverId,
+  stopHoverRef,
 }: {
   removeFolder?: string;
   onRemoveFolder: (item:Item)=>Promise<void>;
@@ -1675,9 +1676,13 @@ function MediaGrid({
   select: (id: number, range?: boolean) => void;
   openItem: (item: Item, e: React.MouseEvent) => void;
   onMenu: (id: number) => void;
-  hoverId: number | null;
-  setHoverId: (id: number | null) => void;
+  stopHoverRef:React.RefObject<()=>void>;
 }) {
+  const [hoverId,setHoverId]=useState<number|null>(null);
+  useLayoutEffect(()=>{stopHoverRef.current=()=>setHoverId(null);return()=>{stopHoverRef.current=()=>{};};},[stopHoverRef]);
+  const itemsById=useMemo(()=>new Map(items.map(item=>[item.id,item])),[items]);
+  const latest=useRef({copy,onRemoveFolder,onPin,select,openItem,onMenu,selected,itemsById});latest.current={copy,onRemoveFolder,onPin,select,openItem,onMenu,selected,itemsById};
+  const handlers=useRef(new Map<number,{copy:()=>void;remove:()=>Promise<void>;pin:()=>void;select:(range:boolean)=>void;open:(e:React.MouseEvent)=>void;menu:()=>void;hover:(value:boolean)=>void;drag:(e:React.DragEvent)=>void}>());
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
   const [viewport, setViewport] = useState({ top: 0, height: 1000 });
@@ -1685,6 +1690,8 @@ function MediaGrid({
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
   const ratioFrame = useRef(0);
   const interruptedReturn = useRef<typeof returnTo>(null);
+  useThumbnailReadiness(items,ref,parent);
+  useEffect(()=>{for(const id of handlers.current.keys())if(!itemsById.has(id))handlers.current.delete(id);},[itemsById]);
   useLayoutEffect(() => {
     // On Home -> library, the child layout effect precedes the parent ref attachment.
     // The DOM ancestor is already present, so always attach the size observer.
@@ -1705,7 +1712,7 @@ function MediaGrid({
     return () => { observer.disconnect(); scroller.removeEventListener("scroll", schedule); cancelAnimationFrame(frame); };
   }, [parent]);
   useEffect(() => () => cancelAnimationFrame(ratioFrame.current), []);
-  const layout = useMemo(() => arrangeMasonry(items.map(item => thumbnailRatios.get(`${item.id}:${item.modified}`) ?? 1 / 1.4), width, size), [items, width, size, revision]);
+  const layout = useMemo(() => {const start=performance.now();const next=arrangeMasonry(items.map(item => thumbnailRatios.get(`${item.id}:${item.modified}`) ?? 1 / 1.4), width, size);const duration=performance.now()-start;if(duration>8)recordDiagnostic('layout.masonry','warning',duration,{items:items.length,width});return next;}, [items, width, size, revision]);
   const visible = layout.tiles.filter(tile => tile.top + tile.height >= viewport.top - viewport.height && tile.top <= viewport.top + viewport.height * 2);
   useLayoutEffect(() => {
     if (!returnTo) return;
@@ -1763,40 +1770,39 @@ function MediaGrid({
     }}>
     {visible.map(row => {
       const item = items[row.index];
+      if(!handlers.current.has(item.id)){const id=item.id;handlers.current.set(id,{
+        copy:()=>void latest.current.copy(id),remove:()=>latest.current.onRemoveFolder(latest.current.itemsById.get(id)!),pin:()=>latest.current.onPin(latest.current.itemsById.get(id)!),select:range=>latest.current.select(id,range),open:e=>latest.current.openItem(latest.current.itemsById.get(id)!,e),menu:()=>latest.current.onMenu(id),hover:value=>{const current=latest.current.itemsById.get(id);setHoverId(value&&(current?.kind==='video'||current?.kind==='animation')?id:null);},drag:e=>{const selection=latest.current.selected;e.dataTransfer.setData('application/design-items',JSON.stringify(selection.has(id)?[...selection]:[id]));e.dataTransfer.effectAllowed='copyMove';}
+      });}
+      const actions=handlers.current.get(item.id)!;
       return <div className="masonry-tile" key={`${item.id}:${item.modified}`} data-media-key={`${item.id}:${item.modified}`}
         style={{ transform: `translate(${row.left}px, ${row.top}px)`, width: row.width, height: row.height }}>
               <Card
                 removeFolder={removeFolder}
-                onRemoveFolder={()=>onRemoveFolder(item)}
-                copy={() => void copy(item.id)}
+                onRemoveFolder={actions.remove}
+                copy={actions.copy}
                 copying={copying !== null}
                 previewed={previewId === item.id}
                 returned={highlighted?.id === item.id}
                 canPin={!!project}
                 pinned={!!project && !!item.favourites?.includes(project)}
-                pin={() => onPin(item)}
+                pin={actions.pin}
                 key={`${item.id}:${item.modified}`}
                 item={item}
                 selected={selected.has(item.id)}
-                select={(range) => select(item.id, range)}
-                open={(e) => openItem(item, e)}
-                menu={() => onMenu(item.id)}
+                select={actions.select}
+                open={actions.open}
+                menu={actions.menu}
                 playing={hoverId === item.id}
-                hover={(value) => setHoverId(value && (item.kind === "video" || item.kind === "animation") ? item.id : null)}
-                drag={(e) => {
-                  const ids = selected.has(item.id) ? [...selected] : [item.id];
-                  e.dataTransfer.setData(
-                    "application/design-items",
-                    JSON.stringify(ids),
-                  );
-                  e.dataTransfer.effectAllowed = "copyMove";
-                }}
+                hover={actions.hover}
+                visibleNow={row.top+row.height>=viewport.top&&row.top<=viewport.top+viewport.height}
+                drag={actions.drag}
               />
       </div>;
     })}
   </div>;
 }
-function Card({
+const Card=memo(function Card({
+  visibleNow,
   removeFolder,
   onRemoveFolder,
   previewed,
@@ -1815,6 +1821,7 @@ function Card({
   hover,
   drag,
 }: {
+  visibleNow:boolean;
   removeFolder?: string;
   onRemoveFolder: ()=>Promise<void>;
   copy: () => void;
@@ -1834,7 +1841,7 @@ function Card({
   drag: (e: React.DragEvent) => void;
 }) {
   const [removing,setRemoving]=useState(false);
-  const [thumb, setThumb] = useState(""),
+  const [thumb, setThumb] = useState(()=>cachedMedia(item,"thumbnail")??""),
     [preview, setPreview] = useState(""),
     [failed, setFailed] = useState(false),
     [motionError, setMotionError] = useState(false),
@@ -1842,11 +1849,11 @@ function Card({
   const motion = item.kind === "video" || item.kind === "animation";
   useEffect(() => {
     const abort = new AbortController();
-    setThumb("");
+    setThumb(cachedMedia(item,"thumbnail")??"");
     setFailed(false);
     setPreview("");
     setMotionError(false);
-    media(item, "thumbnail", abort.signal).then(
+    media(item, "thumbnail", abort.signal,visibleNow?0:1).then(
       (url) => {
         if (!abort.signal.aborted) setThumb(url);
       },
@@ -1855,7 +1862,8 @@ function Card({
       },
     );
     return () => abort.abort();
-  }, [item.id, item.modified, item.path, retry]);
+  }, [item.id, item.modified, item.path, item.thumbnail, retry]);
+  useEffect(()=>{prioritizeThumbnail(item,visibleNow);},[item,visibleNow]);
   useEffect(() => {
     if (!playing || !motion || motionError) return;
     const abort = new AbortController();
@@ -1958,7 +1966,7 @@ function Card({
       </div>
     </article>
   );
-}
+});
 function LinksTable({
   onRate,onFolders,
   showCategories,

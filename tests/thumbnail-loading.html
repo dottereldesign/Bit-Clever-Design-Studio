@@ -29,7 +29,7 @@ try {
   await until(()=>document.querySelector('.thumbnail-progress progress')?.value>0,'Determinate progress');
   const progress=document.querySelector('.thumbnail-progress');
   assert(/\d+%/.test(progress.textContent),'Visible percent');
-  const box=progress.getBoundingClientRect(), search=document.querySelector('.search').getBoundingClientRect();
+  const box=progress.getBoundingClientRect(), search=document.querySelector('.sidebar-storage').getBoundingClientRect();
   assert(box.right<search.left&&box.left>document.querySelector('.sidebar').getBoundingClientRect().right,'Header fits');
   window.__screenshotReady=true;
   await pause(450);

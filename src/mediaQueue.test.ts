@@ -42,3 +42,12 @@ test('bounds concurrency, skips obsolete queued cards, and continues after a dec
   await flush();
   assert.deepEqual(queue.getProgress(), { total: 1, completed: 1, failed: 0, pending: 0 });
 });
+
+test('visible thumbnails overtake prefetch and queued cards can be promoted',async()=>{
+ const queue=new MediaQueue(),finishes:Array<(s:string)=>void>=[],order:string[]=[];
+ const running=Array.from({length:3},(_,i)=>queue.request('busy'+i,true,()=>new Promise<string>(resolve=>finishes.push(resolve))));
+ const prefetch=queue.request('prefetch',true,async()=>{order.push('prefetch');return 'a';},undefined,1);
+ const promoted=queue.request('promoted',true,async()=>{order.push('promoted');return 'b';},undefined,1);
+ const visible=queue.request('visible',true,async()=>{order.push('visible');return 'c';},undefined,0);
+ queue.prioritize('promoted',0);await flush();finishes[0]('done');await Promise.all([prefetch,promoted,visible]);assert.deepEqual(order,['visible','promoted','prefetch']);finishes.slice(1).forEach(f=>f('done'));await Promise.all(running);
+});

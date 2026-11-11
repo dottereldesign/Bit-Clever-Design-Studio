@@ -17,6 +17,9 @@ const cache = new Map<string, string>();
 let cacheHits=0,cacheMisses=0,cacheTimer:ReturnType<typeof setTimeout>|undefined;
 function cacheMetric(hit:boolean){if(hit)cacheHits++;else cacheMisses++;if(!cacheTimer)cacheTimer=setTimeout(()=>{record('media.cache_hits','success',0,{count:cacheHits});record('media.cache_misses','success',0,{count:cacheMisses});cacheHits=0;cacheMisses=0;cacheTimer=undefined;},10000);}
 export const mediaQueue = new MediaQueue();
+const mediaKey=(item:Item,mode:string)=>`${item.id}:${item.modified}:${item.path}:${item.thumbnail??''}:${mode}`;
+export const cachedMedia=(item:Item,mode:string)=>cache.get(mediaKey(item,mode));
+export const prioritizeThumbnail=(item:Item,visible:boolean)=>mediaQueue.prioritize(mediaKey(item,'thumbnail'),visible?0:1);
 export function forgetMedia(item: Item, mode: string) {
   cache.delete(`${item.id}:${item.modified}:${item.path}:${item.thumbnail ?? ''}:${mode}`);
 }
@@ -24,6 +27,7 @@ export async function media(
   item: Item,
   mode: string,
   signal?: AbortSignal,
+  priority=1,
 ): Promise<string> {
   if (signal?.aborted) throw new Error("Cancelled");
   const key = `${item.id}:${item.modified}:${item.path}:${item.thumbnail ?? ''}:${mode}`;
@@ -39,5 +43,5 @@ export async function media(
     const url = convertFileSrc(path);
     cache.set(key, url);
     return url;
-  }, signal);
+  }, signal,priority);
 }
