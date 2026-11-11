@@ -447,6 +447,14 @@ main {
   scrollbar-width: thin;
   position: relative;
 }
+/* Keep page width steady between empty and overflowing collections. Native
+   scrollbars leave only the muted track when there is nothing to scroll. */
+.content,
+.settings-page-shell {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-color: #a4aa9e #eff0ec;
+}
 .media-grid {
   position: relative;
   width: 100%;
@@ -1882,7 +1890,7 @@ main {
 
 .links-table .link-category-column { width:160px;min-width:110px;white-space:normal;overflow-wrap:anywhere; }
 
-.settings-page-shell { flex:1;min-height:0;overflow:auto;padding:28px;scrollbar-width:thin; }
+.settings-page-shell { flex:1;min-height:0;overflow-x:auto;overflow-y:scroll;padding:28px;scrollbar-width:thin; }
 .settings-page { width:100%;min-width:0; }
 .settings-page .modal-heading { margin-bottom:28px; }
 .settings-page .modal-heading h2 { font-size:22px; }
