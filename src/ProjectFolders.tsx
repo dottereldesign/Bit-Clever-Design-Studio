@@ -21,7 +21,8 @@ export function folderPath(folder:ProjectFolder,folders:ProjectFolder[]):string 
   while(parent){const p=folders.find(f=>f.id===parent);if(!p||seen.has(p.id))break;seen.add(p.id);names.unshift(p.name);parent=p.parent_id;}
   return names.join(' / ');
 }
-export function ProjectTree({project,folders,items,active,scope,open,mutate,report,rename,remove,icon,externalDrop,homeProps}: {
+export function ProjectTree({project,folders,items,active,scope,open,mutate,report,rename,remove,icon,externalDrop,homeProps,paste}: {
+  paste:(folder:number|null)=>void;
   project:Label;folders:ProjectFolder[];items:Item[];active:boolean;scope:FolderScope;
   open:(scope:FolderScope)=>void;mutate:Mutate;report:(error:unknown)=>void;rename:()=>void;remove:()=>void;icon:ReactNode;
   homeProps?:HTMLAttributes<HTMLButtonElement>;
@@ -71,6 +72,7 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
       {orderedFolders(own.filter(f=>f.parent_id===null)).map(f=>row(f,0))}
     </div>}
     {menu&&createPortal(<><div className="project-menu-dismiss" onClick={()=>setMenu(null)}/><div className="project-folder-menu" style={{left:menu.x,top:menu.y}} role="menu">
+      <button onClick={()=>{paste(menu.id);setMenu(null);}}>Paste here</button>
       <button onClick={()=>edit('create',menu.id)}>New folder</button>
       <button onClick={()=>{if(menu.id===null){setMenu(null);rename();}else edit('rename',menu.id);}}>Rename</button>
       {menu.id!==null&&<button onClick={()=>edit('move',menu.id)}>Move folder…</button>}

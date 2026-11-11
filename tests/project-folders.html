@@ -2,7 +2,7 @@
 import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#c5d4c1"/></svg>');
 const item=(id,projects,folders,rating=null)=>({id,name:'Reference '+id,path:'https://example.org/'+id,kind:'link',source:'Links/Psychodrama',projects,project_folders:folders,rating,tags:[],modified:1,added:id,missing:false});
-let lib={items:[item(1,[7],[10]),item(2,[7],[]),item(3,[8],[30],5)],categories:[],projects:[{id:7,name:'AANZPA',count:2},{id:8,name:'Other project',count:1}],project_folders:[{id:10,project_id:7,parent_id:null,name:'Research',position:null},{id:11,project_id:7,parent_id:10,name:'Psychodrama',position:null},{id:12,project_id:7,parent_id:null,name:'Branding',position:null},{id:30,project_id:8,parent_id:null,name:'Inspiration',position:null}],tags:[],sources:[],root:'C:/mock',scanning:false};
+let lib={items:[item(1,[7],[10]),item(2,[7],[]),item(3,[8],[30],5)],categories:['Illustration','Components / Headers'],projects:[{id:7,name:'AANZPA',count:2},{id:8,name:'Other project',count:1}],project_folders:[{id:10,project_id:7,parent_id:null,name:'Research',position:null},{id:11,project_id:7,parent_id:10,name:'Psychodrama',position:null},{id:12,project_id:7,parent_id:null,name:'Branding',position:null},{id:30,project_id:8,parent_id:null,name:'Inspiration',position:null}],tags:[],sources:[],root:'C:/mock',scanning:false};
 let callback=0,clipboard=null,release=null,hold=false;const calls=[],undo=[],redo=[];
 window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
  calls.push({command,args});if(command==='get_library')return structuredClone(lib);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='save_library_preferences'||command==='discard_capture')return;
@@ -16,6 +16,7 @@ window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback
    else if(c.action==='reorder_project_folders')c.ids.forEach((id,n)=>lib.project_folders.find(f=>f.id===id).position=n);
    else if(c.action==='move_project_folder')lib.project_folders.find(f=>f.id===c.target).parent_id=c.value?Number(c.value):null;
    else if(c.action==='add_project_folder'||c.action==='remove_project_folder'){for(const i of lib.items.filter(i=>c.ids.includes(i.id))){if(c.action.startsWith('add')){i.project_folders=[...new Set([...i.project_folders,c.target])];i.projects=[...new Set([...i.projects,lib.project_folders.find(f=>f.id===c.target).project_id])];}else i.project_folders=i.project_folders.filter(id=>id!==c.target);}}
+   else if(c.action==='set_category')lib.items.filter(i=>c.ids.includes(i.id)).forEach(i=>{i.category=c.value;i.project_only=false;i.design_folders=c.value.startsWith('Components / ')?[]:[c.value];i.component_folders=c.value.startsWith('Components / ')?[c.value]:[];});
    else if(c.action==='add_project')lib.items.filter(i=>c.ids.includes(i.id)).forEach(i=>i.projects=[...new Set([...i.projects,c.target])]);
    else throw Error(c.action);return;
  }throw Error(command);
@@ -66,6 +67,17 @@ try{
  document.querySelector('button[data-category=""]').click();await pause(150);assert(!document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo leaked into Design Uncategorised');
  findButton('All Designs',document.querySelector('.sidebar')).click();await pause(150);assert(!document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo leaked into All Designs');
  project(7).click();await until(()=>document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo still available');
- document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation','Repeated link-dialog saves stay in project, Unfiled and subfolder','New project paste is excluded from Design Inspo']});
+ // Context pastes target the clicked folder, without changing the current route.
+ findButton('All Designs',document.querySelector('.sidebar')).click();await pause(150);
+ clipboard={files:[{path:'C:/staging/another.png',name:'Context logo.png'}],url:''};
+ folder(11).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:170,clientY:280}));await until(()=>document.querySelector('.project-folder-menu'),'Project paste menu');findButton('Paste here',document.querySelector('.project-folder-menu')).click();
+ await until(()=>lib.items.some(i=>i.name==='Context logo'&&i.project_folders.includes(11)),'Context paste into project');assert(!document.querySelector('.project-breadcrumb'),'Context paste navigated away from Designs');assert(lib.items.at(-1).project_only,'Context project paste leaked to Designs');
+ project(7).click();await pause(150);
+ for(const name of ['Illustration','Components / Headers']){
+  clipboard={files:[{path:'C:/staging/folder.png',name:'Folder paste.png'}],url:''};const before=lib.items.length;
+  document.querySelector(`button[data-category="${name}"]`).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:170,clientY:280}));await until(()=>document.querySelector('[aria-label="Folder actions"]'),'Design/component paste menu');findButton('Paste here',document.querySelector('[aria-label="Folder actions"]')).click();
+  await until(()=>lib.items.length===before+1&&lib.items.at(-1).category===name,'Context paste filed');assert(lib.items.at(-1).projects.length===0,'Current project leaked into context paste');assert(document.querySelector('.project-breadcrumb')?.textContent.includes('AANZPA'),'Context paste left current project');
+ }
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation','Repeated link-dialog saves stay in project, Unfiled and subfolder','New project paste is excluded from Design Inspo','Paste here targets project, Design and Component folders without navigation']});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,calls:calls.map(c=>c.command)});}
 </script></body></html>

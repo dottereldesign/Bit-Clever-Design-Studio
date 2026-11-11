@@ -626,7 +626,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     <button
       className={`nav-item source-item ${s===allComponents?"source-parent":""} ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
       {...homeDrag(`category:${s}`)}
-      onContextMenu={e=>{if(s===allComponents||s===componentInbox||!s)return;e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
+      onContextMenu={e=>{e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
       data-folder-order={s===allComponents?undefined:isComponent(s)?'components':'design'}
       data-category={s}
       {...categoryDropProps(s)}
@@ -850,17 +850,18 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       }
     });
   },[mutate,recordCapture,refresh,report,showCaptureReceipt,enqueueImport]);
-  const pasteCapture = useCallback(async () => {
-    if((category!==null||project!==null)&&!resourcesView&&!boardView&&!videoView&&!linksOnly){
+  const pasteCapture = useCallback(async (target?:{category:string|null;project:number|null;folder:number|null}) => {
+    if(target||((category!==null||project!==null)&&!resourcesView&&!boardView&&!videoView&&!linksOnly)){
       // Read now, not when the import reaches the front of the queue. The clipboard
       // helper still orders native reads behind preceding app copy operations.
       const snapshot=readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error}));
-      const destination=project!==null?null:category;const targetProject=project;const targetFolder=typeof projectFolder==='number'?projectFolder:null;
+      const targetProject=target?target.project:project;const destination=targetProject!==null?null:target?target.category:category;const targetFolder=target?target.folder:typeof projectFolder==='number'?projectFolder:null;
       enqueueImport(async()=>{
         const {draft,error}=await snapshot;
         if(!draft)throw error;
         try{
           if(!draft.files.length&&!(draft.url&&(targetProject!==null||(destination!==null&&isComponent(destination))||destination===allComponents))){
+            if(target)throw Error('Copy an image or file to paste into a Design Inspo folder. Links can be pasted into projects or App Components.');
             setCapture({...draft,destination:linkDestination});return;
           }
           const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
@@ -1161,7 +1162,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             {lib.projects.map(p=><ProjectTree key={p.id} project={p} folders={lib.project_folders??[]} items={lib.items}
               active={!homeView&&!generalKey&&project===p.id} scope={projectFolder} open={scope=>{navigate(p.id);setProjectFolder(scope);}}
               icon={<FolderIcon preferences={icons} id={`project:${p.id}`}/>} mutate={mutate} report={report}
-              rename={()=>setModal({kind:'renameProject',id:p.id})} remove={()=>setModal({kind:'deleteProject',id:p.id})}
+              paste={folder=>void pasteCapture({category:null,project:p.id,folder})} rename={()=>setModal({kind:'renameProject',id:p.id})} remove={()=>setModal({kind:'deleteProject',id:p.id})}
               homeProps={homeDrag(`project:${p.id}`)} externalDrop={(data,folder)=>queueImageDrop(data,null,{project:p.id,folder})}/>)}
           </nav>
           {!lib.projects.length && (
@@ -1588,7 +1589,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       )}
       {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Reorder folders or drop on Home</small></div>}
-      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
+      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} canRename={!!folderMenu.name&&folderMenu.name!==allComponents&&folderMenu.name!==componentInbox} paste={()=>void pasteCapture({category:folderMenu.name,project:null,folder:null})} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
       {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu} report={report}
         organisationActions={<>
