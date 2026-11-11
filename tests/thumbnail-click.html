@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset="UTF-8"><title>Real pointer category moves</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+import {appHistory} from '/src/appHistory.ts';import {collectBackupPreferences} from '/src/backupPreferences.ts';import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
 const library={items:Array.from({length:350},(_,n)=>({id:n+1,name:`Reference ${n+1}`,source:'Design/3D',category:'3D',kind:n%3===0?'animation':'image',path:`C:/Design/${n+1}.png`,modified:1,added:n+1,missing:false,tags:[1],projects:[7]})),categories:['3D','Branding','Logo',...Array.from({length:24},(_,n)=>`Other ${String(n).padStart(2,'0')}`)],projects:[{id:7,name:'Website',count:350},{id:8,name:'New project',count:0}],tags:[{id:1,name:'Keep',count:350}],sources:['Design/3D'],root:'C:/Design',scanning:false};
 const history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
@@ -21,12 +21,19 @@ try{
   const button=document.querySelector('.card-open'),r=button.getBoundingClientRect(),point={x:r.left+r.width/2,y:r.top+r.height/2};
   window.__pointerAction={id:++action,from:point,to:point,click:true};await until(()=>window.__pointerActionDone===action,'Mouse click');await pause(100);
   assert(!document.querySelector('.viewer')&&!document.querySelector('.quick-preview'),'Click opened preview in '+section);
+  assert(button.closest('.card').classList.contains('selected'),'Plain click did not select');
   button.focus();button.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await until(()=>document.querySelector('.quick-preview'),'Space preview '+section);
   document.querySelector('[aria-label="Close quick preview"]').click();await until(()=>!document.querySelector('.quick-preview'),'Close preview');
-  button.dispatchEvent(new MouseEvent('click',{ctrlKey:true,bubbles:true}));await until(()=>button.closest('.card').classList.contains('selected'),'Modifier selection');
+  button.dispatchEvent(new MouseEvent('click',{ctrlKey:true,bubbles:true}));await until(()=>!button.closest('.card').classList.contains('selected'),'Modifier deselection');button.dispatchEvent(new MouseEvent('click',{ctrlKey:true,bubbles:true}));await until(()=>button.closest('.card').classList.contains('selected'),'Modifier selection');
   assert(!document.querySelector('.viewer'),'Selection opened viewer');
-  checks.push(section+': real click does nothing, Space preview and Ctrl selection work');
+  checks.push(section+': real click selects without opening, Space preview and Ctrl selection work');
  }
+ document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Customise');
+ [...document.querySelectorAll('.customise-layout nav button')].find(b=>b.textContent==='Library').click();await until(()=>document.querySelectorAll('.selection-style-option').length===50,'50 selection options');
+ const choices=[...document.querySelectorAll('.selection-style-option')];const treatments=new Set();for(const choice of choices){const sample=choice.querySelector('.selection-sample'),css=getComputedStyle(sample,'::after');assert(css.pointerEvents==='none','Selection intercepts clicks');treatments.add([css.border,css.background,css.boxShadow,css.inset].join('|'));}assert(treatments.size===50,'Styles not distinct');
+ choices[49].click();await until(()=>document.documentElement.dataset.selectionStyle==='50','Apply selection style');assert(localStorage.getItem('selection-style')==='50'&&collectBackupPreferences()['selection-style']===50,'Style not persisted/backed up');
+ await appHistory.undo();await until(()=>document.documentElement.dataset.selectionStyle==='1','Undo style');await appHistory.redo();await until(()=>document.documentElement.dataset.selectionStyle==='50','Redo style');
+ window.__screenshotReady=true;await pause(700);checks.push('50 distinct previews; saved selection; backup inclusion; Undo/Redo; non-blocking overlays');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),checks});}
 </script></body></html>

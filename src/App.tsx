@@ -1,3 +1,4 @@
+import {useSelectionAppearance} from './SelectionStyles';
 import ColourPicker, {ProjectColours} from './ColourPicker';
 import HoverPreview from "./HoverPreview";
 import {stageFiles} from "./captureImport";
@@ -240,6 +241,7 @@ function Popover({
 }
 
 export default function App({startOnHome}:{startOnHome?:boolean}={}) {
+  useSelectionAppearance();
   const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
   const savedView=savedSession?.view;
   const [homeView,setHomeView]=useState(savedView?.homeView??startOnHome??true);
@@ -660,7 +662,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     }
     // Gallery clicks only focus the thumbnail for Space preview. Keep explicit
     // link actions and modifier-key selection available.
-    if(item.kind!=="link"&&(project!==null||category!==null||allCategoriesView))return;
+    if(item.kind!=="link"&&(project!==null||category!==null||allCategoriesView)){setSelected(new Set([item.id]));anchor.current=item.id;return;}
     if (item.kind === "link" && !(item.source === "Websites" && item.thumbnail)) {
       void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
