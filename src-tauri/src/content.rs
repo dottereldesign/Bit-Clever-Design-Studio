@@ -823,6 +823,7 @@ pub fn remove_duplicates(db_path: &Path, data: &Path, keeper: i64, ids: Vec<i64>
         let tx = db.transaction().map_err(err)?;
         tx.execute("INSERT INTO item_projects(item_id,label_id,favourite) SELECT ?,label_id,favourite FROM item_projects WHERE item_id=? ON CONFLICT(item_id,label_id) DO UPDATE SET favourite=MAX(favourite,excluded.favourite)",params![keeper,id]).map_err(err)?;
         tx.execute("INSERT OR IGNORE INTO item_tags(item_id,label_id) SELECT ?,label_id FROM item_tags WHERE item_id=?",params![keeper,id]).map_err(err)?;
+        tx.execute("INSERT OR IGNORE INTO item_project_folders(item_id,folder_id) SELECT ?,folder_id FROM item_project_folders WHERE item_id=?",params![keeper,id]).map_err(err)?;
         tx.execute("UPDATE items SET source_url=(SELECT source_url FROM items WHERE id=?) WHERE id=? AND source_url=''",params![id,keeper]).map_err(err)?;
         tx.execute(
             "INSERT INTO duplicate_recovery VALUES(?,?,?,?,?)",

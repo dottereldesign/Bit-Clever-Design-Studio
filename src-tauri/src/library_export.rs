@@ -386,6 +386,7 @@ mod tests {
         let conn=db::connect(&path).unwrap();
         conn.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=1",[]).unwrap();
         conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
+        conn.execute_batch("INSERT INTO project_folders VALUES(1,7,NULL,'Research',NULL),(2,7,1,'Psychodrama',0);INSERT INTO item_project_folders VALUES(1,2);UPDATE items SET rating=5 WHERE kind='link';").unwrap();
         db::change(&path,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[2],"value":"Social Media"})).unwrap()).unwrap();
         let cover=path.parent().unwrap().join("home-covers/cover.png");fs::create_dir_all(cover.parent().unwrap()).unwrap();fs::write(&cover,b"cover bytes").unwrap();
         let prefs=serde_json::json!({"colour-history":[{"hex":"#ABCDEF","projects":["project:7","project:999"]}],"home-tiles":[{"id":"project:7","cover":{"path":cover,"width":10,"height":10}}],"app-icons":{"overrides":{"project:7":{"kind":"asset","value":cover}}},"folder-labels":{"Mobile":"iOS & Android"},"collection-shortcuts":[{"target":{"kind":"project","value":"7"}}]});
@@ -397,6 +398,7 @@ mod tests {
         db::import(&restored,metadata_path(&moved)).unwrap();
         let lib=db::load(&restored,false).unwrap();let item=lib.items.iter().find(|i|i.name=="Reference 1").unwrap();
         assert_eq!(item.component_folders,vec!["Components / Headers","Components / Navbars"]);
+        let child=lib.project_folders.iter().find(|f|f.name=="Psychodrama").unwrap();assert_eq!(item.project_folders,vec![child.id]);assert!(child.parent_id.is_some());assert!(item.projects.contains(&child.project_id));assert_eq!(lib.items.iter().find(|i|i.kind=="link").unwrap().rating,Some(5));
         let design=lib.items.iter().find(|i|i.name=="Reference 2").unwrap();assert!(design.design_folders.contains(&"Social Media".to_string()));assert!(design.design_folders.len()>1);
         assert!(fs::read_to_string(moved.join("Browse Library.html")).unwrap().contains("Social Media"));
         let settings=restore_preferences(&moved,&restored).unwrap();let project=lib.projects.iter().find(|p|p.name=="Keep project").unwrap();
@@ -426,7 +428,8 @@ mod tests {
         let (temp,path,destination)=fixture();let conn=db::connect(&path).unwrap();
         conn.execute("DELETE FROM items WHERE missing=1",[]).unwrap();
         conn.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=1",[]).unwrap();
-        conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();drop(conn);
+        conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
+        conn.execute_batch("INSERT INTO project_folders VALUES(1,7,NULL,'Research',NULL),(2,7,1,'Psychodrama',0);INSERT INTO item_project_folders VALUES(1,2);UPDATE items SET rating=5 WHERE kind='link';").unwrap();drop(conn);
         let result=export(&path,&destination,"BitClever Library",&AtomicBool::new(false),&mut |_|{}).unwrap();
         let folder=PathBuf::from(result.path);let managed=crate::managed_library::open(&folder).unwrap();
         crate::managed_library::verify_live(&folder).unwrap();

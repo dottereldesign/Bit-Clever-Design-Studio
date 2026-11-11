@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum Patch {
+    ProjectOrganisation(crate::project_folders::State),
+    Rating(i64, Option<i64>),
     Category(i64, Option<String>),
     ComponentFolders(i64, Vec<String>),
     DesignFolders(i64,Vec<String>),
@@ -23,10 +25,14 @@ pub enum Patch {
 }
 
 pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch>)>> {
+    if c.action.contains("project_folder") || ["delete_project","remove_project"].contains(&c.action.as_str()) {
+        return Ok(Some((match c.action.as_str(){"create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?)])));
+    }
     let mut patches = vec![];
     let value = c.value.as_deref().unwrap_or("").trim();
     let target = c.target.unwrap_or(0);
     let label = match c.action.as_str() {
+        "rate_links"=>{for id in &c.ids{let rating=db.query_row("SELECT rating FROM items WHERE id=? AND kind='link'",[id],|r|r.get::<_,Option<i64>>(0)).optional().map_err(err)?;if let Some(rating)=rating{if rating!=c.value.as_deref().and_then(|v|v.parse::<i64>().ok()){patches.push(Patch::Rating(*id,rating));}}}"Rate links"},
         "set_category" | "remove_component_folder" | "remove_design_folder" => {
             let mut ids=c.ids.clone();ids.sort();ids.dedup();
             for id in ids {
@@ -122,6 +128,8 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 // travel back to the other stack without replaying commands or changing IDs.
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
+        Patch::ProjectOrganisation(_)=>Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?),
+        Patch::Rating(id,_)=>Patch::Rating(*id,db.query_row("SELECT rating FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?),
         Patch::DesignFolders(id,_) => Patch::DesignFolders(*id,db::design_memberships(db,*id)?),
         Patch::CategoryArrivals(id,_) => Patch::CategoryArrivals(*id,db::category_arrivals(db,*id)?),
         Patch::ComponentFolders(id,_) => Patch::ComponentFolders(*id,db::component_memberships(db,*id)?),
@@ -169,6 +177,8 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
     for patch in serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)? {
         inverses.push(inverse(db,&patch)?);
         match patch {
+            Patch::ProjectOrganisation(state)=>crate::project_folders::restore(db,state)?,
+            Patch::Rating(id,rating)=>{db.execute("UPDATE items SET rating=? WHERE id=?",params![rating,id]).map_err(err)?;},
             Patch::DesignFolders(id,names)=>{db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;for name in names{db.execute("INSERT INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;}},
             Patch::CategoryArrivals(id,arrivals)=>{
                 db.execute("DELETE FROM category_arrivals WHERE item_id=?",[id]).map_err(err)?;
@@ -181,12 +191,12 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
             Patch::Category(id,name)=>{if let Some(name)=name {db.execute("INSERT INTO item_categories(item_id,name) SELECT id,? FROM items WHERE id=? ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![name,id]).map_err(err)?;}else{db.execute("DELETE FROM item_categories WHERE item_id=?",[id]).map_err(err)?;}},
             Patch::Member(project,id,label,previous)=>{
                 let table=if project{"item_projects"}else{"item_tags"};
-                db.execute(&format!("DELETE FROM {table} WHERE item_id=? AND label_id=?"),params![id,label]).map_err(err)?;
+                if previous.is_none() || !project {db.execute(&format!("DELETE FROM {table} WHERE item_id=? AND label_id=?"),params![id,label]).map_err(err)?;}
                 if let Some(favourite)=previous {
                     let labels=if project{"projects"}else{"tags"};
                     let valid:bool=db.query_row(&format!("SELECT EXISTS(SELECT 1 FROM items WHERE id=?) AND EXISTS(SELECT 1 FROM {labels} WHERE id=?)"),params![id,label],|r|r.get(0)).map_err(err)?;
                     if !valid {return Err("A reference or label needed for Undo no longer exists.".into());}
-                    if project {db.execute("INSERT INTO item_projects(item_id,label_id,favourite) VALUES(?,?,?)",params![id,label,favourite]).map_err(err)?;}else{db.execute("INSERT INTO item_tags(item_id,label_id) VALUES(?,?)",params![id,label]).map_err(err)?;}
+                    if project {db.execute("INSERT INTO item_projects(item_id,label_id,favourite) VALUES(?,?,?) ON CONFLICT(item_id,label_id) DO UPDATE SET favourite=excluded.favourite",params![id,label,favourite]).map_err(err)?;}else{db.execute("INSERT INTO item_tags(item_id,label_id) VALUES(?,?)",params![id,label]).map_err(err)?;}
                 }
             },
             Patch::Archived(id,previous)=>{db.execute("UPDATE items SET archived=? WHERE id=? AND NOT EXISTS(SELECT 1 FROM duplicate_recovery WHERE item_id=items.id)",params![previous,id]).map_err(err)?;},

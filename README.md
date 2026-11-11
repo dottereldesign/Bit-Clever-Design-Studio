@@ -15,6 +15,8 @@
 ## Collect and organise
 
 - **Design Inspo & App Components** — organise references into multiple folders, including across both sections. Add tags and collect references into projects without duplicating originals.
+- **Project folders** — create nested folders with All items and Unfiled views. Drag references into folders, share them across projects, and manage memberships without copying files. Right-click folders to rename or move them.
+- **Link ratings** — rate links out of five stars in Links or projects. Ratings stay consistent across views, with filters, sorting and bulk updates.
 - **Fast imports** — paste images, drop files or drag images from webpages. File them directly into the selected folder; edit details later.
 - **Websites** — save a URL with a full-page screenshot captured through Chrome or Edge, or supply your own image. Scroll inside the thumbnail, open the full preview or visit the website.
 - **Media previews** — browse images, GIFs and videos in a responsive gallery. Use quick preview, zoom and pan, or Ctrl + wheel to enlarge a thumbnail.
@@ -57,7 +59,7 @@ BitClever Library/
 └── Browse Library.html
 ```
 
-Files are stored once; the database preserves every folder membership, project and tag. Home covers, custom icons, saved colours, links and website screenshots are included in full backups.
+Files are stored once; the database preserves every folder membership, project hierarchy, link rating and tag. Home covers, custom icons, saved colours, links and website screenshots are included in full backups.
 
 - **Back up while using the app:** Storage → **Back Up Now**, then **Verify Backup** on the destination.
 - **Copy to an external drive:** close BitClever first, then copy the entire library folder.

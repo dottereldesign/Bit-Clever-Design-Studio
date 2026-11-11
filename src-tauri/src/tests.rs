@@ -824,6 +824,9 @@ fn duplicates_merge_curation_and_can_be_restored() {
         change("add_tag", vec![removed], Some(lib.tags[0].id), None, None),
     )
     .unwrap();
+    db::change(&path,change("create_project_folder",vec![],Some(project),Some("Research"),None)).unwrap();
+    let folder=db::load(&path,false).unwrap().project_folders[0].id;
+    db::change(&path,change("add_project_folder",vec![removed],Some(folder),None,None)).unwrap();
     assert_eq!(
         content::remove_duplicates(&path, temp.path(), kept, vec![removed]).unwrap(),
         1
@@ -834,6 +837,7 @@ fn duplicates_merge_curation_and_can_be_restored() {
     assert_eq!(current.items.len(), 3);
     let retained = current.items.iter().find(|i| i.id == kept).unwrap();
     assert_eq!(retained.favourites, vec![project]);
+    assert_eq!(retained.project_folders,vec![folder]);
     assert_eq!(retained.tags, vec![lib.tags[0].id]);
     assert_eq!(current.projects[0].count, 1);
     assert_eq!(content::recovery(&path).unwrap().len(), 1);

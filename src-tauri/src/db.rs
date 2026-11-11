@@ -11,6 +11,10 @@ pub fn err(e: impl std::fmt::Display) -> String {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Item {
+    #[serde(default)]
+    pub rating: Option<i64>,
+    #[serde(default)]
+    pub project_folders: Vec<i64>,
     pub id: i64,
     pub path: String,
     pub name: String,
@@ -49,6 +53,8 @@ pub struct HistoryEntry {
 }
 #[derive(Serialize, Deserialize)]
 pub struct Library {
+    #[serde(default)]
+    pub project_folders: Vec<crate::project_folders::Folder>,
     #[serde(default)]
     pub undo_entries:Vec<HistoryEntry>,
     #[serde(default)]
@@ -94,6 +100,7 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE INDEX IF NOT EXISTS idx_projects_label ON item_projects(label_id);
       CREATE INDEX IF NOT EXISTS idx_tags_label ON item_tags(label_id);").map_err(err)?;
     for (table, column, definition) in [
+        ("items", "rating", "INTEGER CHECK(rating BETWEEN 1 AND 5)"),
         ("items", "thumbnail", "TEXT NOT NULL DEFAULT ''"),
         ("items", "source_url", "TEXT NOT NULL DEFAULT ''"),
         ("items", "archived", "INTEGER NOT NULL DEFAULT 0"),
@@ -120,6 +127,7 @@ pub fn init(path: &Path) -> Result<()> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_component_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS category_arrivals(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_design_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
+    crate::project_folders::init(&db)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -173,11 +181,12 @@ pub fn touch_project(db: &Connection, project: i64) -> Result<()> {
 pub fn load(path: &Path, scanning: bool) -> Result<Library> {
     let db = connect(path)?;
     let mut stmt = db
-        .prepare("SELECT id,path,name,kind,source,modified,added,missing,source_url,thumbnail FROM items WHERE archived=0 ORDER BY id")
+        .prepare("SELECT id,path,name,kind,source,modified,added,missing,source_url,thumbnail,rating FROM items WHERE archived=0 ORDER BY id")
         .map_err(err)?;
     let mut items = stmt
         .query_map([], |r| {
             Ok(Item {
+                rating: r.get(10)?, project_folders: vec![],
                 id: r.get(0)?,
                 path: r.get(1)?,
                 name: r.get(2)?,
@@ -246,6 +255,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
             if let Some(n)=lookup.get(&id) {items[*n].component_folders.push(name);}
         }
     }
+    for (id,folder) in crate::project_folders::memberships(&db)? {if let Some(n)=lookup.get(&id){items[*n].project_folders.push(folder);}}
     let overrides = {
         let mut stmt = db.prepare("SELECT item_id,name FROM item_categories").map_err(err)?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
@@ -313,6 +323,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         Ok(rows)
     };
     Ok(Library {
+        project_folders: crate::project_folders::folders(&db)?,
         undo_entries:{
             let mut stmt=db.prepare("SELECT id,label FROM organisation_history ORDER BY id").map_err(err)?;
             let rows=stmt.query_map([],|r|Ok(HistoryEntry{id:r.get(0)?,label:r.get(1)?})).map_err(err)?;
@@ -458,6 +469,8 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
     let name = c.name.as_deref().unwrap_or("");
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
+        "create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,
+        "rate_links"=>{let rating=if value.is_empty(){None}else{Some(value.parse::<i64>().map_err(err)?)};if rating.is_some_and(|r|!(1..=5).contains(&r)){return Err("Choose a rating from 1 to 5".into());}for id in c.ids{tx.execute("UPDATE items SET rating=? WHERE id=? AND kind='link'",params![rating,id]).map_err(err)?;}},
         "create_category" => {
             tx.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[valid_name(name)?]).map_err(err)?;
         }
@@ -630,7 +643,10 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         }
         _ => return Err("Unknown change".into()),
     }
-    if let Some((label,patches))=undo {crate::history::record(&tx,&label,patches)?;}
+    if let Some((label,patches))=undo {
+        let unchanged=if let Some(crate::history::Patch::ProjectOrganisation(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::project_folders::snapshot(&tx)?).map_err(err)?}else{false};
+        if !unchanged{crate::history::record(&tx,&label,patches)?;}
+    }
     tx.commit().map_err(err)?;
     Ok(())
 }
@@ -723,6 +739,18 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             map.insert(label.id, id);
         }
     }
+    let mut folder_map=std::collections::HashMap::new();
+    let mut pending=backup.library.project_folders;
+    while !pending.is_empty(){let before=pending.len();let mut rest=vec![];
+        for f in pending{if f.parent_id.is_some_and(|p|!folder_map.contains_key(&p)){rest.push(f);continue;}
+            let project=*projects.get(&f.project_id).ok_or("Missing project in backup")?;
+            let parent=f.parent_id.map(|p|folder_map[&p]);
+            if let Some(parent)=parent{let owner:i64=tx.query_row("SELECT project_id FROM project_folders WHERE id=?",[parent],|r|r.get(0)).map_err(err)?;if owner!=project{return Err("Folder parent belongs to another project in backup".into());}}
+            tx.execute("INSERT OR IGNORE INTO project_folders(project_id,parent_id,name,position) VALUES(?,?,?,?)",params![project,parent,valid_name(&f.name)?,f.position]).map_err(err)?;
+            let id:i64=tx.query_row("SELECT id FROM project_folders WHERE project_id=? AND parent_id IS ? AND name=? COLLATE NOCASE",params![project,parent,f.name],|r|r.get(0)).map_err(err)?;
+            folder_map.insert(f.id,id);
+        }if rest.len()==before{return Err("Invalid folder hierarchy in backup".into());}pending=rest;
+    }
     for item in backup.library.items {
         if !["image", "animation", "video", "link"].contains(&item.kind.as_str()) {
             return Err("Invalid item type in backup".into());
@@ -796,6 +824,11 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
                     .map_err(err)?;
                 }
             }
+        }
+        if let Some(rating)=item.rating {if item.kind!="link"||!(1..=5).contains(&rating){return Err("Invalid link rating in backup".into());}tx.execute("UPDATE items SET rating=COALESCE(rating,?) WHERE id=?",params![rating,id]).map_err(err)?;}
+        for old in item.project_folders {let folder=*folder_map.get(&old).ok_or("Missing folder in backup")?;
+            tx.execute("INSERT OR IGNORE INTO item_projects(item_id,label_id) SELECT ?,project_id FROM project_folders WHERE id=?",params![id,folder]).map_err(err)?;
+            tx.execute("INSERT OR IGNORE INTO item_project_folders VALUES(?,?)",params![id,folder]).map_err(err)?;
         }
         for (name,added) in item.category_added {
             tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=MAX(category_arrivals.added,excluded.added)",params![id,name,added]).map_err(err)?;

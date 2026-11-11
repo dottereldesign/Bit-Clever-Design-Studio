@@ -1,5 +1,8 @@
 import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox, isHeaderFolder } from "./componentsLibrary";
+export type ProjectFolder = {id:number;project_id:number;parent_id:number|null;name:string;position:number|null};
 export type Item = {
+  rating?: number|null;
+  project_folders?: number[];
   id: number;
   path: string;
   name: string;
@@ -30,6 +33,7 @@ export const isTableLink = (item: Item) => item.kind === "link" && (item.source 
 export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
+  project_folders?: ProjectFolder[];
   undo_entries?: {id:number;label:string}[];
   undo_label?: string | null;
   undo_count?: number;
@@ -50,6 +54,9 @@ export function orderedProjects(projects: Label[], recent: number[] = []) {
   return [...projects].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.name.localeCompare(b.name));
 }
 export type Filters = {
+  projectFolder?: number|"unfiled"|null;
+  projectFolderIds?:number[];
+  rating?:string;
   includeCollections?: boolean;
   tagMode?: "any" | "all";
   category?: string | null;
@@ -70,6 +77,8 @@ export function filterItems(items: Item[], f: Filters): Item[] {
     (i) =>
       (f.collection ? i.kind === "link" && i.source === f.collection : (f.includeCollections || (f.category && (isComponent(f.category) || f.category === allComponents)) || !isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
       (!f.project || i.projects.includes(f.project)) &&
+      (f.projectFolder==null || (f.projectFolder==='unfiled' ? !i.project_folders?.some(id=>f.projectFolderIds?.includes(id)) : i.project_folders?.includes(f.projectFolder))) &&
+      (!f.rating || (i.kind==='link' && (f.rating==='unrated' ? !i.rating : f.rating==='4+' ? (i.rating??0)>=4 : i.rating===Number(f.rating)))) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
       (f.category == null || ((i.kind !== "link" || componentFoldersOf(i).length>0) && (f.category === allComponents ? componentFoldersOf(i).length>0 : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
@@ -94,7 +103,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
         ? Number(b.favourites?.includes(f.project) || false) -
           Number(a.favourites?.includes(f.project) || false)
         : 0) ||
-      (f.sort === "name"
+      (f.sort.startsWith("rating-") ? (a.rating==null?1:0)-(b.rating==null?1:0) || (f.sort==="rating-high"?(b.rating??0)-(a.rating??0):(a.rating??0)-(b.rating??0)) || a.name.localeCompare(b.name) : f.sort === "name"
         ? a.name.localeCompare(b.name, undefined, { numeric: true })
         : f.sort === "shuffle"
           ? hash(a.id) - hash(b.id)

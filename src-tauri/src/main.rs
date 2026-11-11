@@ -12,6 +12,7 @@ mod sources;
 mod thumbnail;
 mod home_covers;
 mod history;
+mod project_folders;
 mod library_export;
 mod managed_library;
 use db::{err, Result};

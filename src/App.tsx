@@ -1,3 +1,5 @@
+import {ProjectTree, OrganiseProjectFolders, folderPath, type FolderScope} from './ProjectFolders';
+import LinkRating from './LinkRating';
 import {useSelectionAppearance} from './SelectionStyles';
 import ColourPicker, {ProjectColours} from './ColourPicker';
 import HoverPreview from "./HoverPreview";
@@ -264,6 +266,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
     [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
+  const [projectFolder,setProjectFolder]=useState<FolderScope>(savedView?.projectFolder??null);
+  const [ratingFilter,setRatingFilter]=useState(savedView?.ratingFilter??'');
+  const [folderMembers,setFolderMembers]=useState<number[]|null>(null);
   const [project, setProject] = useState<number | null>(savedView?.project??null),
     [linksOnly, setLinksOnly] = useState(savedView?.linksOnly??false);
   const [search, setSearch] = useState(savedView?.search??""),
@@ -425,12 +430,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   useEffect(()=>{const id=quickPreview??viewer;
     const item=id===null?null:lib.items.find(i=>i.id===id);if(item)track(item);
   },[lib.items,quickPreview,viewer,track]);
+  useEffect(()=>{if(project!==null&&typeof projectFolder==='number'&&lib.items.length&&!(lib.project_folders??[]).some(f=>f.id===projectFolder&&f.project_id===project))setProjectFolder(null);},[project,projectFolder,lib.project_folders,lib.items.length]);
   const sheetItems=useMemo(()=>lib.items.filter(i=>project!==null&&i.projects.includes(project)),[lib.items,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
   const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
   const filtered = useMemo(
     () => {
       const matches=filterItems(lib.items, {
+        projectFolder:project!==null?projectFolder:null,projectFolderIds:(lib.project_folders??[]).filter(f=>f.project_id===project).map(f=>f.id),rating:ratingFilter,
         tagMode, includeCollections:!!recent||resourcesView||generalEntry?.target?.kind==='project',
         category,
         collection: boardView ? boardNames[boardView] : undefined,
@@ -448,7 +455,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
     },
-    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
+    [lib.items, lib.project_folders, projectFolder, ratingFilter, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
   );
   useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
@@ -464,7 +471,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     () => filtered.filter((i) => i.kind === "link" && (componentFoldersOf(i).length>0 || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
-  const viewState=useMemo<ViewState>(()=>({homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  const viewState=useMemo<ViewState>(()=>({projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
   useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
   useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
@@ -479,8 +486,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       : linksOnly
         ? "Links"
         : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Designs");
-  const activeFilters = !!(search || type !== "all" || tags.length);
+  const activeFilters = !!(search || type !== "all" || tags.length || ratingFilter);
   const clearFilters = () => {
+    setRatingFilter('');
     setSearch("");
     setType("all");
     setTags([]);
@@ -496,7 +504,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setBoardView(null);
     setVideoView(false);
     setCategory(null);
-    setProject(id);
+    setProject(id);setProjectFolder(null);setRatingFilter('');
+    if(id===null&&!onlyLinks&&sort.startsWith('rating-'))setSort('recent');
     setLinksOnly(onlyLinks);
     setSelected(new Set());
     setViewer(null);
@@ -511,7 +520,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
   const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
     const before=libRef.current;await changeLibrary(c);const next=await refresh();
-    const tracked=new Set(['set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    const tracked=new Set(['rate_links','create_project_folder','rename_project_folder','move_project_folder','delete_project_folder','reorder_project_folders','add_project_folder','remove_project_folder','set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
     const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
     if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
     return next;
@@ -596,6 +605,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setNotice(categoryUndoNotice.current);
   };
   const removeFromComponentFolder = async (item:Item) => {
+    if(project!==null&&typeof projectFolder==='number'){await perform({action:'remove_project_folder',target:projectFolder,ids:[item.id]});return;}
     if(!category||category===allComponents||category===componentInbox)return;
     const folder=category;
     try {
@@ -701,6 +711,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   );
   useLayoutEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if(document.querySelector('.project-dialog-backdrop')||(e.target as HTMLElement)?.closest('.link-rating'))return;
       const typing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable=true]",
       );
@@ -737,6 +748,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         if(id!==null&&filtered.some(i=>i.id===id)){e.preventDefault();setHoverId(null);setQuickPreview(id);return;}
       }
       if(!inViewer && !e.ctrlKey && !e.metaKey && e.key.toLowerCase()==="c" && filtered.some(i=>selected.has(i.id)&&i.kind!=="link")) {e.preventDefault();setModal({kind:"category",ids:[...selected]});return;}
+      if(document.querySelector('.project-dialog-backdrop')||(e.target as HTMLElement)?.closest('.link-rating,.project-folder-dialog'))return;
       if (e.key === "Delete" && (inViewer || selected.size)) {
         e.preventDefault();
         void removeItems(inViewer ? [viewer!] : [...selected]);
@@ -769,6 +781,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{
       if(e.altKey||modal||capture||videoDialog||duplicatesOpen||removedOpen||libraryExportOpen||storageOpen||extraDialog||customTab||quickPreview!==null||itemMenu||viewer!==null)return;
+      if(document.querySelector('.project-dialog-backdrop')||(e.target as HTMLElement)?.closest('.link-rating,.project-folder-dialog'))return;
       const typing=(e.target as HTMLElement)?.closest("input,textarea,select,[contenteditable=true]");
       const command=e.ctrlKey||e.metaKey;
       if(command&&e.key===","&&!typing){e.preventDefault();setSearchOpen(false);setModal({kind:"settings"});return;}
@@ -778,16 +791,18 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     };
     window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
   },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView]);
-  const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
+  const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null, targetProject?:{project:number;folder:number|null})=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
     const item=saved[0];
-    const destination=targetCategory!==null?categoryLabel(targetCategory):result.destination==="links"?"Links":result.destination==="resources"?"Resources":
+    const projectDestination=targetProject?[next.projects.find(p=>p.id===targetProject.project)?.name,targetProject.folder?next.project_folders?.find(f=>f.id===targetProject.folder)?.name:undefined].filter(Boolean).join(' / '):null;
+    const destination=projectDestination||(targetCategory!==null?categoryLabel(targetCategory):result.destination==="links"?"Links":result.destination==="resources"?"Resources":
       result.destination&&isBoardDestination(result.destination)?boardNames[result.destination]:
-      item.source;
+      item.source||'library');
     const prior=new Map(lib.items.map(i=>[i.id,i]));
     const already=result.reused>0&&!result.added&&saved.every(i=>{
       const previous=prior.get(i.id);
+      if(targetProject)return !!previous&&(targetProject.folder?previous.project_folders?.includes(targetProject.folder):previous.projects.includes(targetProject.project));
       return targetCategory===null||!!previous&&(isComponent(filingCategory(targetCategory))?componentFoldersOf(previous).includes(filingCategory(targetCategory)):designFoldersOf(previous).includes(filingCategory(targetCategory)));
     });
     const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
@@ -807,7 +822,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       finally{setPendingImports(count=>count-1);setReadingCapture(false);setImportProgress(null);}
     });
   },[report]);
-  const queueImageDrop = useCallback((data:DataTransfer, destination:string|null) => {
+  const queueImageDrop = useCallback((data:DataTransfer, destination:string|null, projectTarget?:{project:number;folder:number|null}) => {
+    setDropActive(false);
     // Read immediately: browser drag data is unavailable after the drop event returns.
     const payload = readWebDrop(data);
     enqueueImport(async () => {
@@ -820,12 +836,13 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
         const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
           files,url:files.length?'':payload.sourceUrl,name:files.length===1?files[0].name.replace(/\.[^.]+$/,''):'',
-          source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:payload.sourceUrl,resource:false,
+          source:destination==='Photography'?'Photography':'Design',projects:projectTarget?[projectTarget.project]:[],tags:[],source_url:payload.sourceUrl,resource:false,
         }}));
         setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
         recordCapture(result);
+        if(projectTarget?.folder&&result.ids.length)await mutate({action:'add_project_folder',target:projectTarget.folder,ids:result.ids});
         if(destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
-        showCaptureReceipt(result,await refresh(),destination);
+        showCaptureReceipt(result,await refresh(),destination,projectTarget);
       } catch(error){report(error);}
       finally {
         await invoke('discard_capture',{paths:files.map(file=>file.path)}).catch(report);
@@ -833,28 +850,29 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     });
   },[mutate,recordCapture,refresh,report,showCaptureReceipt,enqueueImport]);
   const pasteCapture = useCallback(async () => {
-    if(category!==null&&!resourcesView&&!boardView&&!videoView&&!linksOnly){
+    if((category!==null||project!==null)&&!resourcesView&&!boardView&&!videoView&&!linksOnly){
       // Read now, not when the import reaches the front of the queue. The clipboard
       // helper still orders native reads behind preceding app copy operations.
       const snapshot=readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error}));
-      const destination=category;
+      const destination=category;const targetProject=project;const targetFolder=typeof projectFolder==='number'?projectFolder:null;
       enqueueImport(async()=>{
         const {draft,error}=await snapshot;
         if(!draft)throw error;
         try{
-          if(!draft.files.length&&!(draft.url&&(isComponent(destination)||destination===allComponents))){
+          if(!draft.files.length&&!(draft.url&&(targetProject!==null||(destination!==null&&isComponent(destination))||destination===allComponents))){
             setCapture({...draft,destination:linkDestination});return;
           }
           const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
           setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
           const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
             files:draft.files,url:draft.files.length?'':draft.url,name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/,''):'',
-            source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:'',resource:false,
+            source:destination==='Photography'?'Photography':'Design',projects:targetProject!==null?[targetProject]:[],tags:[],source_url:'',resource:false,
           }}));
           recordCapture(result);
           setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
-          if(result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
-          showCaptureReceipt(result,await refresh(),destination);
+          if(result.ids.length&&destination!==null)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+          if(result.ids.length&&targetFolder!==null)await mutate({action:'add_project_folder',ids:result.ids,target:targetFolder});
+          showCaptureReceipt(result,await refresh(),destination,targetProject!==null?{project:targetProject,folder:targetFolder}:undefined);
         }finally{await invoke('discard_capture',{paths:draft.files.map(file=>file.path)}).catch(report);}
       });
       return;
@@ -872,7 +890,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       pasteBusy.current=false;
       setReadingCapture(false);
     }
-  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
+  }, [report, resourcesView, boardView, linkDestination, videoView, category, project, projectFolder, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
   const chooseCaptureFiles = async () => {
     try {
       const paths = await open({
@@ -915,6 +933,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   };
   useEffect(() => {
     const paste = (e: KeyboardEvent) => {
+      if(document.querySelector('.project-dialog-backdrop'))return;
       if (
         (e.ctrlKey || e.metaKey) &&
         e.key.toLowerCase() === "v" && !e.repeat &&
@@ -947,7 +966,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       if(extraDialog||storageOpen)return;
       if(e.dataTransfer && acceptsExternalDrop(e.dataTransfer) && !resourcesView && !boardView && !videoView && !linksOnly){
         e.preventDefault();
-        queueImageDrop(e.dataTransfer,category);
+        queueImageDrop(e.dataTransfer,category,project!==null?{project,folder:typeof projectFolder==='number'?projectFolder:null}:undefined);
         return;
       }
       const files = Array.from(e.dataTransfer?.files || []);
@@ -977,10 +996,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,boardView,linksOnly,storageOpen]);
+  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,project,projectFolder,boardView,linksOnly,storageOpen]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
     if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    if(project!==null&&typeof projectFolder==='number'&&result.ids.length)await mutate({action:'add_project_folder',target:projectFolder,ids:result.ids});
     const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
@@ -1076,7 +1096,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
-  const linkTable = (items: Item[]) => <LinksTable showCategories={linksOnly||items.some(item=>!isCollectionLink(item))} items={items} selected={selected} select={select} openItem={openItem}
+  const linkTable = (items: Item[]) => <LinksTable onFolders={id=>setFolderMembers([id])} onRate={(id,value)=>void perform({action:'rate_links',ids:[id],value:value===null?'':String(value)})} showCategories={linksOnly||items.some(item=>!isCollectionLink(item))} items={items} selected={selected} select={select} openItem={openItem}
     onEdit={id=>setModal({kind:"editLink",id})} onProjects={id=>setModal({kind:"projects",ids:[id]})}
     onTags={id=>setModal({kind:"tags",ids:[id]})} onDelete={id=>void removeItems([id])} project={project}
     onPin={item=>project&&void perform({action:item.favourites?.includes(project)?"unpin_project":"pin_project",target:project,ids:[item.id]})}/>;
@@ -1135,50 +1155,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           </IconButton>}>
         <div className="projects">
           <nav aria-label="Projects">
-            {lib.projects.map((p) => (
-              <div
-                className={`project-row ${!homeView && !generalKey && project === p.id ? "active" : ""}`}
-                data-project-id={p.id}
-                data-project-name={p.name}
-                key={p.id}
-                onDragOver={(e) => {
-                  if (
-                    e.dataTransfer.types.includes("application/design-items")
-                  ) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect="copy";
-                    e.currentTarget.classList.add("drop-target");
-                  }
-                }}
-                onDragLeave={(e) => {
-                  if(!(e.relatedTarget instanceof Node)||!e.currentTarget.contains(e.relatedTarget))e.currentTarget.classList.remove("drop-target");
-                }}
-                onDrop={(e) => drop(e, p.id)}
-              >
-                <button className="nav-item" {...homeDrag(`project:${p.id}`)} onClick={() => navigate(p.id)}>
-                  <FolderIcon preferences={icons} id={`project:${p.id}`}/>
-                  <span>{p.name}</span>
-                  <small>{p.count || ""}</small>
-                </button>
-                <Popover label="" icon={<MoreHorizontal size={15} />}>
-                  <button
-                    onClick={() =>
-                      setModal({ kind: "renameProject", id: p.id })
-                    }
-                  >
-                    Rename
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() =>
-                      setModal({ kind: "deleteProject", id: p.id })
-                    }
-                  >
-                    Delete project
-                  </button>
-                </Popover>
-              </div>
-            ))}
+            {lib.projects.map(p=><ProjectTree key={p.id} project={p} folders={lib.project_folders??[]} items={lib.items}
+              active={!homeView&&!generalKey&&project===p.id} scope={projectFolder} open={scope=>{navigate(p.id);setProjectFolder(scope);}}
+              icon={<FolderIcon preferences={icons} id={`project:${p.id}`}/>} mutate={mutate} report={report}
+              rename={()=>setModal({kind:'renameProject',id:p.id})} remove={()=>setModal({kind:'deleteProject',id:p.id})}
+              homeProps={homeDrag(`project:${p.id}`)} externalDrop={(data,folder)=>queueImageDrop(data,null,{project:p.id,folder})}/>)}
           </nav>
           {!lib.projects.length && (
             <button
@@ -1350,6 +1331,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                   </option>
                 ))}
               </select>}
+              {(linksOnly||project!==null)&&<select aria-label="Filter by rating" value={ratingFilter} onChange={e=>setRatingFilter(e.target.value)}><option value="">All ratings</option><option value="unrated">Unrated</option><option value="4+">4 stars & up</option>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n} stars</option>)}</select>}
               {activeFilters && (
                 <button className="clear-filters" onClick={clearFilters}>
                   <X size={12} /> Clear
@@ -1368,7 +1350,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
               >
                 <option value="recent">Recently added</option>
                 <option value="name">Name</option>
-                <option value="shuffle">Shuffle</option>
+                <option value="shuffle">Shuffle</option>{(linksOnly||project!==null)&&<><option value="rating-high">Highest rating</option><option value="rating-low">Lowest rating</option></>}
               </select>
               {sort === "shuffle" && (
                 <IconButton
@@ -1392,6 +1374,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             </div>}
           </div>
         )}
+        {project!==null&&<nav className="project-breadcrumb" aria-label="Project location"><button onClick={()=>setProjectFolder(null)}>{lib.projects.find(p=>p.id===project)?.name}</button><span>/</span><span>{projectFolder==='unfiled'?'Unfiled':typeof projectFolder==='number'?folderPath((lib.project_folders??[]).find(f=>f.id===projectFolder)??{id:0,project_id:project,parent_id:null,name:'All items',position:null},lib.project_folders??[]):'All items'}</span></nav>}
         {project!==null&&<ProjectColours key={project} project={project}/>}
         {(readingCapture||pendingImports>0) && (
           <div className="capture-reading">
@@ -1407,6 +1390,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
               <X size={14} />
             </IconButton>
             <span>{selected.size} selected</span>
+            <button onClick={()=>setFolderMembers([...selected])}><FolderPlus size={14}/>Project folders</button>
+            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind==='link'))&&<><span>Rate links</span><LinkRating onChange={value=>void perform({action:'rate_links',ids:[...selected],value:value===null?'':String(value)})}/><button onClick={()=>void perform({action:'rate_links',ids:[...selected],value:''})}>Clear rating</button></>}
+            {project!==null&&typeof projectFolder==='number'&&<button className="danger" onClick={()=>void perform({action:'remove_project_folder',target:projectFolder,ids:[...selected]})}><FolderMinus size={14}/>Remove from folder</button>}
             {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Organise folders (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Organise folders</button>}
             <button
               onClick={() => setModal({ kind: "projects", ids: [...selected] })}
@@ -1509,7 +1495,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             <>
               {images.length > 0 && (
                 <MediaGrid
-                  removeFolder={category&&category!==allComponents&&category!==componentInbox?categoryLabel(category).replace(/^Components \/ /,""):undefined}
+                  removeFolder={project!==null&&typeof projectFolder==='number'?(lib.project_folders??[]).find(f=>f.id===projectFolder)?.name:category&&category!==allComponents&&category!==componentInbox?categoryLabel(category).replace(/^Components \/ /,""):undefined}
                   onRemoveFolder={removeFromComponentFolder}
                   masonry={true}
                   copy={copyImage}
@@ -1593,9 +1579,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         await mutate({action:remove?(isComponent(name)?"remove_component_folder":"remove_design_folder"):"set_category",ids,value:name});
         setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from folder":"Added to folder");
       }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
+      {folderMembers&&<OrganiseProjectFolders folders={lib.project_folders??[]} projects={lib.projects} items={lib.items.filter(i=>folderMembers.includes(i.id))} mutate={mutate} close={()=>setFolderMembers(null)}/>}
       {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
         <Dialog
           modal={modal}
+          projectFolder={projectFolder}
           lib={lib}
           close={() => setModal(null)}
           mutate={mutate}
@@ -2007,6 +1995,7 @@ function Card({
   );
 }
 function LinksTable({
+  onRate,onFolders,
   showCategories,
   project,
   onPin,
@@ -2019,6 +2008,8 @@ function LinksTable({
   onTags,
   onDelete,
 }: {
+  onRate:(id:number,value:number|null)=>void;
+  onFolders:(id:number)=>void;
   showCategories:boolean;
   project: number | null;
   onPin: (item: Item) => void;
@@ -2038,7 +2029,7 @@ function LinksTable({
           <th className="check-col" />
           <th>Name</th>
           <th>Link</th>
-          {showCategories&&<th className="link-category-column">Category</th>}
+          {showCategories&&<th className="link-category-column">Category</th>}<th className="rating-column">Rating</th>
           <th className="actions-col" />
         </tr>
       </thead>
@@ -2083,7 +2074,7 @@ function LinksTable({
                 <ExternalLink size={11} />
               </button>
             </td>
-            {showCategories&&<td className="link-category-column">{item.source.startsWith("Links/")?item.source.slice(6):"—"}</td>}
+            {showCategories&&<td className="link-category-column">{item.source.startsWith("Links/")?item.source.slice(6):"—"}</td>}<td className="rating-column"><LinkRating value={item.rating} onChange={value=>onRate(item.id,value)} label={`${item.name} rating`}/></td>
             <td>
               <Popover label="" icon={<MoreHorizontal size={15} />}>
                 {project && (
@@ -2094,6 +2085,7 @@ function LinksTable({
                       : "Pin in project"}
                   </button>
                 )}
+                <button onClick={()=>onFolders(item.id)}><FolderPlus size={13}/>Project folders</button>
                 <button onClick={() => onProjects(item.id)}>
                   <FolderPlus size={13} /> Add to project
                 </button>
@@ -2329,7 +2321,7 @@ function Dialog({
   busy,
   setBusy,
   report,
-  project,
+  project, projectFolder,
   chooseRoot,
   exportLibrary,
   backup,
@@ -2346,6 +2338,7 @@ function Dialog({
   setBusy: (b: boolean) => void;
   report: (e: unknown) => void;
   project: number | null;
+  projectFolder:FolderScope;
   chooseRoot: () => Promise<void>;
   exportLibrary: () => void;
   backup: (restore: boolean) => Promise<void>;
@@ -2415,6 +2408,7 @@ function Dialog({
         target: kind === "link" ? (project ?? undefined) : id,
         ids,
       });
+      if(kind==='link'&&typeof projectFolder==='number'){const item=next.items.find(i=>i.kind==='link'&&i.path===value.trim());if(item)await mutate({action:'add_project_folder',target:projectFolder,ids:[item.id]});}
       if (ids.length && (kind === "project" || kind === "tag")) {
         const label = (kind === "project" ? next.projects : next.tags).find(
           (l) => l.name === name.trim(),
