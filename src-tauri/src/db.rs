@@ -469,7 +469,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
     let name = c.name.as_deref().unwrap_or("");
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
-        "create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,
+        "unfile_project_folder"|"create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,
         "rate_links"=>{let rating=if value.is_empty(){None}else{Some(value.parse::<i64>().map_err(err)?)};if rating.is_some_and(|r|!(1..=5).contains(&r)){return Err("Choose a rating from 1 to 5".into());}for id in c.ids{tx.execute("UPDATE items SET rating=? WHERE id=? AND kind='link'",params![rating,id]).map_err(err)?;}},
         "create_category" => {
             tx.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[valid_name(name)?]).map_err(err)?;

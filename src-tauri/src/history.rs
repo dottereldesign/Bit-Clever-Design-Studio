@@ -26,7 +26,7 @@ pub enum Patch {
 
 pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch>)>> {
     if c.action.contains("project_folder") || ["delete_project","remove_project"].contains(&c.action.as_str()) {
-        return Ok(Some((match c.action.as_str(){"create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?)])));
+        return Ok(Some((match c.action.as_str(){"unfile_project_folder"=>"Move to Unfiled","create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?)])));
     }
     let mut patches = vec![];
     let value = c.value.as_deref().unwrap_or("").trim();

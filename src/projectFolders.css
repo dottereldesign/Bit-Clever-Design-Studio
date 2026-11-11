@@ -15,6 +15,6 @@
 .project-breadcrumb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 28px 12px;font-size:12px}.project-breadcrumb button{border:0;background:none;color:inherit}
 @media(prefers-reduced-motion:reduce){.folder-chevron svg{transition:none}}
 
-.project-folder-row.drop-target{background:#dce8d1;outline:2px solid #728967;outline-offset:-2px}
+.project-folder-row.drop-target,.project-scope.drop-target{background:#dce8d1;outline:2px solid #728967;outline-offset:-2px}
 
 @media(max-width:1100px){.project-breadcrumb{padding-inline:16px}}

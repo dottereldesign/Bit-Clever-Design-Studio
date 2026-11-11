@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, type ReactNode, type HTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Folder, MoreHorizontal, Plus, X } from 'lucide-react';
+import { ChevronRight, Folder, MoreHorizontal, X } from 'lucide-react';
 import type { Item, Label, ProjectFolder } from './model';
 import './projectFolders.css';
 
@@ -39,21 +39,21 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
   useEffect(()=>{if(!menu&&!dialog)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){setMenu(null);if(!busy)setDialog(null);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[menu,dialog,busy]);
   const edit=(action:'create'|'rename'|'move'|'delete',id:number|null)=>{const f=own.find(f=>f.id===id);setDialog({action,id});setName(action==='rename'?f?.name??'':'');setParent(action==='create'?String(id??''):String(f?.parent_id??''));setError('');setMenu(null);};
   const context=(e:React.MouseEvent,id:number|null)=>{e.preventDefault();e.stopPropagation();setMenu({id,x:Math.min(e.clientX,window.innerWidth-210),y:Math.min(e.clientY,window.innerHeight-230)});};
-  const dragProps=(id:number|null)=>({
+  const dragProps=(id:number|'unfiled'|null)=>({
     onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.some(t=>['application/design-items','application/project-folder','Files','text/uri-list','text/html'].includes(t))){e.preventDefault();e.stopPropagation();e.currentTarget.classList.add('drop-target');}},
     onDragLeave:(e:React.DragEvent)=>e.currentTarget.classList.remove('drop-target'),
     onDrop:(e:React.DragEvent)=>{e.preventDefault();e.stopPropagation();e.currentTarget.classList.remove('drop-target');
       const data=e.dataTransfer.getData('application/design-items'),from=e.dataTransfer.getData('application/project-folder');
-      try{if(data){const ids:unknown=JSON.parse(data);if(!Array.isArray(ids)||!ids.every(Number.isInteger))return;void mutate({action:id===null?'add_project':'add_project_folder',target:id??project.id,ids}).catch(report);}
-        else if(from){const source=own.find(f=>f.id===Number(from)),target=own.find(f=>f.id===id);if(!source||source.id===id)return;
+      try{if(data){const ids:unknown=JSON.parse(data);if(!Array.isArray(ids)||!ids.every(Number.isInteger))return;void mutate({action:id==='unfiled'?'unfile_project_folder':id===null?'add_project':'add_project_folder',target:typeof id==='number'?id:project.id,ids}).catch(report);}
+        else if(from){if(id==='unfiled')return;const source=own.find(f=>f.id===Number(from)),target=own.find(f=>f.id===id);if(!source||source.id===id)return;
           if(target&&source.parent_id===target.parent_id){const siblings=orderedFolders(own.filter(f=>f.parent_id===target.parent_id)).map(f=>f.id).filter(i=>i!==source.id);const after=e.clientY>e.currentTarget.getBoundingClientRect().top+e.currentTarget.getBoundingClientRect().height/2;siblings.splice(siblings.indexOf(target.id)+(after?1:0),0,source.id);void mutate({action:'reorder_project_folders',ids:siblings}).catch(report);}
           else void mutate({action:'move_project_folder',target:source.id,value:String(id??'')}).catch(report);
-        }else externalDrop(e.dataTransfer,id);
+        }else externalDrop(e.dataTransfer,typeof id==='number'?id:null);
       }catch(error){report(error);}
     }
   });
   const row=(f:ProjectFolder,depth:number):ReactNode=><div key={f.id}>
-    <div className={`project-folder-row ${active&&scope===f.id?'active':''}`} style={{paddingLeft:12+depth*12}} {...dragProps(f.id)} onContextMenu={e=>context(e,f.id)}>
+    <div className={`project-folder-row ${active&&scope===f.id?'active':''}`} style={{paddingLeft:12+depth*12}} data-project-folder-target={f.id} data-project-folder-name={f.name} {...dragProps(f.id)} onContextMenu={e=>context(e,f.id)}>
       <button className="folder-chevron" aria-expanded={!closed.has(f.id)} aria-label={`${closed.has(f.id)?'Expand':'Collapse'} ${f.name}`} onClick={()=>setClosed(prev=>{const next=new Set(prev);next.has(f.id)?next.delete(f.id):next.add(f.id);return next;})} style={{visibility:own.some(p=>p.parent_id===f.id)?'visible':'hidden'}}><ChevronRight size={12} style={{transform:closed.has(f.id)?undefined:'rotate(90deg)'}}/></button>
       <button className="nav-item" title={folderPath(f,folders)} data-project-folder-id={f.id} draggable onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData('application/project-folder',String(f.id));e.dataTransfer.effectAllowed='move';}} onClick={()=>open(f.id)}><Folder size={14}/><span>{f.name}</span><small>{items.filter(i=>i.project_folders?.includes(f.id)).length||''}</small></button>
       <button className="folder-more" aria-label={`Options for ${f.name}`} onClick={e=>context(e,f.id)}><MoreHorizontal size={13}/></button>
@@ -67,10 +67,8 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
       <button className="folder-more" aria-label={`Options for ${project.name}`} onClick={e=>context(e,null)}><MoreHorizontal size={15}/></button>
     </div>
     {expanded&&<div className="project-folder-list">
-      <button className={`nav-item project-scope ${active&&scope===null?'active':''}`} onClick={()=>open(null)}>All items</button>
-      <button className={`nav-item project-scope ${active&&scope==='unfiled'?'active':''}`} onClick={()=>open('unfiled')}>Unfiled<small>{items.filter(i=>i.projects.includes(project.id)&&!i.project_folders?.some(id=>own.some(f=>f.id===id))).length||''}</small></button>
+      <button className={`nav-item project-scope ${active&&scope==='unfiled'?'active':''}`} data-project-unfiled={project.id} {...dragProps('unfiled')} onClick={()=>open('unfiled')}>Unfiled<small>{items.filter(i=>i.projects.includes(project.id)&&!i.project_folders?.some(id=>own.some(f=>f.id===id))).length||''}</small></button>
       {orderedFolders(own.filter(f=>f.parent_id===null)).map(f=>row(f,0))}
-      <button className="nav-item project-scope" onClick={()=>edit('create',null)}><Plus size={12}/>New folder</button>
     </div>}
     {menu&&createPortal(<><div className="project-menu-dismiss" onClick={()=>setMenu(null)}/><div className="project-folder-menu" style={{left:menu.x,top:menu.y}} role="menu">
       <button onClick={()=>edit('create',menu.id)}>New folder</button>

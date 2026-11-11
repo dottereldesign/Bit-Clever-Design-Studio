@@ -520,7 +520,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
   const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
     const before=libRef.current;await changeLibrary(c);const next=await refresh();
-    const tracked=new Set(['rate_links','create_project_folder','rename_project_folder','move_project_folder','delete_project_folder','reorder_project_folders','add_project_folder','remove_project_folder','set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    const tracked=new Set(['rate_links','unfile_project_folder','create_project_folder','rename_project_folder','move_project_folder','delete_project_folder','reorder_project_folders','add_project_folder','remove_project_folder','set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
     const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
     if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
     return next;
@@ -1105,6 +1105,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     ids:id=>selected.has(id)?[...selected]:[id],
     category:(ids,name)=>void changeCategory(ids,name).catch(report),
     project:(ids,target)=>void mutate({action:"add_project",ids,target}).then(()=>{setUndoIds([]);setNotice("Added to project");}).catch(report),
+    projectFolder:(ids,target)=>void mutate({action:'add_project_folder',ids,target}).then(()=>{setUndoIds([]);setNotice('Added to folder');}).catch(report),
+    unfileProject:(ids,target)=>void mutate({action:'unfile_project_folder',ids,target}).then(()=>{setUndoIds([]);setNotice('Moved to Unfiled');}).catch(report),
     started:()=>setHoverId(null),
   });
   return (

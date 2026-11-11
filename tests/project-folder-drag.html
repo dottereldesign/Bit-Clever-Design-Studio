@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Project folders and ratings</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#c5d4c1"/></svg>');
+const item=(id,projects,folders,rating=null)=>({id,name:'Reference '+id,path:'https://example.org/'+id,kind:'link',source:'Links/Psychodrama',projects,project_folders:folders,rating,tags:[],modified:1,added:id,missing:false});
+let lib={items:[{...item(1,[7,8],[10,30]),kind:'image',path:'C:/mock.png'},item(2,[7],[]),item(3,[8],[30],5)],categories:[],projects:[{id:7,name:'AANZPA',count:2},{id:8,name:'Other project',count:1}],project_folders:[{id:10,project_id:7,parent_id:null,name:'Research',position:null},{id:11,project_id:7,parent_id:10,name:'Psychodrama',position:null},{id:12,project_id:7,parent_id:null,name:'Branding',position:null},{id:30,project_id:8,parent_id:null,name:'Inspiration',position:null}],tags:[],sources:[],root:'C:/mock',scanning:false};
+let callback=0,clipboard=null,release=null,hold=false;const calls=[],undo=[],redo=[];
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ calls.push({command,args});if(command==='get_library')return structuredClone(lib);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='save_library_preferences'||command==='discard_capture')return;
+ if(command==='storage_usage')return {bytes:100,data_bytes:10,library_bytes:80,app_bytes:10,partial:false};
+ if(command==='read_clipboard')return structuredClone(clipboard);
+ if(command==='capture_items_progress'){if(hold){hold=false;await new Promise(r=>release=r);}const id=lib.items.length+100;lib.items.push({...item(id,args.input.projects,[]),kind:args.input.files.length?'image':'link',name:args.input.name||'Pasted link',path:args.input.url||'C:/mock/'+id+'.png',source:''});return {ids:[id],added:1,reused:0};}
+ if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){redo.push(structuredClone(lib));lib=undo.pop();return;}if(c.action==='redo_organisation'){undo.push(structuredClone(lib));lib=redo.pop();return;}undo.push(structuredClone(lib));redo.length=0;
+   if(c.action==='rate_links')lib.items.filter(i=>c.ids.includes(i.id)&&i.kind==='link').forEach(i=>i.rating=c.value?Number(c.value):null);
+   else if(c.action==='create_project_folder')lib.project_folders.push({id:Math.max(...lib.project_folders.map(f=>f.id))+1,project_id:c.target,parent_id:c.value?Number(c.value):null,name:c.name,position:null});
+   else if(c.action==='rename_project_folder')lib.project_folders.find(f=>f.id===c.target).name=c.name;
+   else if(c.action==='reorder_project_folders')c.ids.forEach((id,n)=>lib.project_folders.find(f=>f.id===id).position=n);
+   else if(c.action==='move_project_folder')lib.project_folders.find(f=>f.id===c.target).parent_id=c.value?Number(c.value):null;
+   else if(c.action==='add_project_folder'||c.action==='remove_project_folder'){for(const i of lib.items.filter(i=>c.ids.includes(i.id))){if(c.action.startsWith('add')){i.project_folders=[...new Set([...i.project_folders,c.target])];i.projects=[...new Set([...i.projects,lib.project_folders.find(f=>f.id===c.target).project_id])];}else i.project_folders=i.project_folders.filter(id=>id!==c.target);}}
+   else if(c.action==='unfile_project_folder')lib.items.filter(i=>c.ids.includes(i.id)).forEach(i=>{i.projects=[...new Set([...i.projects,c.target])];i.project_folders=i.project_folders.filter(id=>lib.project_folders.find(f=>f.id===id).project_id!==c.target);});
+   else if(c.action==='add_project')lib.items.filter(i=>c.ids.includes(i.id)).forEach(i=>i.projects=[...new Set([...i.projects,c.target])]);
+   else throw Error(c.action);return;
+ }throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(App,{startOnHome:false}));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>12000)throw Error('Timed out: '+label);await pause(25);}}
+const project=id=>document.querySelector(`[data-project-id="${id}"] .nav-item`),folder=id=>document.querySelector(`[data-project-folder-id="${id}"]`),rows=()=>[...document.querySelectorAll('.links-table tbody tr')],findButton=(text,root=document)=>[...root.querySelectorAll('button')].find(b=>{const clone=b.cloneNode(true);clone.querySelectorAll('small').forEach(n=>n.remove());return clone.textContent.trim()===text;});
+const setValue=(input,value)=>{Object.getOwnPropertyDescriptor(input.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event(input.tagName==='SELECT'?'change':'input',{bubbles:true}));};
+let action=0;
+async function drag(source,target){
+ await pause(200);target.scrollIntoView({block:'nearest'});await pause(150);const a=source.getBoundingClientRect(),b=target.getBoundingClientRect();
+ window.__pointerAction={id:++action,from:{x:a.left+a.width/2,y:a.top+a.height/2},to:{x:b.left+b.width/2,y:b.top+b.height/2}};
+ await until(()=>window.__pointerActionDone===action,'Real drag');await pause(300);
+ assert(!document.querySelector('.viewer')&&!document.querySelector('.item-drag-badge'),'Drag opens a viewer or leaves feedback stuck');
+}
+const unfiled=()=>document.querySelector('[data-project-unfiled="7"]');
+try{
+ await until(()=>project(7),'Startup');project(7).click();await until(()=>folder(11),'Folders');
+ assert(!findButton('All items'),'Unwanted All items button');assert(!findButton('New folder',document.querySelector('.project-folder-list')),'Unwanted New folder shortcut');
+ unfiled().click();await until(()=>rows().length===1,'Unfiled link');await drag(rows()[0].querySelector('.link-name'),folder(11));await until(()=>lib.items[1].project_folders.includes(11),'Link filed');assert(rows().length===0,'Link still in Unfiled');
+ folder(11).click();await until(()=>rows().length===1,'Subfolder link');await drag(rows()[0].querySelector('.link-name'),folder(12));await until(()=>lib.items[1].project_folders.includes(12),'Link added to sibling');assert(lib.items[1].project_folders.includes(11),'Shared membership removed');
+ await drag(rows()[0].querySelector('.link-name'),unfiled());await until(()=>lib.items[1].project_folders.length===0,'Link returned to Unfiled');assert(lib.items[1].projects.includes(7),'Unfiled removed project membership');
+ folder(10).click();await until(()=>document.querySelector('.card-open'),'Image source');await drag(document.querySelector('.card-open'),folder(11));await until(()=>lib.items[0].project_folders.includes(11),'Image into nested folder');assert(lib.items[0].project_folders.includes(10),'Shared image membership lost');
+ folder(11).click();await until(()=>document.querySelector('.card-open'),'Nested image');await drag(document.querySelector('.card-open'),unfiled());await until(()=>lib.items[0].project_folders.length===1,'Image to Unfiled');assert(lib.items[0].project_folders[0]===30&&lib.items[0].projects.includes(7),'Other project filing changed');
+ unfiled().click();await until(()=>document.querySelector('.card-open')&&rows().length===1,'Both unfiled');await drag(document.querySelector('.card-open'),folder(11));await until(()=>lib.items[0].project_folders.includes(11),'Image filed again');
+ folder(11).click();await until(()=>document.querySelector('.card-open'),'Final image');window.__screenshotReady=true;await pause(700);
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Real pointer drags for link names and thumbnails','Nested and sibling targets preserve shared membership','Unfiled clears only this project folders','Items can be filed again from Unfiled','Extra sidebar buttons removed']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,calls:calls.filter(c=>c.command==='update')});}
+</script></body></html>

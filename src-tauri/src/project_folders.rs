@@ -51,6 +51,12 @@ pub fn change(db:&Connection,c:&Change)->Result<()> {
     let parent=||->Result<Option<i64>>{let v=c.value.as_deref().unwrap_or("");if v.is_empty(){Ok(None)}else{Ok(Some(v.parse::<i64>().map_err(err)?))}};
     let list=folders(db)?;
     match c.action.as_str(){
+        "unfile_project_folder"=>{
+            for item in &c.ids{
+                db.execute("INSERT OR IGNORE INTO item_projects(item_id,label_id) VALUES(?,?)",params![item,id]).map_err(err)?;
+                db.execute("DELETE FROM item_project_folders WHERE item_id=? AND folder_id IN (SELECT id FROM project_folders WHERE project_id=?)",params![item,id]).map_err(err)?;
+            }
+        },
         "create_project_folder"|"rename_project_folder"|"move_project_folder"=>{
             let existing=list.iter().find(|f|f.id==id);
             let project=if c.action=="create_project_folder"{id}else{existing.ok_or("Folder no longer exists")?.project_id};
@@ -112,6 +118,11 @@ mod tests {
         change(&path,json!({"action":"undo_organisation"}));assert_eq!(db::load(&path,false).unwrap().items[0].project_folders,vec![1,2,3]);
         change(&path,json!({"action":"delete_project","target":1}));assert_eq!(db::load(&path,false).unwrap().project_folders.len(),1);
         change(&path,json!({"action":"undo_organisation"}));assert_eq!(db::load(&path,false).unwrap().project_folders.len(),3);
+        change(&path,json!({"action":"unfile_project_folder","target":1,"ids":[1,2]}));
+        let unfiled=db::load(&path,false).unwrap();assert!(unfiled.items.iter().all(|i|i.projects==vec![1,2]&&i.project_folders==vec![3]));
+        change(&path,json!({"action":"undo_organisation"}));assert_eq!(db::load(&path,false).unwrap().items[0].project_folders,vec![1,2,3]);
+        change(&path,json!({"action":"redo_organisation"}));assert_eq!(db::load(&path,false).unwrap().items[0].project_folders,vec![3]);
+        change(&path,json!({"action":"undo_organisation"}));
         change(&path,json!({"action":"remove_project_folder","target":2,"ids":[1]}));assert_eq!(db::load(&path,false).unwrap().items[0].projects,vec![1,2]);
     }
     #[test]
