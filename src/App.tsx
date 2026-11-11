@@ -1076,7 +1076,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
-  const linkTable = (items: Item[]) => <LinksTable items={items} selected={selected} select={select} openItem={openItem}
+  const linkTable = (items: Item[]) => <LinksTable showCategories={linksOnly||items.some(item=>!isCollectionLink(item))} items={items} selected={selected} select={select} openItem={openItem}
     onEdit={id=>setModal({kind:"editLink",id})} onProjects={id=>setModal({kind:"projects",ids:[id]})}
     onTags={id=>setModal({kind:"tags",ids:[id]})} onDelete={id=>void removeItems([id])} project={project}
     onPin={item=>project&&void perform({action:item.favourites?.includes(project)?"unpin_project":"pin_project",target:project,ids:[item.id]})}/>;
@@ -2007,6 +2007,7 @@ function Card({
   );
 }
 function LinksTable({
+  showCategories,
   project,
   onPin,
   items,
@@ -2018,6 +2019,7 @@ function LinksTable({
   onTags,
   onDelete,
 }: {
+  showCategories:boolean;
   project: number | null;
   onPin: (item: Item) => void;
   items: Item[];
@@ -2036,6 +2038,7 @@ function LinksTable({
           <th className="check-col" />
           <th>Name</th>
           <th>Link</th>
+          {showCategories&&<th className="link-category-column">Category</th>}
           <th className="actions-col" />
         </tr>
       </thead>
@@ -2080,6 +2083,7 @@ function LinksTable({
                 <ExternalLink size={11} />
               </button>
             </td>
+            {showCategories&&<td className="link-category-column">{item.source.startsWith("Links/")?item.source.slice(6):"—"}</td>}
             <td>
               <Popover label="" icon={<MoreHorizontal size={15} />}>
                 {project && (

@@ -16,7 +16,7 @@ try{
  await until(()=>document.querySelector('.card-open'),'Library');
  let action=0;
  for(const section of ['3D','Components / Pricing','project']){
-  if(section==='project')document.querySelector('[data-project-id="7"]').click();else category(section).click();
+  if(section==='project')document.querySelector('[data-project-id="7"] .nav-item').click();else category(section).click();
   await pause(180);await until(()=>document.querySelector('.card-open'),'Gallery');
   const button=document.querySelector('.card-open'),r=button.getBoundingClientRect(),point={x:r.left+r.width/2,y:r.top+r.height/2};
   window.__pointerAction={id:++action,from:point,to:point,click:true};await until(()=>window.__pointerActionDone===action,'Mouse click');await pause(100);
