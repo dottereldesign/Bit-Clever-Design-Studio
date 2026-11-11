@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum Patch {
+    ProjectOnly(i64,bool),
     ProjectOrganisation(crate::project_folders::State),
     Rating(i64, Option<i64>),
     Category(i64, Option<String>),
@@ -38,11 +39,13 @@ pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch
             for id in ids {
                 let source: Option<String> = db.query_row("SELECT source FROM items WHERE id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                 if let Some(source)=source {
+                    let project_only=db::project_only(db,id)?;
+                    if project_only {patches.push(Patch::ProjectOnly(id,true));}
                     let previous: Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                     let folders=db::component_memberships(db,id)?;
 
                     if c.action=="set_category"&&db::category_is_new(db,id,value)?{patches.push(Patch::CategoryArrivals(id,db::category_arrivals(db,id)?));}
-                    if previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") || c.action=="remove_design_folder" {
+                    if project_only || previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") || c.action=="remove_design_folder" {
                         patches.push(Patch::DesignFolders(id,db::design_memberships(db,id)?));
                         patches.push(Patch::Category(id,previous));
                         patches.push(Patch::ComponentFolders(id,folders));
@@ -128,6 +131,7 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 // travel back to the other stack without replaying commands or changing IDs.
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
+        Patch::ProjectOnly(id,_)=>Patch::ProjectOnly(*id,db::project_only(db,*id)?),
         Patch::ProjectOrganisation(_)=>Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?),
         Patch::Rating(id,_)=>Patch::Rating(*id,db.query_row("SELECT rating FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?),
         Patch::DesignFolders(id,_) => Patch::DesignFolders(*id,db::design_memberships(db,*id)?),
@@ -177,6 +181,7 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
     for patch in serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)? {
         inverses.push(inverse(db,&patch)?);
         match patch {
+            Patch::ProjectOnly(id,value)=>{db.execute("UPDATE items SET project_only=? WHERE id=?",params![value,id]).map_err(err)?;},
             Patch::ProjectOrganisation(state)=>crate::project_folders::restore(db,state)?,
             Patch::Rating(id,rating)=>{db.execute("UPDATE items SET rating=? WHERE id=?",params![rating,id]).map_err(err)?;},
             Patch::DesignFolders(id,names)=>{db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;for name in names{db.execute("INSERT INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;}},

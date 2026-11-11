@@ -28,6 +28,7 @@ pub fn metadata_path(folder:&Path)->PathBuf {let path=folder.join("Library Data/
 pub fn manifest_path(folder:&Path)->PathBuf {let path=folder.join("Library Data/manifest.json");if path.exists(){path}else{folder.join("manifest.json")}}
 pub fn preferences_path(folder:&Path)->PathBuf {let path=folder.join("Library Data/preferences.json");if path.exists(){path}else{folder.join("preferences.json")}}
 pub fn collection(item:&db::Item)->&'static str {
+    if item.project_only{return "General";}
     if item.category.as_deref().is_some_and(|c|c.starts_with("Components / ")) || !item.component_folders.is_empty(){"App Components"}
     else if item.kind=="link" || item.source=="Videos" || item.source.starts_with("Videos/") || item.source=="General" || item.source.starts_with("General/"){"General"}
     else {"Design Inspo"}
@@ -55,7 +56,7 @@ pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::
     let mut html=String::from(r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BitClever Library</title><style>body{margin:32px;background:#f6f7f3;color:#26352b;font:15px system-ui}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}h1{font-size:24px;margin-right:auto}input,select{padding:10px;border:1px solid #d3d9ce;border-radius:8px;background:white}main{columns:280px;column-gap:16px;margin-top:24px}article{break-inside:avoid;background:white;border-radius:10px;margin-bottom:16px;padding:12px}article[hidden]{display:none}img,video{width:100%;max-height:500px;object-fit:contain;border-radius:6px}a{color:inherit;overflow-wrap:anywhere}small{display:block;color:#657263;margin-top:6px}button{border:0;border-radius:5px;margin:4px 4px 0 0;padding:5px;background:#e7ecdf;cursor:pointer}</style><header><h1>BitClever Library</h1><input id="search" aria-label="Search library" placeholder="Search library"><select id="section" aria-label="Collection"><option value="">All Collections</option><option>Design Inspo</option><option>App Components</option><option>General</option></select><select id="folder" aria-label="Folder"><option value="">All Folders</option></select></header><main>"#);
     for item in &library.items {
         let mut sections=vec![collection(item)];
-        if item.kind!="link"&&(!item.design_folders.is_empty()||item.category.as_deref().is_some_and(|c|!c.starts_with("Components / ")))&& !sections.contains(&"Design Inspo"){sections.push("Design Inspo");}
+        if !item.project_only&&item.kind!="link"&&(!item.design_folders.is_empty()||item.category.as_deref().is_some_and(|c|!c.starts_with("Components / ")))&& !sections.contains(&"Design Inspo"){sections.push("Design Inspo");}
         for section in sections {
         let mut folders=if section=="App Components"{item.component_folders.clone()}else{item.design_folders.clone()};
         if let Some(c)=&item.category {if (c.starts_with("Components / ")== (section=="App Components"))&&c!="Components / Uncategorised"&&!folders.contains(c){folders.push(c.clone());}}

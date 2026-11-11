@@ -676,6 +676,7 @@ fn actual_library_media_smoke() {
 
 fn capture_request(path: &std::path::Path, projects: Vec<i64>, tags: Vec<i64>) -> content::Capture {
     content::Capture {
+        project_only:false,
         destination: String::new(),
         thumbnail: None,
         resource: false,
@@ -1281,4 +1282,33 @@ fn component_links_persist_and_undo_memberships() {
  let backup=temp.path().join("links.json");db::export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();
  let link=db::load(&restored,false).unwrap().items.remove(0);assert_eq!(link.category.as_deref(),Some("Components / Uncategorised"));assert_eq!(link.component_folders,vec!["Components / 404 pages"]);
 
+}
+
+#[test]
+fn project_first_capture_stays_private_through_rescan_backup_and_explicit_sharing(){
+    let temp=tempfile::tempdir().unwrap();let root=temp.path().join("Design");fs::create_dir(&root).unwrap();let path=temp.path().join("library.sqlite");db::init(&path).unwrap();db::set_setting(&db::connect(&path).unwrap(),"root",root.to_str().unwrap()).unwrap();
+    db::change(&path,change("create_project",vec![],None,Some("Client"),None)).unwrap();let project=db::load(&path,false).unwrap().projects[0].id;
+    let original=temp.path().join("logo.png");image::RgbImage::from_pixel(12,15,image::Rgb([20,80,120])).save(&original).unwrap();
+    let mut request=capture_request(&original,vec![project],vec![]);request.project_only=true;
+    let id=content::capture(&path,request).unwrap().ids[0];
+    library::scan(&path,&root).unwrap();let item=db::load(&path,false).unwrap().items.remove(0);assert!(item.project_only);assert_eq!(item.category,None);assert_eq!(item.projects,vec![project]);assert_eq!(crate::library_export::collection(&item),"General");
+    let backup=temp.path().join("backup.json");db::export(&path,backup.clone()).unwrap();let restored=temp.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();assert!(db::load(&restored,false).unwrap().items[0].project_only);
+    let backup_destination=tempfile::tempdir().unwrap();
+    let portable=crate::library_export::export(&path,backup_destination.path(),"Project-only backup",&std::sync::atomic::AtomicBool::new(false),&mut |_|{}).unwrap();
+    let bundle=std::path::PathBuf::from(portable.path);crate::library_export::verify(&bundle).unwrap();
+    let fresh=temp.path().join("fresh.sqlite");db::init(&fresh).unwrap();db::import(&fresh,crate::library_export::metadata_path(&bundle)).unwrap();
+    let restored_item=db::load(&fresh,false).unwrap().items.remove(0);assert!(restored_item.project_only);assert!(std::path::Path::new(&restored_item.path).is_file());assert!(!restored_item.projects.is_empty());
+    assert!(!fs::read_to_string(bundle.join("Browse Library.html")).unwrap().contains("data-section=\"Design Inspo\""));
+    for folder in ["", "Illustration", "Components / Header"]{
+        db::change(&path,change("set_category",vec![id],None,None,Some(folder))).unwrap();let shared=db::load(&path,false).unwrap().items.remove(0);assert!(!shared.project_only);assert_eq!(shared.projects,vec![project]);
+        db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();assert!(db::load(&path,false).unwrap().items[0].project_only);
+        db::change(&path,change("redo_organisation",vec![],None,None,None)).unwrap();assert!(!db::load(&path,false).unwrap().items[0].project_only);
+        db::change(&path,change("undo_organisation",vec![],None,None,None)).unwrap();
+    }
+    // Reusing an existing Design reference in a project must preserve its public filing.
+    let design=temp.path().join("design.png");image::RgbImage::from_pixel(13,16,image::Rgb([80,20,120])).save(&design).unwrap();
+    let design_id=content::capture(&path,capture_request(&design,vec![],vec![])).unwrap().ids[0];
+    db::change(&path,change("set_category",vec![design_id],None,None,Some("Branding"))).unwrap();
+    let mut again=capture_request(&design,vec![project],vec![]);again.project_only=true;let reused=content::capture(&path,again).unwrap();assert_eq!(reused.ids,vec![design_id]);assert_eq!(reused.reused,1);
+    let lib=db::load(&path,false).unwrap();let shared=lib.items.iter().find(|i|i.id==design_id).unwrap();assert!(!shared.project_only);assert_eq!(shared.category.as_deref(),Some("Branding"));assert!(shared.projects.contains(&project));
 }

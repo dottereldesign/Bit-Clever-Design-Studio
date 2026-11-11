@@ -1,6 +1,7 @@
 import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox, isHeaderFolder } from "./componentsLibrary";
 export type ProjectFolder = {id:number;project_id:number;parent_id:number|null;name:string;position:number|null};
 export type Item = {
+  project_only?:boolean;
   rating?: number|null;
   project_folders?: number[];
   id: number;
@@ -129,6 +130,7 @@ export const libraryCategories = (lib: Library): string[] => [...new Set([...(li
 
 
 export const designFoldersOf=(item:Item):string[]=>{
+ if(item.project_only)return [];
  const category=categoryOf(item);
  const folders=[...new Set([...(item.design_folders??[]),...(category?[category]:[])])].filter(n=>n&&!isComponent(n)&&!isWebDesign(n));
  return folders.length?folders:(!isComponent(category)?['']:[]);

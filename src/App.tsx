@@ -836,12 +836,12 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
         const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
           files,url:files.length?'':payload.sourceUrl,name:files.length===1?files[0].name.replace(/\.[^.]+$/,''):'',
-          source:destination==='Photography'?'Photography':'Design',projects:projectTarget?[projectTarget.project]:[],tags:[],source_url:payload.sourceUrl,resource:false,
+          source:destination==='Photography'?'Photography':'Design',project_only:!!projectTarget,projects:projectTarget?[projectTarget.project]:[],tags:[],source_url:payload.sourceUrl,resource:false,
         }}));
         setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
         recordCapture(result);
         if(projectTarget?.folder&&result.ids.length)await mutate({action:'add_project_folder',target:projectTarget.folder,ids:result.ids});
-        if(destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+        if(!projectTarget&&destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
         showCaptureReceipt(result,await refresh(),destination,projectTarget);
       } catch(error){report(error);}
       finally {
@@ -854,7 +854,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       // Read now, not when the import reaches the front of the queue. The clipboard
       // helper still orders native reads behind preceding app copy operations.
       const snapshot=readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error}));
-      const destination=category;const targetProject=project;const targetFolder=typeof projectFolder==='number'?projectFolder:null;
+      const destination=project!==null?null:category;const targetProject=project;const targetFolder=typeof projectFolder==='number'?projectFolder:null;
       enqueueImport(async()=>{
         const {draft,error}=await snapshot;
         if(!draft)throw error;
@@ -866,7 +866,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
           const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
             files:draft.files,url:draft.files.length?'':draft.url,name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/,''):'',
-            source:destination==='Photography'?'Photography':'Design',projects:targetProject!==null?[targetProject]:[],tags:[],source_url:'',resource:false,
+            source:destination==='Photography'?'Photography':'Design',project_only:targetProject!==null,projects:targetProject!==null?[targetProject]:[],tags:[],source_url:'',resource:false,
           }}));
           recordCapture(result);
           setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
@@ -999,7 +999,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,project,projectFolder,boardView,linksOnly,storageOpen]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
-    if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    if(project===null&&category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
     if(project!==null&&typeof projectFolder==='number'&&result.ids.length)await mutate({action:'add_project_folder',target:projectFolder,ids:result.ids});
     const next=await refresh();
     if (capture)

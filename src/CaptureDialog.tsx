@@ -97,6 +97,7 @@ export default function CaptureDialog({
           name,
           source_url: sourceUrl,
           projects,
+          project_only:project!==null&&projects.includes(project),
           tags,
           source: destination,
           resource: draft.files.length === 0 && linkDestination === "resources",

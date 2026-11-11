@@ -275,6 +275,8 @@ pub struct CaptureFile {
 #[derive(Deserialize)]
 pub struct Capture {
     #[serde(default)]
+    pub project_only: bool,
+    #[serde(default)]
     pub destination: String,
     #[serde(default)]
     pub thumbnail: Option<CaptureFile>,
@@ -580,8 +582,8 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             .map_err(err)?;
         // The file watcher may have indexed it first; capture metadata wins.
         tx.execute(
-            "UPDATE items SET name=?,source_url=? WHERE id=?",
-            params![name, c.source_url.trim(), id],
+            "UPDATE items SET name=?,source_url=?,project_only=? WHERE id=?",
+            params![name, c.source_url.trim(), c.project_only&&!c.projects.is_empty(), id],
         )
         .map_err(err)?;
         let mut patches=attachment_history(&tx,id,&c)?;

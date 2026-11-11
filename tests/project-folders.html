@@ -8,7 +8,7 @@ window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback
  calls.push({command,args});if(command==='get_library')return structuredClone(lib);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='save_library_preferences'||command==='discard_capture')return;
  if(command==='storage_usage')return {bytes:100,data_bytes:10,library_bytes:80,app_bytes:10,partial:false};
  if(command==='read_clipboard')return structuredClone(clipboard);
- if(command==='capture_items_progress'){if(hold){hold=false;await new Promise(r=>release=r);}const id=lib.items.length+100;lib.items.push({...item(id,args.input.projects,[]),kind:args.input.files.length?'image':'link',name:args.input.name||'Pasted link',path:args.input.url||'C:/mock/'+id+'.png',source:''});return {ids:[id],added:1,reused:0,destination:args.input.destination};}
+ if(command==='capture_items_progress'){if(hold){hold=false;await new Promise(r=>release=r);}const id=lib.items.length+100;lib.items.push({...item(id,args.input.projects,[]),kind:args.input.files.length?'image':'link',project_only:!!args.input.files.length&&!!args.input.project_only,name:args.input.name||'Pasted link',path:args.input.url||'C:/mock/'+id+'.png',source:''});return {ids:[id],added:1,reused:0,destination:args.input.destination};}
  if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){redo.push(structuredClone(lib));lib=undo.pop();return;}if(c.action==='redo_organisation'){undo.push(structuredClone(lib));lib=redo.pop();return;}undo.push(structuredClone(lib));redo.length=0;
    if(c.action==='rate_links')lib.items.filter(i=>c.ids.includes(i.id)&&i.kind==='link').forEach(i=>i.rating=c.value?Number(c.value):null);
    else if(c.action==='create_project_folder')lib.project_folders.push({id:Math.max(...lib.project_folders.map(f=>f.id))+1,project_id:c.target,parent_id:c.value?Number(c.value):null,name:c.name,position:null});
@@ -61,6 +61,11 @@ try{
    assert(lib.items.at(-1).projects.includes(7),'Saved link lost project membership');
   }
  }
- document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation','Repeated link-dialog saves stay in project, Unfiled and subfolder']});
+ await pause(200);document.activeElement?.blur();
+ const countBeforeLogo=lib.items.length;clipboard={files:[{path:'C:/staging/logo.png',name:'Private logo.png'}],url:''};document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>lib.items.length===countBeforeLogo+1&&lib.items.at(-1).project_folders.includes(11),'Project-only logo pasted');const logo=lib.items.at(-1);assert(logo.project_only,'Project paste did not request project-only storage');
+ document.querySelector('button[data-category=""]').click();await pause(150);assert(!document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo leaked into Design Uncategorised');
+ findButton('All Designs',document.querySelector('.sidebar')).click();await pause(150);assert(!document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo leaked into All Designs');
+ project(7).click();await until(()=>document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo still available');
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation','Repeated link-dialog saves stay in project, Unfiled and subfolder','New project paste is excluded from Design Inspo']});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,calls:calls.map(c=>c.command)});}
 </script></body></html>

@@ -12,6 +12,8 @@ pub fn err(e: impl std::fmt::Display) -> String {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Item {
     #[serde(default)]
+    pub project_only: bool,
+    #[serde(default)]
     pub rating: Option<i64>,
     #[serde(default)]
     pub project_folders: Vec<i64>,
@@ -100,6 +102,7 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE INDEX IF NOT EXISTS idx_projects_label ON item_projects(label_id);
       CREATE INDEX IF NOT EXISTS idx_tags_label ON item_tags(label_id);").map_err(err)?;
     for (table, column, definition) in [
+        ("items", "project_only", "INTEGER NOT NULL DEFAULT 0"),
         ("items", "rating", "INTEGER CHECK(rating BETWEEN 1 AND 5)"),
         ("items", "thumbnail", "TEXT NOT NULL DEFAULT ''"),
         ("items", "source_url", "TEXT NOT NULL DEFAULT ''"),
@@ -181,12 +184,12 @@ pub fn touch_project(db: &Connection, project: i64) -> Result<()> {
 pub fn load(path: &Path, scanning: bool) -> Result<Library> {
     let db = connect(path)?;
     let mut stmt = db
-        .prepare("SELECT id,path,name,kind,source,modified,added,missing,source_url,thumbnail,rating FROM items WHERE archived=0 ORDER BY id")
+        .prepare("SELECT id,path,name,kind,source,modified,added,missing,source_url,thumbnail,rating,project_only FROM items WHERE archived=0 ORDER BY id")
         .map_err(err)?;
     let mut items = stmt
         .query_map([], |r| {
             Ok(Item {
-                rating: r.get(10)?, project_folders: vec![],
+                project_only:r.get(11)?, rating: r.get(10)?, project_folders: vec![],
                 id: r.get(0)?,
                 path: r.get(1)?,
                 name: r.get(2)?,
@@ -272,6 +275,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?
     };
     for item in &mut items {
+        if item.project_only {continue;}
         if item.kind != "link" || overrides.contains_key(&item.id) {
             let initial = default_category(&item.source);
             if !initial.is_empty() { categories.push(initial.clone()); }
@@ -365,6 +369,7 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     if !exists { return Err("Only references still in your library can change category.".into()); }
     materialize_design_folder(db,id)?;
     materialize_component_folder(db,id)?;
+    db.execute("UPDATE items SET project_only=0 WHERE id=?",[id]).map_err(err)?;
     if name.starts_with("Components / ") {
         if name == "Components / Uncategorised" {db.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;}
         db.execute("INSERT OR IGNORE INTO item_component_folders VALUES(?,?)",params![id,name]).map_err(err)?;
@@ -391,12 +396,15 @@ pub fn design_memberships(db:&Connection,id:i64)->Result<Vec<String>>{
     let mut query=db.prepare("SELECT name FROM item_design_folders WHERE item_id=? ORDER BY name").map_err(err)?;
     let rows=query.query_map([id],|r|r.get(0)).map_err(err)?;rows.collect::<std::result::Result<_,_>>().map_err(err)
 }
+pub fn project_only(db:&Connection,id:i64)->Result<bool>{db.query_row("SELECT project_only FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)}
 fn materialize_design_folder(db:&Connection,id:i64)->Result<()>{
+    if project_only(db,id)?{return Ok(());}
     let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
     let current=assigned.unwrap_or_else(||default_category(&source));
     if is_design_folder(&current)||(current.is_empty()&&design_memberships(db,id)?.is_empty()){db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,current]).map_err(err)?;}Ok(())
 }
 pub fn category_is_new(db:&Connection,id:i64,name:&str)->Result<bool>{
+    if project_only(db,id)?{return Ok(true);}
     let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
     let current=assigned.unwrap_or_else(||default_category(&source));let folders=component_memberships(db,id)?;
     if name.starts_with("Components / ")&&name!="Components / Uncategorised"{return Ok(current!=name&&!folders.iter().any(|f|f==name));}
@@ -762,7 +770,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         if !item.source_url.is_empty() {
             valid_url(&item.source_url)?;
         }
-        tx.execute("INSERT OR IGNORE INTO items(path,name,kind,source,modified,added,missing,source_url,thumbnail) VALUES(?,?,?,?,?,?,?,?,?)",params![item.path,item.name,item.kind,item.source,item.modified,item.added,missing,item.source_url,item.thumbnail]).map_err(err)?;
+        tx.execute("INSERT OR IGNORE INTO items(path,name,kind,source,modified,added,missing,source_url,thumbnail,project_only) VALUES(?,?,?,?,?,?,?,?,?,?)",params![item.path,item.name,item.kind,item.source,item.modified,item.added,missing,item.source_url,item.thumbnail,item.project_only]).map_err(err)?;
         let id: i64 = tx
             .query_row("SELECT id FROM items WHERE path=?", [&item.path], |r| {
                 r.get(0)
@@ -771,7 +779,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         if backup.portable {
             // A complete portable restore carries the saved names and link
             // thumbnails, including resources already seeded by a fresh app.
-            tx.execute("UPDATE items SET name=?,source=?,source_url=?,thumbnail=?,archived=0 WHERE id=?",params![item.name,item.source,item.source_url,item.thumbnail,id]).map_err(err)?;
+            tx.execute("UPDATE items SET name=?,source=?,source_url=?,thumbnail=?,project_only=?,archived=0 WHERE id=?",params![item.name,item.source,item.source_url,item.thumbnail,item.project_only,id]).map_err(err)?;
         }
         if item.kind != "link" || item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")) {
             if let Some(category) = &item.category {

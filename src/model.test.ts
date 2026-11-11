@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { deepStrictEqual as equal } from "node:assert";
-import { filterItems, orderedProjects, categoryOf, libraryCategories, type Filters, type Item } from "./model";
+import { filterItems, designFoldersOf, orderedProjects, categoryOf, libraryCategories, type Filters, type Item } from "./model";
 const items: Item[] = [
   {
     id: 1,
@@ -246,4 +246,13 @@ it("Websites stays separate from Links and filters by existing tags",()=>{
  equal(filterItems([website],{...defaults,collection:'Websites',tags:[4]}).length,1);
  equal(filterItems([website],{...defaults,collection:'Websites',tags:[5]}).length,0);
  equal(filterItems([website],{...defaults,linksOnly:true}).length,0);
+});
+
+it("project-first media is absent from Design Inspo but remains in its project",()=>{
+ const privateItem:Item={...items[0],source:'Design/Captures',category:null,project_only:true};
+ equal(designFoldersOf(privateItem),[]);
+ equal(filterItems([privateItem],{...defaults,category:''}),[]);
+ equal(filterItems([privateItem],{...defaults,project:7}).map(i=>i.id),[privateItem.id]);
+ equal(designFoldersOf({...privateItem,project_only:false}),['']);
+ equal(designFoldersOf({...privateItem,project_only:false,category:'Illustration'}),['Illustration']);
 });
