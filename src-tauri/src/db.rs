@@ -56,6 +56,8 @@ pub struct HistoryEntry {
 #[derive(Serialize, Deserialize)]
 pub struct Library {
     #[serde(default)]
+    pub project_overviews: Vec<crate::project_overview::Overview>,
+    #[serde(default)]
     pub project_folders: Vec<crate::project_folders::Folder>,
     #[serde(default)]
     pub undo_entries:Vec<HistoryEntry>,
@@ -131,6 +133,7 @@ pub fn init(path: &Path) -> Result<()> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS category_arrivals(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_design_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     crate::project_folders::init(&db)?;
+    crate::project_overview::init(&db)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -328,6 +331,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
     };
     Ok(Library {
         project_folders: crate::project_folders::folders(&db)?,
+        project_overviews: crate::project_overview::load(&db)?,
         undo_entries:{
             let mut stmt=db.prepare("SELECT id,label FROM organisation_history ORDER BY id").map_err(err)?;
             let rows=stmt.query_map([],|r|Ok(HistoryEntry{id:r.get(0)?,label:r.get(1)?})).map_err(err)?;
@@ -477,6 +481,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
     let name = c.name.as_deref().unwrap_or("");
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
+        "update_project_overview" => crate::project_overview::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
         "unfile_project_folder"|"create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,
         "rate_links"=>{let rating=if value.is_empty(){None}else{Some(value.parse::<i64>().map_err(err)?)};if rating.is_some_and(|r|!(1..=5).contains(&r)){return Err("Choose a rating from 1 to 5".into());}for id in c.ids{tx.execute("UPDATE items SET rating=? WHERE id=? AND kind='link'",params![rating,id]).map_err(err)?;}},
         "create_category" => {
@@ -747,6 +752,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             map.insert(label.id, id);
         }
     }
+    for mut overview in backup.library.project_overviews {overview.project_id=*projects.get(&overview.project_id).ok_or("Missing overview project in backup")?;crate::project_overview::save(&tx,&overview)?;}
     let mut folder_map=std::collections::HashMap::new();
     let mut pending=backup.library.project_folders;
     while !pending.is_empty(){let before=pending.len();let mut rest=vec![];

@@ -1,4 +1,5 @@
 import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox, isHeaderFolder } from "./componentsLibrary";
+export type ProjectOverviewData={project_id:number;brief:string;status:string;deadline:string;actions:{id:string;text:string;deadline:string;done:boolean}[]};
 export type ProjectFolder = {id:number;project_id:number;parent_id:number|null;name:string;position:number|null};
 export type Item = {
   project_only?:boolean;
@@ -34,6 +35,7 @@ export const isTableLink = (item: Item) => item.kind === "link" && (item.source 
 export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
+  project_overviews?: ProjectOverviewData[];
   project_folders?: ProjectFolder[];
   undo_entries?: {id:number;label:string}[];
   undo_label?: string | null;

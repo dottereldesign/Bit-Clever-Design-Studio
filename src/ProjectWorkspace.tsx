@@ -1,3 +1,5 @@
+import ProjectOverview from './ProjectOverview';
+import type {ProjectOverviewData} from './model';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useVirtualizer} from '@tanstack/react-virtual';
@@ -23,8 +25,8 @@ function FileThumb({item}:{item:Item}) {
   return url?<img src={url} alt="" onError={()=>setUrl('')}/>:<span className="project-file-glyph"><File size={28}/>{item.kind==='file'&&<small>{fileType(item)}</small>}</span>;
 }
 
-export default function ProjectWorkspace({project,folders,items,allItems,scope,navigate,mutate,report,addFiles,paste,drop,selected,select,menu,preview,size,order,search,scroller}: {
-  project:Label;folders:ProjectFolder[];items:Item[];allItems:Item[];scope:FolderScope;navigate:(scope:FolderScope)=>void;
+export default function ProjectWorkspace({overview,project,folders,items,allItems,scope,navigate,mutate,report,addFiles,paste,drop,selected,select,menu,preview,size,order,search,scroller}: {
+  overview?:ProjectOverviewData;project:Label;folders:ProjectFolder[];items:Item[];allItems:Item[];scope:FolderScope;navigate:(scope:FolderScope)=>void;
   mutate:(change:Change)=>Promise<unknown>;report:(error:unknown)=>void;addFiles:()=>void;paste:(folder:number|null)=>void;
   drop:(data:DataTransfer,folder:number|null)=>void;selected:Set<number>;select:(item:Item,event:React.MouseEvent)=>void;
   menu:(item:Item,event:React.MouseEvent)=>void;preview:(item:Item)=>void;size:number;order:string;search:string;scroller:React.RefObject<HTMLDivElement|null>;
@@ -96,6 +98,7 @@ export default function ProjectWorkspace({project,folders,items,allItems,scope,n
       </div>}
       </div>
     </div>
+    {scope===null&&!search&&<ProjectOverview project={project.id} data={overview} mutate={mutate}/>}
   </section>;
 }
 

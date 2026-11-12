@@ -19,9 +19,14 @@ Click selects. Double-click or Preview opens a file preview; the external-open b
 
 Opening a file externally opens the library-owned copy. This phase does **not** provide file version history, editing locks or automatic conflict resolution. Keep verified backups before editing originals. Metadata refreshes when the library snapshot reloads; it is not a live external-file editor monitor.
 
+## Project overview
+
+The project parent shows an overview below its folders. It includes a brief, status (Planned, In progress, Waiting on client, On hold or Complete), project deadline, and next actions with optional individual due dates. Completed actions can be shown or hidden. Past due dates are marked Overdue; a completed project is not marked overdue.
+
+Text and dates save when focus leaves the field; status and action completion save immediately. Failed text saves retain the draft and offer Retry. Organisation Undo/Redo includes these edits. Overview data belongs to the project in SQLite and travels with both portable and metadata backups. Restoring a backup maps it to the correct project; older backups without overview data leave existing overviews intact.
+
 ## Later phases from the plan
 
-- Overview: brief, scope, status, deadlines and next actions.
 - Client records: contacts, meeting notes, feedback and decisions.
 - Moodboards: arrange project references on a freeform canvas.
 - Versions and approvals: immutable revisions, comments and approval tied to a specific revision.
