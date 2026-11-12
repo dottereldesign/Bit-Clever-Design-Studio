@@ -34,14 +34,15 @@ pub fn collection(item:&db::Item)->&'static str {
     else {"Design Inspo"}
 }
 pub fn allocate_filename(title:&str,source:&Path,group:&str,used:&mut std::collections::HashSet<String>)->String {
-    let extension=source.extension().and_then(|x|x.to_str()).unwrap_or("bin").to_ascii_lowercase();
+    let extension=source.extension().and_then(|x|x.to_str()).unwrap_or("").to_ascii_lowercase();
+    let suffix=if extension.is_empty(){String::new()}else{format!(".{extension}")};
     let mut stem=title.trim().to_owned();
     if stem.is_empty(){stem=source.file_stem().unwrap_or_default().to_string_lossy().into_owned();}
     if stem.to_lowercase().starts_with("clipboard-") || stem.to_lowercase().starts_with("web image-"){stem="Saved Image".into();}
     let mut stem=safe_name(&stem);
     if ["CON","PRN","AUX","NUL","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9","LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"].contains(&stem.split('.').next().unwrap_or("").to_ascii_uppercase().as_str()){stem=format!("Saved {stem}");}
-    let mut candidate=format!("{stem}.{extension}");let mut n=2;
-    while !used.insert(format!("{group}/{candidate}").to_lowercase()){candidate=format!("{stem} ({n}).{extension}");n+=1;}
+    let mut candidate=format!("{stem}{suffix}");let mut n=2;
+    while !used.insert(format!("{group}/{candidate}").to_lowercase()){candidate=format!("{stem} ({n}){suffix}");n+=1;}
     candidate
 }
 fn display_folder(name:&str,preferences:&serde_json::Value)->String{
@@ -68,7 +69,7 @@ pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::
         let url=if item.kind=="link" {if db::valid_url(&item.path).is_err(){continue;}item.path.clone()}else{item.path.split('/').map(|s|url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>().replace('+',"%20")).collect::<Vec<_>>().join("/")};
         html.push_str(&format!("<article data-section=\"{}\" data-folders=\"{}\"><a href=\"{}\">",section,escape(&names),escape(&url)));
         if item.kind=="video"{html.push_str(&format!("<video controls preload=\"none\" src=\"{}\"></video>",escape(&url)));}
-        else if item.kind!="link"&&!item.missing{html.push_str(&format!("<img loading=\"lazy\" src=\"{}\" alt=\"{}\">",escape(&url),escape(&item.name)));}
+        else if (item.kind=="image"||item.kind=="animation")&&!item.missing{html.push_str(&format!("<img loading=\"lazy\" src=\"{}\" alt=\"{}\">",escape(&url),escape(&item.name)));}
         html.push_str(&format!("<div>{}</div></a><small>{}</small>",escape(&item.name),section));
         for label in labels{html.push_str(&format!("<button type=\"button\">{}</button>",escape(&label)));}
         html.push_str("</article>");

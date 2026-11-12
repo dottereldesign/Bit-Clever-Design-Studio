@@ -760,7 +760,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         }if rest.len()==before{return Err("Invalid folder hierarchy in backup".into());}pending=rest;
     }
     for item in backup.library.items {
-        if !["image", "animation", "video", "link"].contains(&item.kind.as_str()) {
+        if !["image", "animation", "video", "link", "file"].contains(&item.kind.as_str()) {
             return Err("Invalid item type in backup".into());
         }
         if item.kind == "link" {

@@ -901,7 +901,8 @@ fn chunked_capture_stays_in_staging_and_preserves_bytes() {
     content::stage_chunk(temp.path(), token, b"second").unwrap();
     assert_eq!(fs::read(entry.path).unwrap(), b"firstsecond");
     assert!(content::stage_chunk(temp.path(), "../outside.png", b"bad").is_err());
-    assert!(content::stage_begin(temp.path(), "unsupported.exe").is_err());
+    // Staging accepts arbitrary project attachments; capture validates the destination.
+    assert!(content::stage_begin(temp.path(), "attachment.exe").is_ok());
 }
 
 #[test]

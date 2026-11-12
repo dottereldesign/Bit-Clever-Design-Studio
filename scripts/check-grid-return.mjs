@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 const fixture = process.argv[2] ?? 'grid-return';
-if (!['project-folder-drag', 'thumbnail-readiness', 'storage-cache', 'collection-performance', 'settings-page', 'diagnostics', 'project-navigation', 'project-folders', 'link-categories', 'thumbnail-click', 'colour-picker', 'website-scroll', 'hover-preview', 'image-drop', 'clipboard-scroll', 'view-session', 'thumbnail-enlargement', 'component-links', 'customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
+if (!['project-workspace', 'project-folder-drag', 'thumbnail-readiness', 'storage-cache', 'collection-performance', 'settings-page', 'diagnostics', 'project-navigation', 'project-folders', 'link-categories', 'thumbnail-click', 'colour-picker', 'website-scroll', 'hover-preview', 'image-drop', 'clipboard-scroll', 'view-session', 'thumbnail-enlargement', 'component-links', 'customization', 'app-history', 'home-styles', 'thumbnail-loading', 'performance', 'grid-return', 'copy-resources', 'link-boards', 'video-download', 'categories', 'workflow-tools', 'pointer-moves', 'wide-preview', 'library-export'].includes(fixture)) throw Error('Unknown browser test fixture');
 const port = ["wide-preview", "performance"].includes(fixture) ? "1422" : "1421";
 const testUrl = `http://127.0.0.1:${port}/tests/${fixture}.html`;
 
@@ -68,10 +68,10 @@ try {
         const deadline = Date.now() + (['home-styles','customization','grid-return'].includes(fixture)?120000:60000);
         while (Date.now() < deadline) {
           const { result: state } = await call('Runtime.evaluate', { expression: '({ report: document.getElementById("check-result")?.textContent, enter: !!window.__awaitNativeEnter, pointer: window.__pointerAction, wheel: window.__wheelAction, resize: window.__resizeAction, capture: !!window.__screenshotReady, captureName: window.__captureName })', returnByValue: true }, sessionId);
-          if (['settings-page', 'diagnostics', 'project-folder-drag', 'project-folders', 'link-categories', 'thumbnail-click', 'colour-picker', 'website-scroll', 'link-boards', 'hover-preview', 'library-export', 'image-drop', 'view-session', 'thumbnail-enlargement', 'copy-resources', 'component-links', 'customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
+          if (['project-workspace', 'settings-page', 'diagnostics', 'project-folder-drag', 'project-folders', 'link-categories', 'thumbnail-click', 'colour-picker', 'website-scroll', 'link-boards', 'hover-preview', 'library-export', 'image-drop', 'view-session', 'thumbnail-enlargement', 'copy-resources', 'component-links', 'customization', 'home-styles', 'thumbnail-loading', 'wide-preview', 'workflow-tools', 'categories'].includes(fixture) && state.value?.capture && (!captured || (['home-styles','customization','project-workspace'].includes(fixture)&&state.value.captureName!==lastCaptureName))) {
             await mkdir('.tools/checks', { recursive: true });
             const shot = await call('Page.captureScreenshot', { format: 'png' }, sessionId);
-            const captureName=['home-styles','customization'].includes(fixture)&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";
+            const captureName=['home-styles','customization','project-workspace'].includes(fixture)&&/^[a-z-]+$/.test(state.value.captureName??"")?"-"+state.value.captureName:"";
             await writeFile(`.tools/checks/${fixture}${captureName}-${dimensions}.png`, Buffer.from(shot.data, 'base64'));
             lastCaptureName=state.value.captureName;
             captured = true;

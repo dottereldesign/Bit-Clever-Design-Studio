@@ -1,8 +1,9 @@
+import ProjectWorkspace, {ProjectFilePreview} from "./ProjectWorkspace";
 import {useThumbnailReadiness} from './useThumbnailReadiness';
 import Diagnostics from './DiagnosticsPanel';
 import {record as recordDiagnostic,errorCode} from './diagnostics';
 import {useVirtualizer} from '@tanstack/react-virtual';
-import {ProjectTree, OrganiseProjectFolders, folderPath, type FolderScope} from './ProjectFolders';
+import {ProjectTree, OrganiseProjectFolders, type FolderScope} from './ProjectFolders';
 import LinkRating from './LinkRating';
 import {useSelectionAppearance} from './SelectionStyles';
 import ColourPicker, {ProjectColours} from './ColourPicker';
@@ -442,6 +443,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     recordDiagnostic('library.membership_index','success',performance.now()-start,{items:lib.items.length});
     return index;
   },[lib.items]);
+  const enlargementItems=useMemo(()=>lib.items.filter(item=>item.kind!=="file"),[lib.items]);
   const sheetItems=useMemo(()=>project!==null?membershipIndex.projects.get(project)??[]:[],[membershipIndex,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
   const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
@@ -463,7 +465,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         sort:recent?"recent":sort, seed,
       },membershipIndex);
       recordDiagnostic('library.filter','success',performance.now()-start,{items:lib.items.length,count:matches.length});
-      if(generalMissing)return [];
+      if(generalMissing || (project!==null && projectFolder===null && !search && type==="all" && !tags.length && !ratingFilter))return [];
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
@@ -683,6 +685,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     // Gallery clicks only focus the thumbnail for Space preview. Keep explicit
     // link actions and modifier-key selection available.
     if(item.kind!=="link"&&(project!==null||category!==null||allCategoriesView)){setSelected(new Set([item.id]));anchor.current=item.id;return;}
+    if(item.kind==="file"){setQuickPreview(item.id);return;}
     if (item.kind === "link" && !(item.source === "Websites" && item.thumbnail)) {
       void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
@@ -904,6 +907,17 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     }
   }, [report, resourcesView, boardView, linkDestination, videoView, category, project, projectFolder, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
   const chooseCaptureFiles = async () => {
+    if(project!==null){
+      const target=project,folder=typeof projectFolder==='number'?projectFolder:null;
+      try{const paths=await open({multiple:true,title:'Add project files'});if(!paths)return;
+        const files=(Array.isArray(paths)?paths:[paths]).map(path=>({path,name:path.replace(/\\/g,'/').split('/').pop()!}));
+        enqueueImport(async()=>{const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+          const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{files,source:'Design',projects:[target],project_only:true,tags:[],url:'',name:'',source_url:'',resource:false}}));
+          recordCapture(result);if(folder!==null&&result.ids.length)await mutate({action:'add_project_folder',target:folder,ids:result.ids});
+          showCaptureReceipt(result,await refresh(),null,{project:target,folder});
+        });
+      }catch(error){report(error);}return;
+    }
     try {
       const paths = await open({
         multiple: true,
@@ -1265,7 +1279,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           <div className="view-title">
             <h1>{title}</h1>
             <span>
-              {boardView ? boardItems.length : resourcesView
+              {project!==null&&projectFolder===null&&!activeFilters?sheetItems.length.toLocaleString():boardView ? boardItems.length : resourcesView
                 ? filtered.filter(isResource).length
                 : filtered.length.toLocaleString()}
             </span>
@@ -1329,7 +1343,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                 <option value="image">Images</option>
                 <option value="video">Videos</option>
                 <option value="animation">Animations</option>
-                <option value="link">Links</option>
+                <option value="link">Links</option>{project!==null&&<option value="file">Files</option>}
               </select>}
               <Popover
                 label={tags.length ? `Tags · ${tags.length}` : "Tags"}
@@ -1359,7 +1373,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                 </button>
               </Popover>
               {lib.tags.length>0&&<select aria-label="Tag matching" value={tagMode} onChange={e=>setTagMode(e.target.value==="all"?"all":"any")}><option value="any">Any tag</option><option value="all">All tags</option></select>}
-              {!boardView && !videoView && <select
+              {project===null && !boardView && !videoView && <select
                 aria-label="Filter by category"
                 value={category??"__all__"}
                 onChange={(e) => setCategory(e.target.value==="__all__"?null:e.target.value)}
@@ -1414,7 +1428,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             </div>}
           </div>
         )}
-        {project!==null&&<nav className="project-breadcrumb" aria-label="Project location"><button onClick={()=>setProjectFolder(null)}>{lib.projects.find(p=>p.id===project)?.name}</button><span>/</span><span>{projectFolder==='unfiled'?'Unfiled':typeof projectFolder==='number'?folderPath((lib.project_folders??[]).find(f=>f.id===projectFolder)??{id:0,project_id:project,parent_id:null,name:'All items',position:null},lib.project_folders??[]):'All items'}</span></nav>}
+
         {project!==null&&<ProjectColours key={project} project={project}/>}
         {(readingCapture||pendingImports>0) && (
           <div className="capture-reading">
@@ -1434,7 +1448,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {project!==null&&!generalMissing&&lib.projects.some(p=>p.id===project)?<ProjectWorkspace key={project} project={lib.projects.find(p=>p.id===project)!} folders={lib.project_folders??[]} items={filtered} allItems={sheetItems} scope={projectFolder} navigate={scope=>{setProjectFolder(scope);setSelected(new Set());scrollRef.current?.scrollTo(0,0);}} mutate={mutate} report={report} addFiles={()=>void chooseCaptureFiles()} paste={folder=>void pasteCapture({category:null,project,folder})} drop={(data,folder)=>queueImageDrop(data,null,{project,folder})} selected={selected} select={(item,event)=>{if(event.ctrlKey||event.metaKey||event.shiftKey)select(item.id,event.shiftKey);else setSelected(new Set([item.id]));}} menu={(item,event)=>setItemMenu({ids:selected.has(item.id)?[...selected]:[item.id],x:event.clientX,y:event.clientY})} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} size={size} order={sort} search={search||(activeFilters?'filters':'')} scroller={scrollRef}/>:generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (
@@ -1516,9 +1530,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         </>}
       </>}
       </main>
-      <ThumbnailEnlargement items={lib.items} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
+      <ThumbnailEnlargement items={enlargementItems} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
         enabled={!homeView&&!customTab&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!folderMenu&&!libraryExportOpen&&!extraDialog}/>
-      {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>}
+      {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&(lib.items.find(i=>i.id===quickPreview)!.kind==="file"?<ProjectFilePreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>:<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>)}
       {activeItem && (
         <div className={dockedPreview ? "preview-shell preview-shell-docked" : "preview-shell"}>
         <Viewer
@@ -1848,6 +1862,7 @@ const Card=memo(function Card({
   const motion = item.kind === "video" || item.kind === "animation";
   useEffect(() => {
     const abort = new AbortController();
+    if(item.kind==="file"){setFailed(true);return;}
     setThumb(cachedMedia(item,"thumbnail")??"");
     setFailed(false);
     setPreview("");
@@ -1916,7 +1931,7 @@ const Card=memo(function Card({
         {playing && preview && !motionError && <HoverPreview key={`${item.id}:${preview}`} src={preview} animation={item.kind==='animation'} onError={()=>setMotionError(true)}/>}
       </button>
       <div className="card-shade" />
-      {failed && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
+      {failed && item.kind!=="file" && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
       {canPin && (
         <button
           className={`card-pin ${pinned ? "pinned" : ""}`}

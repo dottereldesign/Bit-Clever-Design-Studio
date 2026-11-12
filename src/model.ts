@@ -7,7 +7,7 @@ export type Item = {
   id: number;
   path: string;
   name: string;
-  kind: "image" | "video" | "animation" | "link";
+  kind: "image" | "video" | "animation" | "link" | "file";
   source: string;
   modified: number;
   added: number;

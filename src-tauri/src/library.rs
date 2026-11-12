@@ -174,6 +174,7 @@ pub fn media(db_path: &Path, cache: &Path, ffmpeg: &Path, id: i64, mode: &str) -
     if kind == "link" {
         return Err("Links have no local media".into());
     }
+    if kind == "file" { return Err("Use the project file preview for this attachment.".into()); }
     let source = Path::new(&path);
     if !source.is_file() {
         return Err("Original file is missing".into());

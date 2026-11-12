@@ -14,6 +14,7 @@ mod thumbnail;
 mod home_covers;
 mod history;
 mod project_folders;
+mod project_files;
 mod library_export;
 mod managed_library;
 use db::{err, Result};
@@ -181,6 +182,20 @@ async fn get_media(id: i64, mode: String, state: tauri::State<'_, State>) -> Res
     })
     .await
     .map_err(err)?
+}
+
+#[tauri::command]
+async fn project_file_details(project:i64,state:tauri::State<'_,State>)->Result<Vec<project_files::FileInfo>> {
+    let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||project_files::details(&db,project)).await.map_err(err)?
+}
+#[tauri::command]
+async fn project_file_preview(id:i64,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<project_files::Preview> {
+    let db=state.db.clone();let result=tauri::async_runtime::spawn_blocking(move||project_files::preview(&db,id)).await.map_err(err)??;
+    if ["image","video","audio","pdf"].contains(&result.kind){app.asset_protocol_scope().allow_file(&result.path).map_err(err)?;}Ok(result)
+}
+#[tauri::command]
+async fn open_project_file(id:i64,state:tauri::State<'_,State>)->Result<()> {
+    let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||project_files::open(&db,id)).await.map_err(err)?
 }
 
 fn scan_background(app: tauri::AppHandle, s: State) {
@@ -659,6 +674,9 @@ fn main() {
             get_library,
             update,
             get_media,
+            project_file_details,
+            project_file_preview,
+            open_project_file,
             rescan,
             set_root,
             backup,

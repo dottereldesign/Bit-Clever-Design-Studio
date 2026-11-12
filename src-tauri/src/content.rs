@@ -363,6 +363,10 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
     capture_with_progress(db_path,c,&mut |_|{})
 }
 pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMut(DuplicateProgress)) -> Result<CaptureResult> {
+    // Reject an unsupported destination before importing any part of a batch.
+    if c.projects.is_empty() && c.files.iter().any(|file| library::kind(Path::new(&file.path)).is_none()) {
+        return Err("Add these files to a project. Design Inspo and App Components accept images and videos.".into());
+    }
     if !c.source_url.trim().is_empty() {
         db::valid_url(&c.source_url)?;
     }
@@ -505,6 +509,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         .canonicalize()
         .map_err(err)?;
     let managed=db::setting(&db,"managed_root").is_some();
+    let dedup_root=db::setting(&db,"managed_root").map(PathBuf::from).unwrap_or_else(||root.clone()).canonicalize().map_err(err)?;
     let destination = if managed {root.clone()}else{root.join("Captures")};
     fs::create_dir_all(&destination).map_err(err)?;
     let destination = destination.canonicalize().map_err(err)?;
@@ -514,9 +519,9 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
     for (position,input) in c.files.iter().enumerate() {
         report(position,input.name.clone());
         let path = PathBuf::from(&input.path).canonicalize().map_err(err)?;
-        let kind = library::kind(&path).ok_or("Unsupported file type")?;
+        let kind = library::kind(&path).or_else(|| (!c.projects.is_empty()).then_some("file")).ok_or("Add this file to a project. Design Inspo and App Components accept images and videos.")?;
         let fp = fingerprint(&path)?;
-        if let Some(id) = matching(&db, &fp, &root)? {
+        if let Some(id) = matching(&db, &fp, &dedup_root)? {
             let tx = db.transaction().map_err(err)?;
             let patches=attachment_history(&tx,id,&c)?;
             attach(&tx, id, &c)?;
@@ -583,7 +588,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         // The file watcher may have indexed it first; capture metadata wins.
         tx.execute(
             "UPDATE items SET name=?,source_url=?,project_only=? WHERE id=?",
-            params![name, c.source_url.trim(), c.project_only&&!c.projects.is_empty(), id],
+            params![name, c.source_url.trim(), (c.project_only||kind=="file")&&!c.projects.is_empty(), id],
         )
         .map_err(err)?;
         let mut patches=attachment_history(&tx,id,&c)?;
@@ -650,15 +655,8 @@ pub fn stage_begin(data: &Path, name: &str) -> Result<CaptureFile> {
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if ![
-        "jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "ico", "avif", "mp4", "mov",
-        "webm", "m4v", "mkv", "avi",
-    ]
-    .contains(&extension.as_str())
-    {
-        return Err("Unsupported file type".into());
-    }
-    let path = folder.join(format!("{}.{extension}", nonce()));
+    let suffix=if extension.is_empty(){String::new()}else{format!(".{extension}")};
+    let path = folder.join(format!("{}{suffix}", nonce()));
     fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -736,9 +734,9 @@ pub fn clipboard_files(paths: Vec<PathBuf>) -> Result<ClipboardContent> {
         let path = path
             .canonicalize()
             .map_err(|_| format!("File is unavailable: {}", path.display()))?;
-        if !path.is_file() || library::kind(&path).is_none() {
+        if !path.is_file() {
             return Err(format!(
-                "Unsupported file: {}. Choose images, GIFs or videos.",
+                "Not a file: {}. Choose individual files rather than a folder.",
                 path.file_name().unwrap_or_default().to_string_lossy()
             ));
         }

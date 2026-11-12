@@ -15,7 +15,7 @@
 ## Collect and organise
 
 - **Design Inspo & App Components** — organise references into multiple folders, including across both sections. Add tags and collect references into projects without duplicating originals.
-- **Project folders** — create nested folders with All items and Unfiled views. Drag references into folders, share them across projects, and manage memberships without copying files. Right-click folders to rename or move them.
+- **Project files** — open a project as a folder workspace with Details, Tiles or Columns layouts. Keep any file type alongside links and references; browse nested folders and Unfiled, preview supported formats, or open files in their default app. Project-first imports stay out of Design Inspo. [Workspace details](docs/PROJECT-WORKSPACE.md).
 - **Link ratings** — rate links out of five stars in Links or projects. Ratings stay consistent across views, with filters, sorting and bulk updates.
 - **Fast imports** — paste images, drop files or drag images from webpages. File them directly into the selected folder; edit details later.
 - **Websites** — save a URL with a full-page screenshot captured through Chrome or Edge, or supply your own image. Scroll inside the thumbnail, open the full preview or visit the website.
