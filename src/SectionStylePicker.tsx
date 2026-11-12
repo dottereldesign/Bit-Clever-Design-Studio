@@ -36,9 +36,9 @@ export const sectionStyles = [
 ];
 export const readSectionStyle=()=>{const n=Number(localStorage.getItem("sidebar-section-style"));return Number.isInteger(n)&&n>=1&&n<=sectionStyles.length?n:1;};
 export function SectionStyleOptions({selected,choose}:{selected:number;choose:(id:number)=>void}) {
- return <div className="section-style-grid">{sectionStyles.map(([name],index)=><article className="style-study" key={name} data-style-study={index+1}>
+ return <div className="section-style-grid">{sectionStyles.map(([name],index)=><article className="style-study" key={name} data-style-study={index+1} data-selected={selected===index+1}>
   <div className="study-caption"><h3>{name}</h3>{selected===index+1&&<Check size={15}/>}</div>
-  <div className="study-samples">{(["design","components"] as const).map(identity=><SidebarSection key={identity} name={`sample-${index}-${identity}`} label={identity==="design"?"Design Inspo":"App Components"} identity={identity} styleId={index+1} preview><div className="study-folders"><span>All folders</span><span>Uncategorised</span></div></SidebarSection>)}</div>
-  <button className="use-section-style" aria-pressed={selected===index+1} onClick={()=>choose(index+1)} aria-label={`Use ${name} style`}>{selected===index+1?"Selected":"Apply"}</button>
+  <div className="study-samples" inert aria-hidden="true">{(["design","components"] as const).map(identity=><SidebarSection key={identity} name={`sample-${index}-${identity}`} label={identity==="design"?"Design Inspo":"App Components"} identity={identity} styleId={index+1} preview><div className="study-folders"><span>All folders</span><span>Uncategorised</span></div></SidebarSection>)}</div>
+  <button className="use-section-style" aria-pressed={selected===index+1} onClick={()=>choose(index+1)} aria-label={`Use ${name} style`}></button>
  </article>)}</div>;
 }

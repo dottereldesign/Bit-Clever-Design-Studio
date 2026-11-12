@@ -93,7 +93,7 @@ try {
  checks.push('Red removal control asks first; Cancel preserves the tile; confirmed removal supports Undo');
  checks.push('Home starts empty; sidebar destinations add without duplicates; adaptive layout, sizing, shapes, rearranging, removal, Undo and navigation persistence work');
  document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelectorAll('.style-study').length===30,'Thirty sidebar styles');
- const sample=document.querySelector('.style-study .section-toggle');sample.click();await pause(300);assert(sample.getAttribute('aria-expanded')==='true','Style sample does not expand');sample.click();await pause(300);
+ const sample=document.querySelector('.style-study .use-section-style');sample.click();await pause(100);assert(sample.getAttribute('aria-pressed')==='true','Clicking a style should select it immediately');
  // Capture every style together at the large test viewport.
  window.__captureName="sidebar";window.__screenshotReady=true;await pause(700);
  for(let i=1;i<=20;i++){if(!document.querySelector('.customise-panel')){document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Reopen style chooser');}
@@ -102,7 +102,7 @@ try {
  const app=document.querySelector('.app');app.style.setProperty('--sidebar-width','168px');await pause(30);for(const heading of document.querySelectorAll('.sidebar .section-feature > .sidebar-heading'))assert(heading.querySelector('.section-title').scrollWidth<=heading.querySelector('.section-title').clientWidth+2,'Title overflows narrow sidebar: '+i);app.style.setProperty('--sidebar-width','208px');assert(!document.querySelector('.sidebar .folder-group.section-feature'),'Subfolders restyled');assert(!document.querySelector('.sidebar .folder-group'),'Component folders should be flat');
  }
  if(matchMedia('(prefers-reduced-motion: reduce)').matches)assert(getComputedStyle(document.querySelector('.sidebar .section-reveal')).transitionDuration==='0s','Reduced motion ignored');
- checks.push('All twenty sidebar styles apply and persist; previews expand; subfolders stay minimal; scrolling belongs to folder lists');
+ checks.push('All twenty sidebar styles apply and persist; previews select immediately; subfolders stay minimal; scrolling belongs to folder lists');
  document.querySelector('.customise-layout > nav button:nth-child(2)').click();
  for(let i=1;i<=20;i++){await until(()=>document.querySelectorAll('.home-style-choice').length===20,'Twenty Home styles');if(i===1){window.__captureName='home-gallery';await pause(700);}document.querySelectorAll('.home-style-choice')[i-1].click();await until(()=>document.querySelector(`.home-dashboard.home-style-${i}`),'Home style '+i);assert(localStorage.getItem('home-style')===String(i),'Home style not persisted');
  await pause(450);const bounds=document.querySelector('.home-canvas').getBoundingClientRect();
@@ -133,8 +133,8 @@ try {
  if(folderNav.scrollHeight>folderNav.clientHeight+2)assert(Math.abs(folderNav.getBoundingClientRect().bottom-footer.top)<10,'Sidebar leaves unused space below capped folder list');
  if(innerHeight>1000)assert(folderNav.clientHeight>340,'Folder list still capped at 340px');
  window.__captureName='sidebar-space';await pause(600);
- document.querySelector('[title="Customise Home"]').click();await until(()=>document.querySelector('.customise-panel'),'Unified Home settings');await pause(260);
- const panel=document.querySelector('.customise-panel').getBoundingClientRect(),side=document.querySelector('.sidebar').getBoundingClientRect();assert(Math.abs(panel.left-side.right-32)<1&&panel.top===32&&innerWidth-panel.right===32&&innerHeight-panel.bottom===32,'Customisation should leave sidebar visible and 32px context');
+ document.querySelector('[title="Customise Home"]').click();await until(()=>document.querySelector('.customise-panel'),'Unified Home settings');await pause(380);
+ const panel=document.querySelector('.customise-panel').getBoundingClientRect(),side=document.querySelector('.sidebar').getBoundingClientRect();assert(Math.abs(panel.left-side.right)<1&&Math.abs(panel.top-innerHeight/2)<1&&innerWidth-panel.right===0&&innerHeight-panel.bottom===0,'Customisation should occupy the bottom half beside the sidebar');
  const setRange=(name,value)=>{const input=document.querySelector(`input[aria-label="${name}"]`);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};
  setRange('Overlay darkness',75);setRange('Text scale',125);await pause(100);assert(JSON.parse(localStorage.getItem('home-appearance')).darkness===75,'Overlay setting not saved');
  assert(tile('project:7').querySelector('.home-tile-label').textContent==='Website','Image tile destination label missing');
