@@ -12,7 +12,7 @@ pub fn selected_db(config:&Path)->Result<PathBuf>{
     let pointer=config.join("active-library.json");if !pointer.exists(){return Ok(config.join("library.sqlite"));}
     let folder:PathBuf=serde_json::from_slice(&fs::read(pointer).map_err(err)?).map_err(err)?;
     let db=folder.join("Library Data/Library.sqlite");
-    if !db.is_file(){return Err(format!("Your library is unavailable at {}. Reconnect its drive before opening BitClever.",folder.display()));}
+    if !db.is_file(){return Err(format!("Your library is unavailable at {}. Reconnect its drive before opening Bit Clever.",folder.display()));}
     rebase(&db,&folder)?;Ok(db)
 }
 fn configure(db:&rusqlite::Connection,folder:&Path)->Result<()>{
@@ -50,7 +50,7 @@ fn rewrite_paths(value:&mut serde_json::Value,old:&Path,new:&Path){match value{
     serde_json::Value::Object(a)=>for v in a.values_mut(){rewrite_paths(v,old,new)},_=>{}
 }}
 pub fn rebase(path:&Path,folder:&Path)->Result<()> {
-    let mut conn=db::connect(path)?;let old=PathBuf::from(db::setting(&conn,"managed_root").ok_or("This is not a managed BitClever library")?);
+    let mut conn=db::connect(path)?;let old=PathBuf::from(db::setting(&conn,"managed_root").ok_or("This is not a managed Bit Clever library")?);
     let folder=folder.canonicalize().map_err(err)?;if old==folder{return Ok(());}
     let rows={let mut q=conn.prepare("SELECT id,path,thumbnail,kind FROM items").map_err(err)?;let rows=q.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?))).map_err(err)?;rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?};
     let tx=conn.transaction().map_err(err)?;

@@ -1,9 +1,9 @@
 # Library storage and backups
 
-Storage & Backup provides Create Library for the legacy scattered storage layout. Choose the parent location; the app creates `BitClever Library` there, or a numbered sibling if that name already exists. It copies files, verifies SHA-256 hashes, imports metadata into a fresh database, and checks database integrity and folder relationships. It never removes legacy originals. Use This Library activates the verified copy and restarts the app.
+Storage & Backup provides Create Library for the legacy scattered storage layout. Choose the parent location; the app creates `Bit Clever Library` there, or a numbered sibling if that name already exists. It copies files, verifies SHA-256 hashes, imports metadata into a fresh database, and checks database integrity and folder relationships. It never removes legacy originals. Use This Library activates the verified copy and restarts the app.
 
 ```
-BitClever Library/
+Bit Clever Library/
   Design Inspo/
   App Components/
   General/
@@ -17,7 +17,7 @@ Original media uses readable, collision-safe filenames. Files belong to one phys
 
 ## Copying and restoring
 
-Close BitClever before copying the whole live library folder to another drive. While the app is running, use Back Up Now instead: it snapshots SQLite, including committed WAL data, and verifies copied files before marking the backup complete. Use Verify Backup on the destination copy. Keep an additional copy on a separate device or location.
+Close Bit Clever before copying the whole live library folder to another drive. While the app is running, use Back Up Now instead: it snapshots SQLite, including committed WAL data, and verifies copied files before marking the backup complete. Use Verify Backup on the destination copy. Keep an additional copy on a separate device or location.
 
 Open Existing Library opens a complete backup or live library copy in its permanent location. Paths and appearance assets are rebased if the folder moved. If the selected library becomes unavailable at startup, the recovery screen lets you reconnect the drive or choose the library's new location; it does not silently start an empty library.
 

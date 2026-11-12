@@ -20,12 +20,12 @@ export default function LibraryExport({ close, migration=false }: { close: () =>
     if (pending.current) return;
     pending.current = true; setChoosing(true); setError("");
     try {
-      const path = await open({ directory: true, defaultPath: migration ? await homeDir() : undefined, multiple: false, title: migration ? "Choose a parent folder for your new BitClever Library" : "Choose where to save your library backup" });
+      const path = await open({ directory: true, defaultPath: migration ? await homeDir() : undefined, multiple: false, title: migration ? "Choose a parent folder for your new Bit Clever Library" : "Choose where to save your library backup" });
       if (typeof path !== "string") return;
       setBusy(true); setResult(null); setProgress(null); setCancelling(false);
       const onProgress = new Channel<Progress>(); onProgress.onmessage = setProgress;
       const today = new Date();
-      const name = `BitClever Backup - ${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")} ${String(today.getHours()).padStart(2,"0")}-${String(today.getMinutes()).padStart(2,"0")}`;
+      const name = `Bit Clever Backup - ${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")} ${String(today.getHours()).padStart(2,"0")}-${String(today.getMinutes()).padStart(2,"0")}`;
       setResult(await invoke<Result>(migration?"prepare_library":"export_library", { path, name, onProgress, preferences:collectBackupPreferences() }));
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); setChoosing(false); pending.current = false; }
