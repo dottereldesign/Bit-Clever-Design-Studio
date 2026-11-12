@@ -1288,7 +1288,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           <span className="brand-name"><span>Bit Clever</span><span>Design Studio</span></span>
         </button>
         <SidebarNavigation order={navLayout.order}>
-        <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
+        <SidebarSection name="General" identity="general" styleId={sectionStyle} icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
             const {key,name,pinned}=entry,target=entry.target??{kind:'view',value:key},view=target.kind==='view'?target.value:'',board=isBoardDestination(view);
@@ -1299,7 +1299,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           })}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Projects" icon={icons.overrides["section:Projects"]&&<AppIcon value={icons.overrides["section:Projects"]}/>} dropProps={homeDrag("group:projects")} action={
+        <SidebarSection name="Projects" identity="projects" styleId={sectionStyle} icon={icons.overrides["section:Projects"]&&<AppIcon value={icons.overrides["section:Projects"]}/>} dropProps={homeDrag("group:projects")} action={
           <IconButton
             title="New project"
             onClick={() => setModal({ kind: "project" })}

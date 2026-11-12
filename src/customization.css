@@ -72,3 +72,5 @@
 .customise-panel .custom-toggle.custom-setting>span { display:block;margin:0; }
 .customise-panel .home-style-mini .home-tile { padding:10px!important;overflow:hidden; }
 .customise-panel .home-style-mini .home-tile-title { font-size:16px!important;line-height:1.1;letter-spacing:-.3px;white-space:nowrap; }
+
+.custom-scope-note { margin:-4px 0 12px;font-size:11px;color:#737c6b; }

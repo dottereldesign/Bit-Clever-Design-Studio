@@ -9,7 +9,7 @@ export default function useSidebarSpace(layout=1){
   const container=document.querySelector<HTMLElement>('.sidebar-scroll');if(!container)return;let frame=0;
   const measure=()=>{frame=0;
    const sections=[...container.querySelectorAll<HTMLElement>(':scope > .sidebar-section')];
-   const bodies=sections.filter(s=>s.dataset.open==='true').map(s=>s.querySelector<HTMLElement>(':scope > .sidebar-section-body, :scope > .section-reveal > .section-reveal-inner > nav')!).filter(Boolean);
+   const bodies=sections.filter(s=>s.dataset.open==='true').map(s=>s.querySelector<HTMLElement>(':scope > .sidebar-section-body, :scope > .section-reveal > .section-reveal-inner > .sidebar-section-body, :scope > .section-reveal > .section-reveal-inner > nav')!).filter(Boolean);
    const total=[...container.children].reduce((sum,child)=>{const css=getComputedStyle(child);return sum+child.getBoundingClientRect().height+parseFloat(css.marginTop||'0')+parseFloat(css.marginBottom||'0');},0);
    const used=bodies.reduce((sum,body)=>sum+(body.parentElement?.classList.contains('section-reveal-inner')?body.parentElement.parentElement!.getBoundingClientRect().height:body.getBoundingClientRect().height),0);
    const heights=shareSidebarSpace(bodies.map(body=>body.scrollHeight),container.clientHeight-total+used);
