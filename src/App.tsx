@@ -1,3 +1,5 @@
+import StudioWorkspace from "./StudioWorkspace";
+import type {StudioRoute} from "./studio";
 import ProjectWorkspace, {ProjectFilePreview} from "./ProjectWorkspace";
 import {useThumbnailReadiness} from './useThumbnailReadiness';
 import Diagnostics from './DiagnosticsPanel';
@@ -272,6 +274,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
     [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
+  const [studioView,setStudioView]=useState<StudioRoute|null>(savedView?.studioView??null);
   const [projectSection,setProjectSection]=useState<"overview"|"files"|"client"|"moodboard">(savedView?.projectSection??(savedView?.projectFolder!=null?"files":"overview"));
   const [projectFolder,setProjectFolder]=useState<FolderScope>(savedView?.projectFolder??null);
   const [ratingFilter,setRatingFilter]=useState(savedView?.ratingFilter??'');
@@ -450,6 +453,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
   const filtered = useMemo(
     () => {
+      if(studioView)return [];
       const start=performance.now();
       const matches=filterItems(lib.items, {
         designsOnly:allCategoriesView,
@@ -471,7 +475,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
     },
-    [lib.items, membershipIndex, lib.project_folders, projectSection, projectFolder, ratingFilter, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
+    [studioView,lib.items, membershipIndex, lib.project_folders, projectSection, projectFolder, ratingFilter, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
   );
   useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
@@ -488,8 +492,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     [filtered],
   );
   const navigationStart=useRef<number|null>(null);
-  const viewState=useMemo<ViewState>(()=>({projectSection,projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[projectSection,projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
-  useLayoutEffect(()=>{const start=navigationStart.current??performance.now();navigationStart.current=null;const operation=crypto.randomUUID();const fields={view:modal?.kind==='settings'?'settings':homeView?'home':project!==null?'project':category!==null?'folder':boardView??(resourcesView?'resources':recent??(linksOnly?'links':videoView?'videos':'designs')),project,folder:typeof projectFolder==='number'?projectFolder:category!==null?'category-'+Array.from(category).reduce((hash,char)=>(Math.imul(hash,31)+char.charCodeAt(0))>>>0,0).toString(16):null,items:filtered.length};recordDiagnostic('navigation','started',0,fields,operation);let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>recordDiagnostic('navigation','success',performance.now()-start,fields,operation));});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[homeView,project,projectFolder,category,boardView,linksOnly,resourcesView,recent,videoView,modal?.kind]);
+  const viewState=useMemo<ViewState>(()=>({studioView,projectSection,projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[studioView,projectSection,projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  useLayoutEffect(()=>{const start=navigationStart.current??performance.now();navigationStart.current=null;const operation=crypto.randomUUID();const fields={view:modal?.kind==='settings'?'settings':studioView?studioView.section:homeView?'home':project!==null?'project':category!==null?'folder':boardView??(resourcesView?'resources':recent??(linksOnly?'links':videoView?'videos':'designs')),project,folder:typeof projectFolder==='number'?projectFolder:category!==null?'category-'+Array.from(category).reduce((hash,char)=>(Math.imul(hash,31)+char.charCodeAt(0))>>>0,0).toString(16):null,items:filtered.length};recordDiagnostic('navigation','started',0,fields,operation);let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>recordDiagnostic('navigation','success',performance.now()-start,fields,operation));});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[studioView,homeView,project,projectFolder,category,boardView,linksOnly,resourcesView,recent,videoView,modal?.kind]);
   useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
   useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
@@ -513,6 +517,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setSource("");
   };
   const navigate = (id: number | null, onlyLinks = false) => {
+    setStudioView(null);
     setHomeView(false);
     setGeneralKey(null);
     setQuickPreview(null);
@@ -538,7 +543,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
   const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
     const before=libRef.current;await changeLibrary(c);const next=await refresh();
-    const tracked=new Set(['update_client_records','update_project_overview','rate_links','unfile_project_folder','create_project_folder','rename_project_folder','move_project_folder','delete_project_folder','reorder_project_folders','add_project_folder','remove_project_folder','set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    const tracked=new Set(['update_studio','convert_studio_lead','update_client_records','update_project_overview','rate_links','unfile_project_folder','create_project_folder','rename_project_folder','move_project_folder','delete_project_folder','reorder_project_folders','add_project_folder','remove_project_folder','set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
     const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
     if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
     return next;
@@ -571,7 +576,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
     ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
   ],[lib.projects,categories,folderLabels]);
-  const iconTargets=useMemo(()=>[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
+  const iconTargets=useMemo(()=>[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:Marketing',label:'Marketing section'},{id:'section:Leads',label:'Leads section'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))],[collectionPrefs,sitePrefs,lib.projects,categories,folderLabels]);
   const designRows=useMemo(()=>sortedFolders([...categories,''],'design'),[categories,folderOrder,folderLabels]);
   const componentRows=useMemo(()=>sortedFolders(componentFolders,'components'),[folderOrder,folderLabels]);
@@ -800,11 +805,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       const command=e.ctrlKey||e.metaKey;
       if(command&&e.key===","&&!typing){e.preventDefault();setSearchOpen(false);setModal({kind:"settings"});return;}
       if((command&&["f","k"].includes(e.key.toLowerCase()))||(!typing&&!command&&e.key==="/")){
-        e.preventDefault();if(project!==null&&!generalEntry&&projectSection==='client'){window.dispatchEvent(new Event('client-search'));return;}if(project!==null&&!generalEntry)setProjectSection('files');if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
+        e.preventDefault();if(studioView){window.dispatchEvent(new Event("studio-search"));return;}if(project!==null&&!generalEntry&&projectSection==='client'){window.dispatchEvent(new Event('client-search'));return;}if(project!==null&&!generalEntry)setProjectSection('files');if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
       }
     };
     window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
-  },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView,project,projectSection,generalEntry]);
+  },[studioView,modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView,project,projectSection,generalEntry]);
   const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null, targetProject?:{project:number;folder:number|null})=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
@@ -907,6 +912,25 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       setReadingCapture(false);
     }
   }, [report, resourcesView, boardView, linkDestination, videoView, category, project, projectFolder, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
+  const openStudio=(route:StudioRoute)=>{navigate(null);setStudioView(route);};
+  const importStudio=(id:string,mode:'paste'|'files'|'drop',data?:DataTransfer)=>{
+    const payload=data?readWebDrop(data):null;
+    const snapshot=mode==='paste'?readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error})):null;
+    const selected=mode==='files'?open({multiple:true,title:'Add studio files'}).then(paths=>({paths,error:null}),error=>({paths:null,error})):null;
+    enqueueImport(async()=>{
+      let files:CaptureDraft['files']=[];
+      try{
+        let url='';
+        if(snapshot){const result=await snapshot;if(!result.draft)throw result.error;files=result.draft.files;url=result.draft.url;}
+        else if(selected){const result=await selected;if(result.error)throw result.error;if(!result.paths)return;files=(Array.isArray(result.paths)?result.paths:[result.paths]).map(path=>({path,name:path.replace(/\\/g,'/').split('/').pop()!}));}
+        else if(payload){if(payload.files.length)files=(await stageFiles(payload.files,setImportProgress)).files;else if(payload.imageUrl)files=[await invoke('stage_web_image',{url:payload.imageUrl})];url=payload.sourceUrl;}
+        if(!files.length&&!url)throw Error('Copy a file, image or URL first.');
+        const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+        const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{studio:id,files,url:files.length?'':url,name:'',source:'Design',projects:[],tags:[],resource:false}}));
+        recordCapture(result);await refresh();setNotice(`Saved ${result.ids.length} reference${result.ids.length===1?'':'s'}`);
+      }finally{await invoke('discard_capture',{paths:files.map(f=>f.path)}).catch(report);}
+    });
+  };
   const chooseCaptureFiles = async () => {
     if(project!==null){
       const target=project,folder=typeof projectFolder==='number'?projectFolder:null;
@@ -960,7 +984,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   };
   useEffect(() => {
     const paste = (e: KeyboardEvent) => {
-      if(document.querySelector('.project-dialog-backdrop'))return;
+      if(studioView||document.querySelector('.project-dialog-backdrop'))return;
       if (
         (e.ctrlKey || e.metaKey) &&
         e.key.toLowerCase() === "v" && !e.repeat &&
@@ -978,7 +1002,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       }
     };
     const over = (e: DragEvent) => {
-      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop")){setDropActive(false);return;}
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop,.studio-workspace")){setDropActive(false);return;}
       if (!extraDialog && !storageOpen && e.dataTransfer && acceptsExternalDrop(e.dataTransfer)) {
         e.preventDefault();
         setDropActive(true);
@@ -989,7 +1013,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     };
     const drop = (e: DragEvent) => {
       setDropActive(false);
-      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop"))return;
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop,.studio-workspace"))return;
       if(extraDialog||storageOpen)return;
       if(e.dataTransfer && acceptsExternalDrop(e.dataTransfer) && !resourcesView && !boardView && !videoView && !linksOnly){
         e.preventDefault();
@@ -1023,7 +1047,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,project,projectFolder,boardView,linksOnly,storageOpen]);
+  }, [studioView,pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,project,projectFolder,boardView,linksOnly,storageOpen]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
     if(project===null&&category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
@@ -1288,6 +1312,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           <span className="brand-name"><span>Bit Clever</span><span>Studio</span></span>
         </button>
         <SidebarNavigation order={navLayout.order}>
+        <SidebarSection name="Marketing" identity="marketing" styleId={sectionStyle} onOpen={()=>openStudio({section:'marketing',page:'campaigns'})} icon={icons.overrides['section:Marketing']&&<AppIcon value={icons.overrides['section:Marketing']}/>}><nav>{['campaigns','ideas','calendar'].map(page=><button key={page} className={`nav-item ${studioView?.section==='marketing'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='marketing'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'marketing',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
+        <SidebarSection name="Leads" identity="leads" styleId={sectionStyle} onOpen={()=>openStudio({section:'leads',page:'pipeline'})} icon={icons.overrides['section:Leads']&&<AppIcon value={icons.overrides['section:Leads']}/>}><nav>{['pipeline','follow-ups','contacts'].map(page=><button key={page} className={`nav-item ${studioView?.section==='leads'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='leads'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'leads',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
         <SidebarSection name="General" identity="general" styleId={sectionStyle} icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
@@ -1333,7 +1359,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           </IconButton>}>
         <nav className="source-list" aria-label="Design Inspo">
           <button
-            className={`nav-item ${!homeView&&!generalKey&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
+            className={`nav-item ${!studioView&&!homeView&&!generalKey&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
             {...homeDrag("design")}
             onClick={() => navigate(null)}
           >
@@ -1373,7 +1399,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         />
       </aside>
       <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
-        {modal?.kind==='settings'?libraryDialog:<>{homeView?<><HomeDashboard headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
+        {modal?.kind==='settings'?libraryDialog:<>{studioView?<StudioWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else{setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:homeView?<><HomeDashboard headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
         <header className="topbar">
           <div className="view-title">
             <h1>{title}</h1>
@@ -1448,7 +1474,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {project!==null&&!generalEntry&&!generalMissing&&lib.projects.some(p=>p.id===project)?<ProjectWorkspace fileToolbar={viewToolbar} section={projectSection} changeSection={setProjectSection} clients={lib.client_records} overview={lib.project_overviews?.find(o=>o.project_id===project)} key={project} project={lib.projects.find(p=>p.id===project)!} folders={lib.project_folders??[]} items={filtered} allItems={sheetItems} scope={projectFolder} navigate={scope=>{setProjectSection("files");setProjectFolder(scope);setSelected(new Set());}} mutate={mutate} report={report} addFiles={()=>void chooseCaptureFiles()} paste={folder=>void pasteCapture({category:null,project,folder})} drop={(data,folder)=>queueImageDrop(data,null,{project,folder})} selected={selected} select={(item,event)=>{if(event.ctrlKey||event.metaKey||event.shiftKey)select(item.id,event.shiftKey);else setSelected(new Set([item.id]));}} menu={(item,event)=>setItemMenu({ids:selected.has(item.id)?[...selected]:[item.id],x:event.clientX,y:event.clientY})} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} size={size} order={sort} search={search||(activeFilters?'filters':'')} scroller={scrollRef}/>:generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {project!==null&&!generalEntry&&!generalMissing&&lib.projects.some(p=>p.id===project)?<ProjectWorkspace relatedStudio={<div className="studio-project-links">{(lib.studio??[]).filter(e=>["lead","campaign"].includes(e.kind)&&e.projects.includes(project)).map(e=><button key={e.id} onClick={()=>openStudio({section:e.kind==="lead"?"leads":"marketing",page:e.kind==="lead"?"pipeline":"campaigns",id:e.id})}>{e.kind==="lead"?"Lead":"Campaign"}: {e.name} <ArrowRight size={13}/></button>)}</div>} fileToolbar={viewToolbar} section={projectSection} changeSection={setProjectSection} clients={lib.client_records} overview={lib.project_overviews?.find(o=>o.project_id===project)} key={project} project={lib.projects.find(p=>p.id===project)!} folders={lib.project_folders??[]} items={filtered} allItems={sheetItems} scope={projectFolder} navigate={scope=>{setProjectSection("files");setProjectFolder(scope);setSelected(new Set());}} mutate={mutate} report={report} addFiles={()=>void chooseCaptureFiles()} paste={folder=>void pasteCapture({category:null,project,folder})} drop={(data,folder)=>queueImageDrop(data,null,{project,folder})} selected={selected} select={(item,event)=>{if(event.ctrlKey||event.metaKey||event.shiftKey)select(item.id,event.shiftKey);else setSelected(new Set([item.id]));}} menu={(item,event)=>setItemMenu({ids:selected.has(item.id)?[...selected]:[item.id],x:event.clientX,y:event.clientY})} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} size={size} order={sort} search={search||(activeFilters?'filters':'')} scroller={scrollRef}/>:generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (

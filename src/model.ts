@@ -37,9 +37,10 @@ export const isBoardDestination = (destination: string): destination is BoardKey
 export const isBoardLink = (item: Item) => item.kind === "link" && Object.values(boardNames).includes(item.source);
 export const isTableCollection = (destination: string | null) => destination === "fonts" || destination === "brand-guidelines";
 export const isTableLink = (item: Item) => item.kind === "link" && (item.source === "Fonts" || item.source === "Brand Guidelines");
-export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
+export const isCollectionLink = (item: Item) => item.source === "Studio" || isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
+  studio?:import("./studio").StudioEntry[];
   client_records?:ClientData;
   project_overviews?: ProjectOverviewData[];
   project_folders?: ProjectFolder[];

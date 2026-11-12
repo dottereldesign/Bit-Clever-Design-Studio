@@ -16,14 +16,21 @@
 
 | Area | Purpose | Availability |
 | --- | --- | --- |
-| **Marketing** | Plan campaigns, organise creative assets and schedule content. | Planned |
-| **Leads** | Track opportunities, contacts and follow-ups through to a project. | Planned |
+| **Marketing** | Plan campaigns, organise creative assets and schedule content. | Development |
+| **Leads** | Track opportunities, contacts and follow-ups through to a project. | Development |
 | **General** | Save websites, links, resources, fonts and brand guidelines. | Available |
 | **Projects** | Manage files, briefs, deadlines, next actions, client records and moodboards. | Available |
 | **Design Inspo** | Collect visual references in flexible, shared folders. | Available |
 | **App Components** | Organise interface references, components and page templates. | Available |
 
-Marketing and Leads are the next planned additions; they are not implemented yet. Installed releases can lag behind the development workspace. Check release notes before downloading.
+Marketing and Leads are available in the development workspace. Installed releases can lag behind source changes; check release notes before downloading. [Leads and Marketing details](docs/STUDIO-WORKSPACES.md).
+
+## From enquiry to delivery
+
+- **Leads** — track opportunities in a table or draggable pipeline, record interactions and schedule next actions. Share contacts across projects without merging people by name.
+- **Project handover** — turn a won lead into a project, carrying its brief, contacts, actions and file references. Keep a link back to the opportunity and its source campaign.
+- **Marketing** — plan campaigns, collect ideas, write content, arrange moodboards and schedule content on a calendar. Record results manually; no advertising account or subscription is required.
+- **Local records** — saved campaign and lead records travel with library backups. Imports stay in their workspace; existing references can be shared without copying originals.
 
 ## Work with your library
 

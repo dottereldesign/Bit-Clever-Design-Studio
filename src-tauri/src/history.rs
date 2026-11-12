@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum Patch {
+    Studio(crate::studio::Snapshot),
     ClientEdit(crate::client_records::EditSnapshot),
     ProjectOnly(i64,bool),
     ProjectOrganisation(crate::project_folders::State),
@@ -27,7 +28,9 @@ pub enum Patch {
 }
 
 pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch>)>> {
-    if c.action=="update_client_records"{return Ok(Some(("Edit client records".into(),vec![Patch::ClientEdit(crate::client_records::snapshot(db,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?)])));}
+    if c.action=="update_studio"||c.action=="convert_studio_lead"{let id=if c.action=="update_studio"{let v:serde_json::Value=serde_json::from_str(c.value.as_deref().unwrap_or("")).map_err(err)?;v["id"].as_str().ok_or("Missing record")?.to_owned()}else{c.value.clone().unwrap_or_default()};let mut patches=vec![Patch::Studio(crate::studio::snapshot(db,&id)?)];if c.action=="convert_studio_lead"{patches.push(Patch::ProjectOrganisation(crate::project_folders::snapshot_with_clients(db)?));for e in crate::studio::load(db)?.into_iter().filter(|r|r.kind=="contact"){patches.push(Patch::Studio(crate::studio::snapshot(db,&e.id)?));}}return Ok(Some((if c.action=="convert_studio_lead"{"Create project from lead"}else{"Edit studio record"}.into(),patches)));}
+    if c.action=="update_client_records"{let mut patches=vec![Patch::ClientEdit(crate::client_records::snapshot(db,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?)];let v:serde_json::Value=serde_json::from_str(c.value.as_deref().unwrap_or("")).map_err(err)?;if v["type"]=="contact"{let cid=v["id"].as_str().unwrap_or("");let p=c.target.unwrap_or(0);let shared=crate::client_records::load(db)?.contacts.iter().find(|r|r.project_id==p&&r.id==cid).map(crate::studio::contact_id).unwrap_or(format!("project:{p}:{cid}"));patches.push(Patch::Studio(crate::studio::snapshot(db,&shared)?));if let Some(company)=v["patch"]["company"].as_str(){patches.push(Patch::Studio(crate::studio::snapshot(db,&crate::studio::company_id(&shared,company))?));}}return Ok(Some(("Edit client records".into(),patches)));}
+    if c.action=="delete_project"{let mut patches=vec![Patch::ProjectOrganisation(crate::project_folders::snapshot_with_clients(db)?)];for e in crate::studio::load(db)?.into_iter().filter(|e|e.projects.contains(&c.target.unwrap_or(0))){patches.push(Patch::Studio(crate::studio::snapshot(db,&e.id)?));}return Ok(Some(("Delete project".into(),patches)));}
     if c.action.contains("project_folder") || ["update_project_overview","delete_project","remove_project"].contains(&c.action.as_str()) {
         return Ok(Some((match c.action.as_str(){"update_client_records"=>"Edit client records","update_project_overview"=>"Edit project overview","unfile_project_folder"=>"Move to Unfiled","create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(if c.action=="delete_project"{crate::project_folders::snapshot_with_clients(db)?}else{crate::project_folders::snapshot(db)?})])));
     }
@@ -133,6 +136,7 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 // travel back to the other stack without replaying commands or changing IDs.
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
+        Patch::Studio(s)=>Patch::Studio(crate::studio::snapshot(db,&s.id)?),
         Patch::ProjectOnly(id,_)=>Patch::ProjectOnly(*id,db::project_only(db,*id)?),
         Patch::ClientEdit(s)=>Patch::ClientEdit(crate::client_records::inverse(db,s)?),
         Patch::ProjectOrganisation(s)=>Patch::ProjectOrganisation(if s.includes_clients(){crate::project_folders::snapshot_with_clients(db)?}else{crate::project_folders::snapshot(db)?}),
@@ -180,10 +184,12 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
     let (from,to)=if redo {("organisation_redo","organisation_history")} else {("organisation_history","organisation_redo")};
     let entry:Option<(i64,String,String)>=db.query_row(&format!("SELECT id,label,patches FROM {from} ORDER BY id DESC LIMIT 1"),[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(err)?;
     let (entry,label,patches)=entry.ok_or(if redo {"Nothing to redo yet."} else {"Nothing to undo yet."})?;
-    let mut inverses=vec![];
-    for patch in serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)? {
-        inverses.push(inverse(db,&patch)?);
+    let patches=serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)?;
+    // Shared contacts can update several records. Capture all inverses before applying any patch.
+    let mut inverses=patches.iter().map(|patch|inverse(db,patch)).collect::<Result<Vec<_>>>()?;
+    for patch in patches {
         match patch {
+            Patch::Studio(s)=>crate::studio::apply(db,s)?,
             Patch::ProjectOnly(id,value)=>{db.execute("UPDATE items SET project_only=? WHERE id=?",params![value,id]).map_err(err)?;},
             Patch::ClientEdit(state)=>crate::client_records::apply(db,state)?,
             Patch::ProjectOrganisation(state)=>crate::project_folders::restore(db,state)?,

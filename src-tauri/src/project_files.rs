@@ -12,7 +12,7 @@ pub fn details(db_path:&Path, project:i64)->Result<Vec<FileInfo>> {
 }
 pub fn path(db_path:&Path,id:i64)->Result<PathBuf> {
     let db=db::connect(db_path)?;
-    let path:String=db.query_row("SELECT path FROM items WHERE id=? AND archived=0 AND kind!='link' AND EXISTS(SELECT 1 FROM item_projects WHERE item_id=items.id)",[id],|r|r.get(0)).map_err(err)?;
+    let path:String=db.query_row("SELECT path FROM items WHERE id=? AND archived=0 AND kind!='link' AND (EXISTS(SELECT 1 FROM item_projects WHERE item_id=items.id) OR EXISTS(SELECT 1 FROM studio_records s,json_each(s.data,'$.files') f WHERE f.value=items.id))",[id],|r|r.get(0)).map_err(err)?;
     let path=PathBuf::from(path).canonicalize().map_err(err)?;
     if !path.is_file(){return Err("This file is unavailable. Reconnect its drive or restore a backup.".into());}Ok(path)
 }

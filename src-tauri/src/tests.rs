@@ -676,6 +676,7 @@ fn actual_library_media_smoke() {
 
 fn capture_request(path: &std::path::Path, projects: Vec<i64>, tags: Vec<i64>) -> content::Capture {
     content::Capture {
+        studio: None,
         project_only:false,
         destination: String::new(),
         thumbnail: None,

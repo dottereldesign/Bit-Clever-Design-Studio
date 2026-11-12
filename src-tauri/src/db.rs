@@ -56,6 +56,8 @@ pub struct HistoryEntry {
 #[derive(Serialize, Deserialize)]
 pub struct Library {
     #[serde(default)]
+    pub studio: Vec<crate::studio::Entry>,
+    #[serde(default)]
     pub client_records: crate::client_records::State,
     #[serde(default)]
     pub project_overviews: Vec<crate::project_overview::Overview>,
@@ -137,6 +139,7 @@ pub fn init(path: &Path) -> Result<()> {
     crate::project_folders::init(&db)?;
     crate::project_overview::init(&db)?;
     crate::client_records::init(&db)?;
+    crate::studio::init(&db)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -333,6 +336,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         Ok(rows)
     };
     Ok(Library {
+        studio: crate::studio::load(&db)?,
         project_folders: crate::project_folders::folders(&db)?,
         project_overviews: crate::project_overview::load(&db)?,
         client_records: crate::client_records::load(&db)?,
@@ -485,6 +489,8 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
     let name = c.name.as_deref().unwrap_or("");
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
+        "update_studio" => crate::studio::change(&tx,c.value.as_deref().unwrap_or(""))?,
+        "convert_studio_lead" => crate::studio::convert(&tx,c.value.as_deref().unwrap_or(""))?,
         "update_client_records" => crate::client_records::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
         "update_project_overview" => crate::project_overview::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
         "unfile_project_folder"|"create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,
@@ -661,6 +667,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         }
         _ => return Err("Unknown change".into()),
     }
+    if c.action=="delete_project"{crate::studio::unlink_project(&tx,target)?;}
     if let Some((label,patches))=undo {
         let unchanged=if let Some(crate::history::Patch::ClientEdit(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::client_records::inverse(&tx,before)?).map_err(err)?}else if let Some(crate::history::Patch::ProjectOrganisation(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::project_folders::snapshot(&tx)?).map_err(err)?}else{false};
         if !unchanged{crate::history::record(&tx,&label,patches)?;}
@@ -865,6 +872,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         }
     }
     for mut overview in backup.library.project_overviews {overview.project_id=*projects.get(&overview.project_id).ok_or("Missing overview project in backup")?;if let Some(nodes)=&mut overview.moodboard{for node in nodes{node.item_id=node.item_id.and_then(|id|item_map.get(&id).copied());}}else{overview.moodboard=crate::project_overview::load(&tx)?.into_iter().find(|o|o.project_id==overview.project_id).and_then(|o|o.moodboard);}crate::project_overview::save(&tx,&overview)?;}
+    crate::studio::import(&tx,backup.library.studio,&projects,&item_map)?;
     for mut c in backup.library.client_records.contacts {c.project_id=*projects.get(&c.project_id).ok_or("Missing contact project")?;crate::client_records::save_contact(&tx,&c)?;}
     for mut r in backup.library.client_records.records {r.project_id=*projects.get(&r.project_id).ok_or("Missing record project")?;r.files=r.files.iter().filter_map(|id|item_map.get(id).copied()).collect();crate::client_records::save_record(&tx,&r)?;}
     tx.execute("DELETE FROM organisation_history",[]).map_err(err)?;

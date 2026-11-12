@@ -165,3 +165,7 @@
 
 .section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading{padding-left:6px;padding-right:6px}
 .section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading>.section-toggle{gap:6px}
+
+.section-feature:where(.section-marketing){--section-ink:#69502e;--section-tint:#eee8db;--section-accent:#a7864f}
+.section-feature:where(.section-leads){--section-ink:#365c61;--section-tint:#e1eded;--section-accent:#5d9398}
+.section-marketing .section-chevron,.section-leads .section-chevron{display:none}

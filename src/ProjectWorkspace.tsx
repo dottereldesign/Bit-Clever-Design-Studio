@@ -27,8 +27,8 @@ function FileThumb({item}:{item:Item}) {
   return url?<img src={url} alt="" onError={()=>setUrl('')}/>:<span className="project-file-glyph"><File size={28}/>{item.kind==='file'&&<small>{fileType(item)}</small>}</span>;
 }
 
-export default function ProjectWorkspace({fileToolbar,section,changeSection,clients,overview,project,folders,items,allItems,scope,navigate,mutate,report,addFiles,paste,drop,selected,select,menu,preview,size,order,search,scroller}: {
-  fileToolbar:React.ReactNode;section:ProjectSection;changeSection:(section:ProjectSection)=>void;clients?:ClientData;overview?:ProjectOverviewData;project:Label;folders:ProjectFolder[];items:Item[];allItems:Item[];scope:FolderScope;navigate:(scope:FolderScope)=>void;
+export default function ProjectWorkspace({relatedStudio,fileToolbar,section,changeSection,clients,overview,project,folders,items,allItems,scope,navigate,mutate,report,addFiles,paste,drop,selected,select,menu,preview,size,order,search,scroller}: {
+  relatedStudio?:React.ReactNode;fileToolbar:React.ReactNode;section:ProjectSection;changeSection:(section:ProjectSection)=>void;clients?:ClientData;overview?:ProjectOverviewData;project:Label;folders:ProjectFolder[];items:Item[];allItems:Item[];scope:FolderScope;navigate:(scope:FolderScope)=>void;
   mutate:(change:Change)=>Promise<unknown>;report:(error:unknown)=>void;addFiles:()=>void;paste:(folder:number|null)=>void;
   drop:(data:DataTransfer,folder:number|null)=>void;selected:Set<number>;select:(item:Item,event:React.MouseEvent)=>void;
   menu:(item:Item,event:React.MouseEvent)=>void;preview:(item:Item)=>void;size:number;order:string;search:string;scroller:React.RefObject<HTMLDivElement|null>;
@@ -91,7 +91,7 @@ export default function ProjectWorkspace({fileToolbar,section,changeSection,clie
   </div>;
   return <section className="project-workspace" aria-label="Project workspace">
     <nav className="project-section-nav" aria-label="Project sections"><button className="project-history" aria-label="Back in project" disabled={position===0} onClick={()=>travel(-1)}><ArrowLeft size={16}/></button><button className="project-history" aria-label="Forward in project" disabled={position>=history.length-1} onClick={()=>travel(1)}><ArrowRight size={16}/></button>{(['overview','files','moodboard','client'] as ProjectSection[]).map(tab=><button key={tab} aria-current={section===tab?'page':undefined} onClick={()=>visit(tab)}>{tab==='overview'?'Overview':tab==='files'?'Files':tab==='moodboard'?'Moodboard':'Client records'}</button>)}</nav>
-    <div className="project-pane" hidden={section!=='overview'}><ProjectOverview project={project.id} data={overview} mutate={mutate} openRecord={openRecord}/></div>
+    <div className="project-pane" hidden={section!=='overview'}>{relatedStudio}<ProjectOverview project={project.id} data={overview} mutate={mutate} openRecord={openRecord}/></div>
     <div className="project-pane" hidden={section!=='moodboard'}><ProjectMoodboard project={project.id} data={overview?.moodboard} items={allItems} mutate={mutate} preview={preview}/></div>
     <div className="project-pane" hidden={section!=='client'}><ClientRecords project={project.id} data={clients} items={allItems} overview={overview} mutate={mutate} preview={preview} openOverview={()=>changeSection('overview')} requestedRecord={requestedRecord}/></div>
     <div className="project-pane" hidden={section!=='files'}>{section==='files'&&fileToolbar}

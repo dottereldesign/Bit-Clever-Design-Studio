@@ -3,7 +3,7 @@ use rusqlite::{Connection,params};
 use serde::{Serialize,Deserialize};
 #[derive(Clone,Debug,Default,Serialize,Deserialize)]
 #[serde(default)]
-pub struct Contact {pub id:String,pub project_id:i64,pub name:String,pub role:String,pub company:String,pub email:String,pub phone:String,pub notes:String,pub primary:bool,pub archived:bool}
+pub struct Contact {pub shared_id:String,pub id:String,pub project_id:i64,pub name:String,pub role:String,pub company:String,pub email:String,pub phone:String,pub notes:String,pub primary:bool,pub archived:bool}
 #[derive(Clone,Debug,Default,Serialize,Deserialize)]
 #[serde(default)]
 pub struct Record {pub id:String,pub project_id:i64,pub kind:String,pub title:String,pub date:String,pub people:Vec<String>,pub body:String,pub status:String,pub files:Vec<i64>,pub related:Vec<String>,pub archived:bool}
@@ -15,7 +15,7 @@ pub fn load(db:&Connection)->Result<State>{
  Ok(State{contacts:rows(db,"client_contacts")?,records:rows(db,"client_records")?})
 }
 fn put<T:Serialize>(db:&Connection,table:&str,p:i64,id:&str,value:&T)->Result<()>{db.execute(&format!("INSERT INTO {table} VALUES(?,?,?) ON CONFLICT(project_id,id) DO UPDATE SET data=excluded.data"),params![p,id,serde_json::to_string(value).map_err(err)?]).map_err(err)?;Ok(())}
-pub fn save_contact(db:&Connection,c:&Contact)->Result<()>{if c.id.is_empty()||c.id.len()>100||c.name.trim().is_empty()||c.name.len()>300||c.role.len()>300||c.company.len()>300||c.email.len()>500||c.phone.len()>100||c.notes.len()>20000{return Err("Check contact details and enter a name.".into());}put(db,"client_contacts",c.project_id,&c.id,c)}
+pub fn save_contact(db:&Connection,c:&Contact)->Result<()>{if c.id.is_empty()||c.id.len()>100||c.name.trim().is_empty()||c.name.len()>300||c.role.len()>300||c.company.len()>300||c.email.len()>500||c.phone.len()>100||c.notes.len()>20000{return Err("Check contact details and enter a name.".into());}let mut saved=c.clone();saved.shared_id=crate::studio::contact_id(c);put(db,"client_contacts",saved.project_id,&saved.id,&saved)?;crate::studio::sync_contact(db,&saved)}
 pub fn save_record(db:&Connection,r:&Record)->Result<()>{let statuses=match r.kind.as_str(){"meeting"=>vec![""],"feedback"=>vec!["open","resolved"],"decision"=>vec!["proposed","agreed","superseded"],_=>return Err("Choose a record type.".into())};if r.id.is_empty()||r.id.len()>100||r.title.trim().is_empty()||r.title.len()>500||r.body.len()>100000||!crate::project_overview::date(&r.date)||!statuses.contains(&r.status.as_str())||r.people.len()>100||r.files.len()>500||r.related.len()>100{return Err("Check the record title, date and status.".into());}put(db,"client_records",r.project_id,&r.id,r)}
 pub fn restore(db:&Connection,state:State)->Result<()>{for c in state.contacts{save_contact(db,&c)?;}for r in state.records{save_record(db,&r)?;}Ok(())}
 pub fn change(db:&Connection,project:i64,input:&str)->Result<()>{
