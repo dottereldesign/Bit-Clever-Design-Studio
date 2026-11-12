@@ -272,7 +272,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
     [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
-  const [projectSection,setProjectSection]=useState<"overview"|"files"|"client">(savedView?.projectSection??(savedView?.projectFolder!=null?"files":"overview"));
+  const [projectSection,setProjectSection]=useState<"overview"|"files"|"client"|"moodboard">(savedView?.projectSection??(savedView?.projectFolder!=null?"files":"overview"));
   const [projectFolder,setProjectFolder]=useState<FolderScope>(savedView?.projectFolder??null);
   const [ratingFilter,setRatingFilter]=useState(savedView?.ratingFilter??'');
   const [folderMembers,setFolderMembers]=useState<number[]|null>(null);
@@ -466,7 +466,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         sort:recent?"recent":sort, seed,
       },membershipIndex);
       recordDiagnostic('library.filter','success',performance.now()-start,{items:lib.items.length,count:matches.length});
-      if(generalMissing || (project!==null&&projectSection!=="files") || (project!==null && projectFolder===null && !search && type==="all" && !tags.length && !ratingFilter))return [];
+      if(generalMissing || (project!==null&&!generalEntry&&projectSection!=="files") || (project!==null && !generalEntry && projectFolder===null && !search && type==="all" && !tags.length && !ratingFilter))return [];
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
@@ -800,11 +800,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       const command=e.ctrlKey||e.metaKey;
       if(command&&e.key===","&&!typing){e.preventDefault();setSearchOpen(false);setModal({kind:"settings"});return;}
       if((command&&["f","k"].includes(e.key.toLowerCase()))||(!typing&&!command&&e.key==="/")){
-        e.preventDefault();if(project!==null&&projectSection==='client'){window.dispatchEvent(new Event('client-search'));return;}if(project!==null)setProjectSection('files');if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
+        e.preventDefault();if(project!==null&&!generalEntry&&projectSection==='client'){window.dispatchEvent(new Event('client-search'));return;}if(project!==null&&!generalEntry)setProjectSection('files');if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
       }
     };
     window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
-  },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView,project,projectSection]);
+  },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView,project,projectSection,generalEntry]);
   const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null, targetProject?:{project:number;folder:number|null})=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
@@ -1378,7 +1378,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           <div className="view-title">
             <h1>{title}</h1>
             <span>
-              {project!==null&&projectSection!=="files"?"":project!==null&&projectFolder===null&&!activeFilters?sheetItems.length.toLocaleString():boardView ? boardItems.length : resourcesView
+              {project!==null&&!generalEntry&&projectSection!=="files"?"":project!==null&&!generalEntry&&projectFolder===null&&!activeFilters?sheetItems.length.toLocaleString():boardView ? boardItems.length : resourcesView
                 ? filtered.filter(isResource).length
                 : filtered.length.toLocaleString()}
             </span>
@@ -1414,7 +1414,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             </label>
             {(videoQueue.jobs.length>0||videoView)&&<button className="subtle-button" aria-label="Show downloads" onClick={()=>setQueueOpen(open=>!open)}><Download size={14}/> Downloads{videoQueue.pending?` · ${videoQueue.pending}`:""}</button>}
             {videoView && <button className="subtle-button" onClick={()=>setVideoDialog({url:""})}><Download size={14}/> Video link</button>}
-            {(project===null||projectSection==="files")&&<Popover label="Add" icon={<Plus size={14} />}>
+            {(project===null||!!generalEntry||projectSection==="files")&&<Popover label="Add" icon={<Plus size={14} />}>
               <button onClick={() => void chooseCaptureFiles()}>
                 <Files size={14} /> Files
               </button>
@@ -1427,7 +1427,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             </Popover>}
           </div>
         </header>
-        {!originalResources&&project===null&&viewToolbar}
+        {!originalResources&&(project===null||!!generalEntry)&&viewToolbar}
 
         {project!==null&&<ProjectColours key={project} project={project}/>}
         {(readingCapture||pendingImports>0) && (
@@ -1448,7 +1448,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {project!==null&&!generalMissing&&lib.projects.some(p=>p.id===project)?<ProjectWorkspace fileToolbar={viewToolbar} section={projectSection} changeSection={setProjectSection} clients={lib.client_records} overview={lib.project_overviews?.find(o=>o.project_id===project)} key={project} project={lib.projects.find(p=>p.id===project)!} folders={lib.project_folders??[]} items={filtered} allItems={sheetItems} scope={projectFolder} navigate={scope=>{setProjectSection("files");setProjectFolder(scope);setSelected(new Set());}} mutate={mutate} report={report} addFiles={()=>void chooseCaptureFiles()} paste={folder=>void pasteCapture({category:null,project,folder})} drop={(data,folder)=>queueImageDrop(data,null,{project,folder})} selected={selected} select={(item,event)=>{if(event.ctrlKey||event.metaKey||event.shiftKey)select(item.id,event.shiftKey);else setSelected(new Set([item.id]));}} menu={(item,event)=>setItemMenu({ids:selected.has(item.id)?[...selected]:[item.id],x:event.clientX,y:event.clientY})} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} size={size} order={sort} search={search||(activeFilters?'filters':'')} scroller={scrollRef}/>:generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {project!==null&&!generalEntry&&!generalMissing&&lib.projects.some(p=>p.id===project)?<ProjectWorkspace fileToolbar={viewToolbar} section={projectSection} changeSection={setProjectSection} clients={lib.client_records} overview={lib.project_overviews?.find(o=>o.project_id===project)} key={project} project={lib.projects.find(p=>p.id===project)!} folders={lib.project_folders??[]} items={filtered} allItems={sheetItems} scope={projectFolder} navigate={scope=>{setProjectSection("files");setProjectFolder(scope);setSelected(new Set());}} mutate={mutate} report={report} addFiles={()=>void chooseCaptureFiles()} paste={folder=>void pasteCapture({category:null,project,folder})} drop={(data,folder)=>queueImageDrop(data,null,{project,folder})} selected={selected} select={(item,event)=>{if(event.ctrlKey||event.metaKey||event.shiftKey)select(item.id,event.shiftKey);else setSelected(new Set([item.id]));}} menu={(item,event)=>setItemMenu({ids:selected.has(item.id)?[...selected]:[item.id],x:event.clientX,y:event.clientY})} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} size={size} order={sort} search={search||(activeFilters?'filters':'')} scroller={scrollRef}/>:generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (
@@ -1761,7 +1761,12 @@ function MediaGrid({
     const button = grid.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
     const image = button?.querySelector('img');
     if (button && (returnTo.offset === undefined ? (!image || image.complete) : (image?.complete && image.naturalWidth > 0) || !!button.querySelector(".file-fallback"))) {
-      button.focus({ preventScroll: true }); if(returnTo.offset===undefined)setHighlighted(returnTo); onReturned();
+      // Neighbouring thumbnails can still change the rows above this anchor.
+      // Finish only after the rendered images and layout have settled.
+      const pending=[...grid.querySelectorAll<HTMLImageElement>('img:not(.hover-preview)')].some(img=>!img.complete);
+      if(pending)return;
+      const timer=window.setTimeout(()=>{button.focus({preventScroll:true});if(returnTo.offset===undefined)setHighlighted(returnTo);onReturned();},160);
+      return()=>clearTimeout(timer);
     }
   }, [returnTo, items, layout, parent, onReturned, viewport.top]);
   useEffect(() => {

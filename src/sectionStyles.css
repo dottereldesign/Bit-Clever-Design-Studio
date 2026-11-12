@@ -132,3 +132,34 @@
 .sidebar-scroll > .home-nav { flex-shrink:0; }
 .sidebar-section-body { overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:transparent transparent; }
 .sidebar-section-body:hover,.sidebar-section-body:focus-within { scrollbar-color:#939b8b70 transparent; }
+
+/* 21–30: compact, understated alternatives for the two parent headers. */
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30) .section-kicker{display:none}
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading{min-height:36px;margin-top:12px;border-radius:6px}
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading>.section-toggle{min-height:36px}
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading:hover .section-emblem{transform:none}
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading:hover{background:var(--section-tint);color:var(--section-ink)}
+.section-style-21>.sidebar-heading{background:color-mix(in srgb,var(--section-tint) 70%,transparent)}
+.section-style-22>.sidebar-heading{border:1px solid color-mix(in srgb,var(--section-ink) 20%,transparent)}
+.section-style-23>.sidebar-heading{background:#00000004;box-shadow:inset 0 1px 3px #0000000a;color:#474d43}
+.section-style-23 .section-emblem{color:var(--section-ink)}
+.section-style-24 .section-emblem{background:var(--section-tint);border-radius:5px;width:26px;height:26px;color:var(--section-ink)}
+.section-style-24>.sidebar-heading{color:#474d43}
+.section-style-25>.sidebar-heading{border-radius:24px!important;background:var(--section-tint);padding-left:14px;padding-right:12px}
+.section-style-25 .section-title{font-size:12px}
+.section-style-26>.sidebar-heading{border-left:3px solid var(--section-accent);border-radius:0 5px 5px 0!important;background:color-mix(in srgb,var(--section-tint) 35%,transparent)}
+.section-style-27 .section-title{font-size:14px;font-weight:750}
+.section-style-27>.sidebar-heading{padding-left:5px}
+.section-style-28[data-open=true]>.sidebar-heading{background:var(--section-tint)}
+.section-style-28[data-open=false]>.sidebar-heading{color:#474d43}
+.section-style-29>.sidebar-heading{color:#474d43}
+.section-style-29 .section-emblem{width:7px;height:7px;background:var(--section-accent);border-radius:50%;margin-right:4px}
+.section-style-29:not(.has-custom-icon) .section-emblem svg{display:none}
+.section-style-29.has-custom-icon .section-emblem{width:18px;height:18px;background:none}
+.section-style-30>.sidebar-heading{background:#ffffff80;box-shadow:0 1px 3px #00000012;color:#474d43}
+.section-style-30 .section-emblem{color:var(--section-ink)}
+
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30) .section-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading{padding-left:6px;padding-right:6px}
+.section-feature:is(.section-style-21,.section-style-22,.section-style-23,.section-style-24,.section-style-25,.section-style-26,.section-style-27,.section-style-28,.section-style-29,.section-style-30)>.sidebar-heading>.section-toggle{gap:6px}

@@ -757,7 +757,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             map.insert(label.id, id);
         }
     }
-    for mut overview in backup.library.project_overviews {overview.project_id=*projects.get(&overview.project_id).ok_or("Missing overview project in backup")?;crate::project_overview::save(&tx,&overview)?;}
+
     let mut folder_map=std::collections::HashMap::new();
     let mut pending=backup.library.project_folders;
     while !pending.is_empty(){let before=pending.len();let mut rest=vec![];
@@ -864,6 +864,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             }
         }
     }
+    for mut overview in backup.library.project_overviews {overview.project_id=*projects.get(&overview.project_id).ok_or("Missing overview project in backup")?;if let Some(nodes)=&mut overview.moodboard{for node in nodes{node.item_id=node.item_id.and_then(|id|item_map.get(&id).copied());}}else{overview.moodboard=crate::project_overview::load(&tx)?.into_iter().find(|o|o.project_id==overview.project_id).and_then(|o|o.moodboard);}crate::project_overview::save(&tx,&overview)?;}
     for mut c in backup.library.client_records.contacts {c.project_id=*projects.get(&c.project_id).ok_or("Missing contact project")?;crate::client_records::save_contact(&tx,&c)?;}
     for mut r in backup.library.client_records.records {r.project_id=*projects.get(&r.project_id).ok_or("Missing record project")?;r.files=r.files.iter().filter_map(|id|item_map.get(id).copied()).collect();crate::client_records::save_record(&tx,&r)?;}
     tx.execute("DELETE FROM organisation_history",[]).map_err(err)?;

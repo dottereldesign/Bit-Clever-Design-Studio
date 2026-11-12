@@ -23,6 +23,16 @@ export const sectionStyles = [
   ["Monograph", "Oversized serif type, nothing extra."],
   ["Lilac ribbon", "A light ribbon with an inset icon."],
   ["Ember", "Warm dark panels and restrained highlights."],
+  ["Default", "Simple tinted rows and familiar icons."],
+  ["Quiet outline", "A fine outline, with colour on hover."],
+  ["Soft inset", "A pale inset surface with neutral text."],
+  ["Icon tile", "Small coloured icons on a plain row."],
+  ["Compact pill", "Rounded, compact collection labels."],
+  ["Accent edge", "One narrow colour accent beside each label."],
+  ["Plain weight", "Stronger type with no panel or decoration."],
+  ["Open tint", "Colour appears only when expanded."],
+  ["Small marker", "A quiet colour dot and neutral label."],
+  ["Neutral card", "A soft raised surface with coloured icons."],
 ];
 export const readSectionStyle=()=>{const n=Number(localStorage.getItem("sidebar-section-style"));return Number.isInteger(n)&&n>=1&&n<=sectionStyles.length?n:1;};
 export function SectionStyleOptions({selected,choose}:{selected:number;choose:(id:number)=>void}) {

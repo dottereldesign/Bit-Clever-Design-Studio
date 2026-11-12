@@ -1,3 +1,4 @@
+import ProjectMoodboard from './ProjectMoodboard';
 import ProjectOverview from './ProjectOverview';
 import ClientRecords from './ClientRecords';
 import type {ProjectOverviewData,ProjectSection,ClientData} from './model';
@@ -89,8 +90,9 @@ export default function ProjectWorkspace({fileToolbar,section,changeSection,clie
     <span className="project-file-actions"><button title="Preview" aria-label={`Preview ${item.name}`} onClick={event=>{event.stopPropagation();preview(item);}}><Eye size={15}/></button><button title={item.kind==='link'?'Open website':'Open in default app'} aria-label={`Open ${item.name}`} onClick={event=>{event.stopPropagation();open(item);}}><ExternalLink size={15}/></button></span>
   </div>;
   return <section className="project-workspace" aria-label="Project workspace">
-    <nav className="project-section-nav" aria-label="Project sections"><button className="project-history" aria-label="Back in project" disabled={position===0} onClick={()=>travel(-1)}><ArrowLeft size={16}/></button><button className="project-history" aria-label="Forward in project" disabled={position>=history.length-1} onClick={()=>travel(1)}><ArrowRight size={16}/></button>{(['overview','files','client'] as ProjectSection[]).map(tab=><button key={tab} aria-current={section===tab?'page':undefined} onClick={()=>visit(tab)}>{tab==='overview'?'Overview':tab==='files'?'Files':'Client records'}</button>)}</nav>
+    <nav className="project-section-nav" aria-label="Project sections"><button className="project-history" aria-label="Back in project" disabled={position===0} onClick={()=>travel(-1)}><ArrowLeft size={16}/></button><button className="project-history" aria-label="Forward in project" disabled={position>=history.length-1} onClick={()=>travel(1)}><ArrowRight size={16}/></button>{(['overview','files','moodboard','client'] as ProjectSection[]).map(tab=><button key={tab} aria-current={section===tab?'page':undefined} onClick={()=>visit(tab)}>{tab==='overview'?'Overview':tab==='files'?'Files':tab==='moodboard'?'Moodboard':'Client records'}</button>)}</nav>
     <div className="project-pane" hidden={section!=='overview'}><ProjectOverview project={project.id} data={overview} mutate={mutate} openRecord={openRecord}/></div>
+    <div className="project-pane" hidden={section!=='moodboard'}><ProjectMoodboard project={project.id} data={overview?.moodboard} items={allItems} mutate={mutate} preview={preview}/></div>
     <div className="project-pane" hidden={section!=='client'}><ClientRecords project={project.id} data={clients} items={allItems} overview={overview} mutate={mutate} preview={preview} openOverview={()=>changeSection('overview')} requestedRecord={requestedRecord}/></div>
     <div className="project-pane" hidden={section!=='files'}>{section==='files'&&fileToolbar}
     <div className="project-workspace-toolbar"><div className="project-workspace-location"><button onClick={()=>navigate(null)}>{project.name}</button>{chain.map(folder=><span key={folder.id}> / <button onClick={()=>navigate(folder.id)}>{folder.name}</button></span>)}{scope==='unfiled'&&<span> / Unfiled</span>}</div>

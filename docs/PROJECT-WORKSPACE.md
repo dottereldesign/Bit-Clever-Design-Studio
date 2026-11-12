@@ -1,6 +1,6 @@
 # Project workspace
 
-The project parent opens Overview. A persistent navigation row switches between Overview, Files and Client records. Sidebar subfolders open Files directly. Files remembers the last folder, layout and scroll position; Back/Forward (also Alt+Left/Right) traverse project sections and folders. Reopening the app restores the saved section. File controls appear only in Files.
+The project parent opens Overview. A persistent navigation row switches between Overview, Files, Moodboard and Client records. Sidebar subfolders open Files directly. Files remembers the last folder, layout and scroll position; Back/Forward (also Alt+Left/Right) traverse project sections and folders. Reopening the app restores the saved section. File controls appear only in Files.
 
 Files contains folders and Unfiled rather than an aggregate gallery. Search or filters at its root search the project; inside a folder they apply to that folder.
 
@@ -42,9 +42,14 @@ Fields save on blur or Enter; save failures retain the draft and offer Retry. Un
 
 Contacts, records and source-action links are covered by project organisation Undo/Redo, project deletion recovery, metadata export and portable backup. Restore remaps project/file IDs; contact/record IDs remain stable within a project. Older backups without client records do not clear existing records. Diagnostics retain operation names/timings/errors, not note bodies or contact details.
 
+## Moodboard
+
+The project Moodboard is a freeform 2000 × 1400 canvas for project references, notes and colour swatches. Add reference searches existing project files and links; references reuse the original media. Drag elements to arrange them, resize from the corner, or use arrow keys (Shift for larger steps). Zoom enlarges the workspace; Fit board returns to its full-width view. Double-click references to preview them.
+
+Edits save to the project database; notes save when focus leaves the field. Failed saves stay visible with Retry. Removing an element only removes it from the board. Organisation Undo/Redo restores board edits and removals. Portable and metadata backups include the layout, notes and colours, and restore remaps referenced file IDs. Each board supports up to 300 elements. This is a single board per project, without collaborative editing or version snapshots.
+
 ## Later phases from the plan
 
-- Moodboards: arrange project references on a freeform canvas.
 - Versions and approvals: immutable revisions, comments and approval tied to a specific revision.
 - Optional client sharing: separate export/sharing workflow; no cloud service is required by this local workspace.
 
@@ -55,6 +60,7 @@ These are not represented as working features in the current workspace.
 - `npx tsc --noEmit` and `npm test`.
 - `npm run test:native`: attachment bytes, deduplication, project-only imports, bounded text preview, full backup/restore and existing library integrity tests.
 - `node scripts/check-grid-return.mjs project-workspace`: isolated 500-file fixture at 1440px and 960px; navigation, virtualisation, layouts, previews, import/paste, ratings and filing Undo.
+- `node scripts/check-grid-return.mjs moodboard`: pointer move/resize, notes, source-safe removal, Undo and reopen.
 - `npm run test:export`: storage and portable-backup UI regression checks.
 
 Tests use temporary libraries and synthetic files. Personal library data is not modified. The standalone installer is a separate release checkpoint.

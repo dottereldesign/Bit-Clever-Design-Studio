@@ -18,6 +18,7 @@
 - **Project files** — open a project as a folder workspace with Details, Tiles or Columns layouts. Keep any file type alongside links and references; browse nested folders and Unfiled, preview supported formats, or open files in their default app. Project-first imports stay out of Design Inspo. [Workspace details](docs/PROJECT-WORKSPACE.md).
 - **Project overview** — keep a brief, status, deadline and next actions in a dedicated project section. Edits save in place and are included in backups.
 - **Client records** — keep contacts, meeting notes, feedback and decisions alongside each project. Link files and follow-ups, with saved records included in backups.
+- **Moodboards** — arrange project references, notes and colours on a freeform canvas, with resize, zoom, Undo and backup support.
 - **Link ratings** — rate links out of five stars in Links or projects. Ratings stay consistent across views, with filters, sorting and bulk updates.
 - **Fast imports** — paste images, drop files or drag images from webpages. File them directly into the selected folder; edit details later.
 - **Websites** — save a URL with a full-page screenshot captured through Chrome or Edge, or supply your own image. Scroll inside the thumbnail, open the full preview or visit the website.
