@@ -2,6 +2,24 @@
 
 Reviewed against the approved six-section plan on 13 November 2026. This is a source and synthetic-test audit, not an analysis of the user's private records or a claim that every interaction has been exercised.
 
+## Follow-up implementation
+
+The priority fixes below are now implemented:
+
+- Explicit handover to a new or existing project, preserving existing project details. Unfinished actions move to the project; completed actions remain on the lead. A separate Link only control does not transfer work. One Undo reverses the handover.
+- Edits carry their original field values. The backend merges independent set and item changes against the latest record, including actions, attachments and moodboard nodes. Conflicting edits to the same field or an edited item being removed fail visibly instead of overwriting newer work.
+- Studio, client-record and overview edits skip managed-file organisation. Changes affecting collection memberships and handovers keep the existing organisation path. Diagnostics records the skipped phase.
+- Related-record navigation remembers the originating route/tab; list and content scroll positions are retained for the browser session. Contacts can be created and assigned inline.
+- Follow-ups groups Overdue, Today, Upcoming, No date and Closed leads. Handed-over actions no longer appear as lead follow-ups. Archived campaigns and their content are hidden from calendars until restored; the children's individual archive flags remain unchanged.
+- Campaign milestones, start/end dates and content share the calendar. Dragging changes their actual stored date. Completed milestones leave the calendar but remain in Schedule.
+- Creative variants can share a named group within campaign Content. Results supports optional named manual metrics alongside notes. Lead lists show the last recorded activity date, and bulk actions include stage changes and adding tags.
+
+Handover rules apply to new handovers; historical copies are not silently reconciled. A lead may still have later sales follow-ups added deliberately. Source actions and project actions are not continuously synchronised. Full studio metadata snapshots remain unchanged; lazy loading is a future optimisation requiring measurement, not a correctness gap. Bulk edits are individual undoable records, not one combined transaction.
+
+Validation includes native concurrent-edit, conflict, handover/Undo and backup-remapping tests, plus synthetic browser checks for inline contacts, return navigation, scroll restoration, milestone dragging, variant groups and manual metrics. These tests do not modify the live library.
+
+## Original audit findings (before the follow-up)
+
 ## Plan comparison
 
 | Area | Implemented | Remaining |
@@ -27,7 +45,7 @@ Results notes satisfy the plan's optional manual results scope. Structured metri
 5. **Clarify follow-ups and archiving.** Group dates, distinguish closed leads with outstanding actions, and define whether content of an archived campaign remains in the calendar. Today children are independent records; archiving a campaign does not archive its content.
 6. **Complete planning polish.** Add campaign milestones, then optional structured results, last interaction and broader bulk editing.
 
-These product changes are recommendations, not implemented by the diagnostics audit.
+The initial diagnostics audit did not implement these product changes. The follow-up status above records what has now been delivered.
 
 ## Diagnostics changes delivered
 

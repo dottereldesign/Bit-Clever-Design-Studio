@@ -16,6 +16,8 @@ test('studio diagnostics identify operations without storing record contents',()
 test('project diagnostics describe overview fields and client record types',()=>{
  const result=commandFields('update',{change:{action:'update_project_overview',target:42,value:JSON.stringify({brief:'Confidential',deadline:'2026-12-12'})}});
  assert.equal(result.section,'projects');assert.equal(result.project,42);assert.equal(result.field,'brief.deadline');
+ const actual=commandFields('update',{change:{action:'update_project_overview',target:42,value:JSON.stringify({field:'brief',value:'Confidential'})}});assert.equal(actual.field,'brief');
+ const handover=commandFields('update',{change:{action:'convert_studio_lead',target:42,value:'lead-private'}});assert.equal(handover.mode,'existing_project');assert.equal(handover.project,42);
  const contact=commandFields('update',{change:{action:'update_client_records',target:42,value:JSON.stringify({type:'contact',id:'contact-private',patch:{phone:'123456'}})}});
  assert.equal(contact.record_kind,'contact');assert.equal(contact.field,'phone');assert.ok(!JSON.stringify(contact).includes('123456'));
 });

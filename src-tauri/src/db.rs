@@ -490,7 +490,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
         "update_studio" => crate::studio::change(&tx,c.value.as_deref().unwrap_or(""))?,
-        "convert_studio_lead" => crate::studio::convert(&tx,c.value.as_deref().unwrap_or(""))?,
+        "convert_studio_lead" => crate::studio::convert(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
         "update_client_records" => crate::client_records::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
         "update_project_overview" => crate::project_overview::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
         "unfile_project_folder"|"create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,

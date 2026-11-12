@@ -167,10 +167,11 @@ async fn get_library(state: tauri::State<'_, State>) -> Result<db::Library> {
 async fn update(change: db::Change, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<()> {
     let s=state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();let diagnostic_action=change.action.clone();
+        let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();let diagnostic_action=change.action.clone();let organise_files=!matches!(change.action.as_str(),"update_studio"|"update_client_records"|"update_project_overview");
         let log=|name:&str,status:&str,duration:f64|diagnostics::record(diagnostics::Event{time:0,name:name.into(),operation:operation.clone(),status:status.into(),duration,fields:serde_json::json!({"action":diagnostic_action})});
         let _guard=s.content_lock.lock().map_err(err)?;log("native.lock_wait","success",start.elapsed().as_secs_f64()*1000.);
         let start=std::time::Instant::now();let result=db::change(&s.db,change);log("native.database_change",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result?;
+        if !organise_files {log("native.organise_files_skipped","success",0.);return Ok(());}
         let start=std::time::Instant::now();let result=managed_library::organise(&s.db);log("native.organise_files",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result
     })
         .await

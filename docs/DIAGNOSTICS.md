@@ -31,3 +31,5 @@ No telemetry is uploaded. Keep exports private. Logs may still reveal the timing
 Section context now distinguishes all six workspaces, Home and Settings. Studio edits include hashed record IDs, record kind and allowlisted changed-field names, never their values. Project overview/client changes receive equivalent metadata. Form saves record retry outcomes; preference changes and Undo/Redo have explicit events. Native schema, scan and fingerprint-index outcomes are recorded. The viewer can filter by section and groups updates by action, record type and fields. Background native events may have no section; clear that filter to inspect them.
 
 Frontend batches retry up to three times after transport failures, with health warnings in the panel. Page hiding requests a flush but cannot guarantee delivery during process termination. See [the studio audit](STUDIO-AUDIT.md) for coverage and remaining workflow improvements.
+
+Studio diagnostics includes milestone, metric and variant-group field names. Handover identifies whether its destination is new or existing. Pure CRM/overview edits record `native.organise_files_skipped` instead of walking managed media folders.

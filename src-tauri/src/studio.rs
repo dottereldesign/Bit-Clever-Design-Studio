@@ -16,6 +16,7 @@ pub struct Entry {
     pub organization: Option<String>,
     pub contacts: Vec<String>,
     pub projects: Vec<i64>,
+    pub handover_project: Option<i64>,
     pub campaign: Option<String>,
     pub parent: Option<String>,
     pub files: Vec<i64>,
@@ -36,13 +37,18 @@ pub struct Entry {
     pub offer: String,
     pub channel: String,
     pub results: String,
+    pub metrics: Vec<Metric>,
+    pub variant_group: String,
     pub activity_type: String,
     pub actions: Vec<crate::project_overview::Action>,
+    pub milestones: Vec<crate::project_overview::Action>,
     pub moodboard: Vec<crate::project_overview::BoardNode>,
     pub stages: Vec<Stage>,
     pub created: i64,
     pub updated: i64,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Metric {pub id:String,pub name:String,pub value:String,pub unit:String}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stage {
     pub id: String,
@@ -134,11 +140,12 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
     if !e.date.is_empty() && !e.end_date.is_empty() && e.end_date < e.date {
         return Err("End date must follow the start date.".into());
     }
+    if e.metrics.len()>50||e.variant_group.len()>100||e.metrics.iter().any(|m|m.id.is_empty()||m.name.trim().is_empty()||m.name.len()>100||m.value.len()>100||m.unit.len()>40){return Err("Check metric names and values.".into());}
     // Reuse the same validation limits as project actions and moodboards.
-    if e.actions.len() > 500 || e.moodboard.len() > 300 {
+    if e.actions.len() > 500 || e.milestones.len() > 100 || e.moodboard.len() > 300 {
         return Err("Too many actions or moodboard elements.".into());
     }
-    for a in &e.actions {
+    for a in e.actions.iter().chain(e.milestones.iter()) {
         if a.id.is_empty()
             || a.text.trim().is_empty()
             || a.text.len() > 1000
@@ -333,6 +340,37 @@ pub fn validate_refs(db: &Connection, e: &Entry) -> Result<()> {
     }
     Ok(())
 }
+fn merge_edit(base:&Value,next:&Value,current:&Value)->Result<Value>{
+    if next==base || next==current {return Ok(current.clone());}
+    if base==current {return Ok(next.clone());}
+    if let (Some(b),Some(n),Some(c))=(base.as_object(),next.as_object(),current.as_object()) {
+        let mut result=c.clone();
+        for (key,value) in n {if b.get(key)!=Some(value){result.insert(key.clone(),merge_edit(b.get(key).unwrap_or(&Value::Null),value,c.get(key).unwrap_or(&Value::Null))?);}}
+        return Ok(Value::Object(result));
+    }
+    if let (Some(b),Some(n),Some(c))=(base.as_array(),next.as_array(),current.as_array()) {
+        let keyed=b.iter().chain(n).chain(c).all(|v|v.get("id").and_then(Value::as_str).is_some());
+        if keyed {
+            let mut result=c.clone();
+            for old in b {let id=&old["id"];if !n.iter().any(|v|&v["id"]==id){if let Some(at)=result.iter().position(|v|&v["id"]==id){if result[at]!=*old{return Err("This item changed while you were editing. Review it and try again.".into());}result.remove(at);}}}
+            for value in n {let id=&value["id"];let before=b.iter().find(|v|&v["id"]==id);if before==Some(value){continue;}if let Some(at)=result.iter().position(|v|&v["id"]==id){result[at]=merge_edit(before.unwrap_or(&Value::Null),value,&result[at])?;}else if before.is_none(){result.push(value.clone());}else{return Err("This item was removed while you were editing. Review it and try again.".into());}}
+            // An explicit reorder must not undo a concurrent reorder.
+            let ids=|v:&Vec<Value>|v.iter().map(|v|v["id"].clone()).collect::<Vec<_>>();
+            if b.len()==n.len() && ids(b)!=ids(n) && b.iter().all(|v|n.iter().any(|x|x["id"]==v["id"])) {
+                if ids(c)!=ids(b){return Err("The order changed while you were editing. Try again.".into());}
+                result.sort_by_key(|v|n.iter().position(|x|x["id"]==v["id"]).unwrap_or(usize::MAX));
+            }
+            return Ok(json!(result));
+        }
+        if b.iter().chain(n).chain(c).all(|v|v.is_string()||v.is_number()) {
+            let mut result=c.iter().filter(|v|!b.contains(v)||n.contains(v)).cloned().collect::<Vec<_>>();
+            for value in n {if !b.contains(value)&&!result.contains(value){result.push(value.clone());}}
+            return Ok(json!(result));
+        }
+    }
+    Err("This field changed while you were editing. Review the latest value and try again.".into())
+}
+
 pub fn change(db: &Connection, input: &str) -> Result<()> {
     let v: Value = serde_json::from_str(input).map_err(err)?;
     let id = v["id"].as_str().ok_or("Missing record")?;
@@ -343,7 +381,8 @@ pub fn change(db: &Connection, input: &str) -> Result<()> {
         if ["id", "created", "updated"].contains(&k.as_str()) || (k == "kind" && old.is_some()) {
             return Err("Record identity cannot change.".into());
         }
-        data[k] = value.clone();
+        if k=="handover_project" {return Err("Use project handover to change action ownership.".into());}
+        data[k] = if let Some(base)=v["base"].get(k) { merge_edit(base,value,&data[k])? } else { value.clone() };
     }
     data["id"] = json!(id);
     let mut e: Entry = serde_json::from_value(data).map_err(err)?;
@@ -351,6 +390,7 @@ pub fn change(db: &Connection, input: &str) -> Result<()> {
         e.created = db::now();
     }
     e.updated = db::now();
+    if e.handover_project.is_some_and(|id|!e.projects.contains(&id)){return Err("Keep the handover project linked while it owns the work.".into());}
     validate_refs(db, &e)?;
     if e.kind == "pipeline" {
         for lead in load(db)?.iter().filter(|r| r.kind == "lead") {
@@ -394,6 +434,7 @@ pub fn unlink_project(db: &Connection, project: i64) -> Result<()> {
         .filter(|e| e.projects.contains(&project))
     {
         e.projects.retain(|id| *id != project);
+        if e.handover_project == Some(project) { e.handover_project=None; }
         put(db, &e)?;
     }
     Ok(())
@@ -431,30 +472,34 @@ pub fn attach(db: &Connection, id: &str, item: i64) -> Result<()> {
     }
     Ok(())
 }
-pub fn convert(db: &Connection, id: &str) -> Result<()> {
+pub fn convert(db: &Connection, id: &str, target: Option<i64>) -> Result<()> {
     let mut e = get(db, id)?.ok_or("Lead no longer exists")?;
     if e.kind != "lead" || e.status != "won" || e.archived {
         return Err("Mark the lead Won before creating a project.".into());
     }
-    if !e.projects.is_empty() {
-        return Err("This lead already has a linked project.".into());
+    if e.handover_project.is_some() { return Err("This lead has already been handed over. Open its project to continue.".into()); }
+    let pid=if let Some(pid)=target {
+        if !db.query_row("SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)",[pid],|r|r.get::<_,bool>(0)).map_err(err)? {return Err("Project is unavailable.".into());} pid
+    } else {
+        db.execute("INSERT INTO projects(name) VALUES(?)", [&e.name]).map_err(|_| "A project with this name exists. Choose Hand over to existing project, or rename the lead.".to_string())?;
+        db.last_insert_rowid()
+    };
+    let mut overview=crate::project_overview::load(db)?.into_iter().find(|o|o.project_id==pid).unwrap_or(crate::project_overview::Overview {
+        project_id:pid,brief:String::new(),status:"planned".into(),deadline:String::new(),actions:vec![],moodboard:None
+    });
+    if !e.body.trim().is_empty() {
+        if overview.brief.trim().is_empty(){overview.brief=e.body.clone();}
+        else if overview.brief!=e.body {overview.brief.push_str(&format!("\n\nFrom lead: {}\n{}",e.name,e.body));}
     }
-    db.execute("INSERT INTO projects(name) VALUES(?)", [&e.name])
-        .map_err(|_| {
-            "A project with this name exists. Link it instead, or rename the lead.".to_string()
-        })?;
-    let pid = db.last_insert_rowid();
-    crate::project_overview::save(
-        db,
-        &crate::project_overview::Overview {
-            project_id: pid,
-            brief: e.body.clone(),
-            status: "planned".into(),
-            deadline: e.end_date.clone(),
-            actions: e.actions.clone(),
-            moodboard: None,
-        },
-    )?;
+    if overview.deadline.is_empty(){overview.deadline=e.end_date.clone();}
+    for action in e.actions.iter().filter(|a|!a.done) {
+        let mut moved=action.clone();
+        moved.id=format!("{:x}",Sha256::digest(format!("{}:{}",e.id,action.id)));
+        // Source-record IDs in project actions refer to client records, not studio leads.
+        moved.source_record=None;
+        overview.actions.push(moved);
+    }
+    crate::project_overview::save(db,&overview)?;
     for item in &e.files {
         db.execute(
             "INSERT OR IGNORE INTO item_projects(item_id,label_id) VALUES(?,?)",
@@ -464,6 +509,7 @@ pub fn convert(db: &Connection, id: &str) -> Result<()> {
     }
     for (index, id) in e.contacts.iter().enumerate() {
         let c = get(db, id)?.ok_or("Contact unavailable")?;
+        if crate::client_records::load(db)?.contacts.iter().any(|existing|existing.project_id==pid && contact_id(existing)==*id) {continue;}
         crate::client_records::save_contact(
             db,
             &crate::client_records::Contact {
@@ -481,12 +527,15 @@ pub fn convert(db: &Connection, id: &str) -> Result<()> {
                     .flatten()
                     .map(|r| r.name)
                     .unwrap_or_default(),
-                primary: index == 0,
+                primary: index == 0 && !crate::client_records::load(db)?.contacts.iter().any(|c|c.project_id==pid&&c.primary),
                 ..Default::default()
             },
         )?;
     }
-    e.projects.push(pid);
+    if !e.projects.contains(&pid){e.projects.push(pid);}
+    e.handover_project=Some(pid);
+    e.actions.retain(|a|a.done);
+    e.updated=db::now();
     put(db, &e)
 }
 #[derive(Serialize, Deserialize)]
@@ -546,6 +595,7 @@ pub fn import(
     items: &HashMap<i64, i64>,
 ) -> Result<()> {
     for mut e in entries {
+        e.handover_project=e.handover_project.and_then(|id|projects.get(&id).copied());
         e.projects = e
             .projects
             .iter()
@@ -586,6 +636,48 @@ mod tests {
     }
     fn entry(path: &Path, id: &str) -> Entry {
         get(&db::connect(path).unwrap(), id).unwrap().unwrap()
+    }
+    #[test]
+    fn overlapping_edits_preserve_independent_changes_and_reject_conflicts() {
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("db.sqlite");db::init(&path).unwrap();
+        let actions=json!([{"id":"a","text":"Original","deadline":"","done":false}]);
+        edit(&path,"lead",json!({"kind":"lead","name":"Client","status":"new","actions":actions,"tags":["one"]}));
+        let send=|patch:Value,base:Value|command(&path,"update_studio",json!({"id":"lead","patch":patch,"base":base}).to_string());
+        send(json!({"actions":[{"id":"a","text":"Changed","deadline":"","done":false}]}),json!({"actions":actions})).unwrap();
+        send(json!({"actions":[{"id":"a","text":"Original","deadline":"2026-12-01","done":false}]}),json!({"actions":actions})).unwrap();
+        assert_eq!(entry(&path,"lead").actions[0].text,"Changed");assert_eq!(entry(&path,"lead").actions[0].deadline,"2026-12-01");
+        assert!(send(json!({"actions":[]}),json!({"actions":actions})).is_err());
+        send(json!({"tags":["one","two"]}),json!({"tags":["one"]})).unwrap();
+        send(json!({"tags":["one","three"]}),json!({"tags":["one"]})).unwrap();
+        assert_eq!(entry(&path,"lead").tags,vec!["one","two","three"]);
+        send(json!({"name":"First"}),json!({"name":"Client"})).unwrap();
+        assert!(send(json!({"name":"Second"}),json!({"name":"Client"})).is_err());
+        assert_eq!(entry(&path,"lead").name,"First");
+        db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();
+        assert_eq!(entry(&path,"lead").name,"Client");
+    }
+    #[test]
+    fn existing_project_handover_moves_actions_preserves_context_and_undoes() {
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("db.sqlite");db::init(&path).unwrap();
+        db::connect(&path).unwrap().execute("INSERT INTO projects VALUES(7,'Existing')",[]).unwrap();
+        crate::project_overview::change(&db::connect(&path).unwrap(),7,&json!({"field":"brief","value":"Existing brief"}).to_string()).unwrap();
+        edit(&path,"lead",json!({"kind":"lead","name":"New phase","status":"won","body":"Additional scope","actions":[{"id":"next","text":"Deliver","deadline":"2026-12-01","done":false},{"id":"past","text":"Proposal","deadline":"","done":true}]}));
+        let handover=||db::change(&path,serde_json::from_value(json!({"action":"convert_studio_lead","target":7,"value":"lead"})).unwrap());
+        handover().unwrap();let lead=entry(&path,"lead");assert_eq!(lead.handover_project,Some(7));assert_eq!(lead.actions.len(),1);assert!(lead.actions[0].done);
+        let lib=db::load(&path,false).unwrap();assert_eq!(lib.projects.len(),1);assert!(lib.project_overviews[0].brief.starts_with("Existing brief"));assert!(lib.project_overviews[0].brief.contains("Additional scope"));assert_eq!(lib.project_overviews[0].actions.len(),1);
+        assert!(handover().is_err());
+        db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();assert_eq!(entry(&path,"lead").actions.len(),2);assert_eq!(entry(&path,"lead").handover_project,None);assert_eq!(db::load(&path,false).unwrap().project_overviews[0].brief,"Existing brief");
+        db::change(&path,serde_json::from_value(json!({"action":"redo_organisation"})).unwrap()).unwrap();assert_eq!(entry(&path,"lead").handover_project,Some(7));
+        let export=dir.path().join("metadata.json");db::export(&path,export.clone()).unwrap();let target=dir.path().join("target.sqlite");db::init(&target).unwrap();db::connect(&target).unwrap().execute("INSERT INTO projects VALUES(7,'Different')",[]).unwrap();db::import(&target,export).unwrap();let restored=entry(&target,"lead");assert_ne!(restored.handover_project,Some(7));assert_eq!(restored.handover_project,restored.projects.first().copied());
+    }
+    #[test]
+    fn milestones_validate_and_survive_history_and_backup() {
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("db.sqlite");db::init(&path).unwrap();
+        edit(&path,"campaign",json!({"kind":"campaign","name":"Launch","metrics":[{"id":"reach","name":"Reach","value":"1200","unit":"people"}],"milestones":[{"id":"approval","text":"Creative approval","deadline":"2026-12-01","done":false}]}));
+        let export=dir.path().join("metadata.json");db::export(&path,export.clone()).unwrap();let target=dir.path().join("target.sqlite");db::init(&target).unwrap();db::import(&target,export).unwrap();assert_eq!(entry(&target,"campaign").milestones[0].text,"Creative approval");assert_eq!(entry(&target,"campaign").metrics[0].value,"1200");
+        assert!(command(&path,"update_studio",json!({"id":"campaign","patch":{"milestones":[{"id":"bad","text":"Invalid date","deadline":"2026-02-30","done":false}]}}).to_string()).is_err());
+        assert_eq!(entry(&path,"campaign").milestones.len(),1);
+        db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();assert!(get(&db::connect(&path).unwrap(),"campaign").unwrap().is_none());
     }
     #[test]
     fn studio_handover_contacts_and_history_are_atomic() {

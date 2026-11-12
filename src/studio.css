@@ -7,3 +7,7 @@
 
 .studio-project-links{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}.studio-project-links:empty{display:none}.studio-project-links button{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#e8ede4}
 .studio-board .studio-empty{font-size:0}.studio-board .studio-empty::after{content:"No records";font-size:12px}.studio-form>label>select{max-width:none}
+
+.studio-handover{max-width:900px;margin:24px 0;padding:18px;background:#edf0e9}.studio-handover p{font-size:13px;line-height:1.6;color:#68716a}.studio-handover button{margin-left:8px}.studio-follow-group{margin:12px 0 22px}.studio-follow-group h2{display:flex;gap:8px}.studio-follow-group h2 small{color:#74806d}.studio-associations .studio-quick-add{max-width:320px}.studio-actions>p{font-size:13px;color:#68716a}
+
+.studio-metrics .studio-field>span{display:block}.studio-parent-notice{margin:12px 28px;color:#68716a;font-size:13px}
