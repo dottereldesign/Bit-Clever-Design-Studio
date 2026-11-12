@@ -1,4 +1,4 @@
-# Bit Clever Design Studio development notes
+# Bit Clever Studio development notes
 
 A local Windows inspiration library. Tauri 2, React, TypeScript, Rust and SQLite. No account or hosted services.
 

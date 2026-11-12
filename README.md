@@ -2,17 +2,30 @@
   <img src="src/assets/app-logo.png" width="72" alt="Bit Clever logo">
 </p>
 
-<h1 align="center">Bit Clever Design Studio</h1>
-<p align="center">A Windows workspace for design inspiration, UI components and favourite websites.</p>
+<h1 align="center">Bit Clever Studio</h1>
+<p align="center">A local workspace for creative projects, moodboards and design inspiration.</p>
 <p align="center">
-  <a href="https://github.com/dottereldesign/Bit-Clever-Design-Studio/releases/latest">Download for Windows</a> ·
+  <a href="https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest">Download for Windows</a> ·
   <a href="#your-library--backups">Storage & backups</a> ·
   <a href="#development">Development</a>
 </p>
 
 ![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.jpg)
 
-## Collect and organise
+## Six areas, one studio
+
+| Area | Purpose | Availability |
+| --- | --- | --- |
+| **Marketing** | Plan campaigns, organise creative assets and schedule content. | Planned |
+| **Leads** | Track opportunities, contacts and follow-ups through to a project. | Planned |
+| **General** | Save websites, links, resources, fonts and brand guidelines. | Available |
+| **Projects** | Manage files, briefs, deadlines, next actions, client records and moodboards. | Available |
+| **Design Inspo** | Collect visual references in flexible, shared folders. | Available |
+| **App Components** | Organise interface references, components and page templates. | Available |
+
+Marketing and Leads are the next planned additions; they are not implemented yet. Installed releases can lag behind the development workspace. Check release notes before downloading.
+
+## Work with your library
 
 - **Design Inspo & App Components** — organise references into multiple folders, including across both sections. Add tags and collect references into projects without duplicating originals.
 - **Project files** — open a project as a folder workspace with Details, Tiles or Columns layouts. Keep any file type alongside links and references; browse nested folders and Unfiled, preview supported formats, or open files in their default app. Project-first imports stay out of Design Inspo. [Workspace details](docs/PROJECT-WORKSPACE.md).
@@ -42,8 +55,8 @@ Customise sidebar layouts, section styles, icons and Home tiles. Collapse sectio
 
 **Windows 10/11 · 64-bit.** The installer includes media tools and installs WebView2 if needed.
 
-1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/Bit-Clever-Design-Studio/releases/latest) and install it.
-2. Launch Bit Clever. Click **Storage** in the header to create or open a self-contained library.
+1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest) and install it.
+2. Launch Bit Clever Studio. Click **Storage** in the header to create or open a self-contained library.
 3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
 
 Check **Settings → Get latest update** for new releases. Close the app before installing an update.
@@ -65,7 +78,7 @@ Bit Clever Library/
 Files are stored once; the database preserves every folder membership, project hierarchy, link rating and tag. Home covers, custom icons, saved colours, links and website screenshots are included in full backups.
 
 - **Back up while using the app:** Storage → **Back Up Now**, then **Verify Backup** on the destination.
-- **Copy to an external drive:** close Bit Clever first, then copy the entire library folder.
+- **Copy to an external drive:** close Bit Clever Studio first, then copy the entire library folder.
 - **Open a saved copy:** put it in its permanent location, then Storage → **Open Existing Library**.
 
 Portable backups exclude removed items, undo history and temporary caches. Metadata-only exports are not full backups. **Merge Backup** imports into an existing library and can replace matching records’ organisation; opening a separate copy keeps the libraries separate.
