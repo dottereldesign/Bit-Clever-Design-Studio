@@ -12,7 +12,7 @@ function SavedField({value,label,multiline=false,type='text',save}:{value:string
  return <div className="overview-field">{multiline?<textarea {...props} maxLength={20000} placeholder="What are we making, who is it for, and what does success look like?" rows={4}/>:<input {...props} type={type} maxLength={1000} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}}}/>}{busy&&<small role="status">Saving…</small>}{error&&<small role="alert">{error} <button onClick={()=>void commit()}>Retry</button></small>}</div>;
 }
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-export default function ProjectOverview({project,data,mutate}:{project:number;data?:ProjectOverviewData;mutate:(change:Change)=>Promise<unknown>}) {
+export default function ProjectOverview({project,data,mutate,openRecord}:{project:number;data?:ProjectOverviewData;openRecord?:(id:string)=>void;mutate:(change:Change)=>Promise<unknown>}) {
  const overview=data??{project_id:project,brief:'',status:'planned',deadline:'',actions:[]};
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[text,setText]=useState(''),[showCompleted,setShowCompleted]=useState(false);
  const save=(patch:Record<string,unknown>)=>mutate({action:'update_project_overview',target:project,value:JSON.stringify(patch)});
@@ -23,6 +23,7 @@ export default function ProjectOverview({project,data,mutate}:{project:number;da
   <input type="checkbox" aria-label={`Complete ${a.text}`} checked={a.done} disabled={busy} onChange={()=>void change({field:'action',id:a.id,done:!a.done})}/>
   <SavedField value={a.text} label={`Action: ${a.text}`} save={text=>save({field:'action',id:a.id,text})}/>
   <div className={!a.done&&a.deadline&&a.deadline<today()?'overdue':''}><SavedField type="date" label={`Due date: ${a.text}`} value={a.deadline} save={deadline=>save({field:'action',id:a.id,deadline})}/>{!a.done&&a.deadline&&a.deadline<today()&&<small>Overdue</small>}</div>
+  {a.source_record&&openRecord&&<button className="overview-source" onClick={()=>openRecord(a.source_record!)}>Source record</button>}
   <button className="overview-remove" aria-label={`Remove action: ${a.text}`} title="Remove action · Undo available" disabled={busy} onClick={()=>void change({field:'action',id:a.id,remove:true})}><Trash2 size={14}/></button>
  </div>;
  return <section className="project-overview" aria-label="Project overview">

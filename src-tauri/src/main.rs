@@ -16,6 +16,7 @@ mod history;
 mod project_folders;
 mod project_files;
 mod project_overview;
+mod client_records;
 mod library_export;
 mod managed_library;
 use db::{err, Result};

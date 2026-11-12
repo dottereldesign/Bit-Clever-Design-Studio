@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum Patch {
+    ClientEdit(crate::client_records::EditSnapshot),
     ProjectOnly(i64,bool),
     ProjectOrganisation(crate::project_folders::State),
     Rating(i64, Option<i64>),
@@ -26,8 +27,9 @@ pub enum Patch {
 }
 
 pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch>)>> {
+    if c.action=="update_client_records"{return Ok(Some(("Edit client records".into(),vec![Patch::ClientEdit(crate::client_records::snapshot(db,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?)])));}
     if c.action.contains("project_folder") || ["update_project_overview","delete_project","remove_project"].contains(&c.action.as_str()) {
-        return Ok(Some((match c.action.as_str(){"update_project_overview"=>"Edit project overview","unfile_project_folder"=>"Move to Unfiled","create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?)])));
+        return Ok(Some((match c.action.as_str(){"update_client_records"=>"Edit client records","update_project_overview"=>"Edit project overview","unfile_project_folder"=>"Move to Unfiled","create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(if c.action=="delete_project"{crate::project_folders::snapshot_with_clients(db)?}else{crate::project_folders::snapshot(db)?})])));
     }
     let mut patches = vec![];
     let value = c.value.as_deref().unwrap_or("").trim();
@@ -132,7 +134,8 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
         Patch::ProjectOnly(id,_)=>Patch::ProjectOnly(*id,db::project_only(db,*id)?),
-        Patch::ProjectOrganisation(_)=>Patch::ProjectOrganisation(crate::project_folders::snapshot(db)?),
+        Patch::ClientEdit(s)=>Patch::ClientEdit(crate::client_records::inverse(db,s)?),
+        Patch::ProjectOrganisation(s)=>Patch::ProjectOrganisation(if s.includes_clients(){crate::project_folders::snapshot_with_clients(db)?}else{crate::project_folders::snapshot(db)?}),
         Patch::Rating(id,_)=>Patch::Rating(*id,db.query_row("SELECT rating FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?),
         Patch::DesignFolders(id,_) => Patch::DesignFolders(*id,db::design_memberships(db,*id)?),
         Patch::CategoryArrivals(id,_) => Patch::CategoryArrivals(*id,db::category_arrivals(db,*id)?),
@@ -182,6 +185,7 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
         inverses.push(inverse(db,&patch)?);
         match patch {
             Patch::ProjectOnly(id,value)=>{db.execute("UPDATE items SET project_only=? WHERE id=?",params![value,id]).map_err(err)?;},
+            Patch::ClientEdit(state)=>crate::client_records::apply(db,state)?,
             Patch::ProjectOrganisation(state)=>crate::project_folders::restore(db,state)?,
             Patch::Rating(id,rating)=>{db.execute("UPDATE items SET rating=? WHERE id=?",params![rating,id]).map_err(err)?;},
             Patch::DesignFolders(id,names)=>{db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;for name in names{db.execute("INSERT INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;}},

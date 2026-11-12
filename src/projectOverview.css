@@ -28,3 +28,6 @@
 .overdue small { display:block;font-size:11px;color:#a64d35;margin-top:3px; }
 @media(max-width:1100px){.overview-content{grid-template-columns:1fr;gap:24px}.project-overview{max-width:800px}}
 @media(prefers-reduced-motion:no-preference){.project-overview :is(input,textarea,select){transition:border-color .15s,background .15s}}
+
+.overview-action:has(.overview-source) { grid-template-columns:18px minmax(100px,1fr) 137px auto 25px; }
+.overview-source { font-size:11px;color:#5d7150; }

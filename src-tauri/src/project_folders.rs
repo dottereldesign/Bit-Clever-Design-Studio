@@ -24,19 +24,24 @@ pub fn memberships(db:&Connection)->Result<Vec<(i64,i64)>> {
 }
 // Organisation snapshots stay in the same transaction as the edit. Media is never copied.
 #[derive(Serialize,Deserialize)]
-pub struct State { #[serde(default)] overviews:Option<Vec<crate::project_overview::Overview>>, projects:Vec<(i64,String)>, members:Vec<(i64,i64,i64)>, folders:Vec<Folder>, filing:Vec<(i64,i64)> }
+pub struct State { #[serde(default)] clients:Option<crate::client_records::State>, #[serde(default)] overviews:Option<Vec<crate::project_overview::Overview>>, projects:Vec<(i64,String)>, members:Vec<(i64,i64,i64)>, folders:Vec<Folder>, filing:Vec<(i64,i64)> }
 pub fn snapshot(db:&Connection)->Result<State> {
     let mut p=db.prepare("SELECT id,name FROM projects").map_err(err)?;
     let projects=p.query_map([],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;
     let mut m=db.prepare("SELECT item_id,label_id,favourite FROM item_projects").map_err(err)?;
     let members=m.query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(err)?.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;
-    Ok(State{overviews:Some(crate::project_overview::load(db)?),projects,members,folders:folders(db)?,filing:memberships(db)?})
+    Ok(State{clients:None,overviews:Some(crate::project_overview::load(db)?),projects,members,folders:folders(db)?,filing:memberships(db)?})
 }
+pub fn snapshot_with_clients(db:&Connection)->Result<State>{let mut s=snapshot(db)?;s.clients=Some(crate::client_records::load(db)?);Ok(s)}
+impl State {pub fn includes_clients(&self)->bool{self.clients.is_some()}}
 pub fn restore(db:&Connection,s:State)->Result<()> {
+    let mut clients=s.clients.unwrap_or(crate::client_records::load(db)?);
     let overviews=s.overviews.unwrap_or(crate::project_overview::load(db)?);
     db.execute_batch("DELETE FROM item_project_folders; DELETE FROM project_folders; DELETE FROM item_projects; DELETE FROM projects;").map_err(err)?;
     for(id,name) in s.projects{db.execute("INSERT INTO projects VALUES(?,?)",params![id,name]).map_err(err)?;}
     for o in overviews {if db.query_row("SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)",[o.project_id],|r|r.get::<_,bool>(0)).map_err(err)?{crate::project_overview::save(db,&o)?;}}
+    let exists=|id:i64|db.query_row("SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)",[id],|r|r.get::<_,bool>(0)).unwrap_or(false);
+    clients.contacts.retain(|c|exists(c.project_id));clients.records.retain(|r|exists(r.project_id));crate::client_records::restore(db,clients)?;
     for(i,p,f) in s.members{db.execute("INSERT INTO item_projects VALUES(?,?,?)",params![i,p,f]).map_err(err)?;}
     // Insert roots first even after a folder has moved beneath a newer folder.
     let mut pending=s.folders;

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { isBoardDestination, type BoardKey } from "./model";
 
 export type ViewState = {
+  projectSection?: "overview"|"files"|"client";
   projectFolder?:number|"unfiled"|null; ratingFilter?:string;
   homeView: boolean; generalKey: string | null; project: number | null;
   category: string | null; linksOnly: boolean; resourcesView: boolean;
@@ -28,6 +29,7 @@ export function readViewSession(): ViewSession | null {
       !["any", "all"].includes(v.tagMode) || ![null, "added", "viewed"].includes(v.recent) ||
       (v.boardView !== null && !isBoardDestination(v.boardView)) ||
       !finite(saved.scroll.top) || saved.scroll.top < 0) return null;
+    if(!["overview","files","client"].includes(v.projectSection))v.projectSection=v.projectFolder!=null?"files":"overview";
     if(v.projectFolder!==undefined && v.projectFolder!=="unfiled" && !nullableId(v.projectFolder))v.projectFolder=null;
     if(!["","unrated","4+","1","2","3","4","5"].includes(v.ratingFilter))v.ratingFilter="";
     const anchor = saved.scroll.anchor;

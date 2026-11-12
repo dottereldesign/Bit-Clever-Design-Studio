@@ -1,6 +1,7 @@
 import ProjectOverview from './ProjectOverview';
-import type {ProjectOverviewData} from './model';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import ClientRecords from './ClientRecords';
+import type {ProjectOverviewData,ProjectSection,ClientData} from './model';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {ArrowLeft,ArrowRight,Columns3,ExternalLink,Eye,File,Folder,FolderPlus,Grid2X2,List,Plus,X} from 'lucide-react';
@@ -25,8 +26,8 @@ function FileThumb({item}:{item:Item}) {
   return url?<img src={url} alt="" onError={()=>setUrl('')}/>:<span className="project-file-glyph"><File size={28}/>{item.kind==='file'&&<small>{fileType(item)}</small>}</span>;
 }
 
-export default function ProjectWorkspace({overview,project,folders,items,allItems,scope,navigate,mutate,report,addFiles,paste,drop,selected,select,menu,preview,size,order,search,scroller}: {
-  overview?:ProjectOverviewData;project:Label;folders:ProjectFolder[];items:Item[];allItems:Item[];scope:FolderScope;navigate:(scope:FolderScope)=>void;
+export default function ProjectWorkspace({fileToolbar,section,changeSection,clients,overview,project,folders,items,allItems,scope,navigate,mutate,report,addFiles,paste,drop,selected,select,menu,preview,size,order,search,scroller}: {
+  fileToolbar:React.ReactNode;section:ProjectSection;changeSection:(section:ProjectSection)=>void;clients?:ClientData;overview?:ProjectOverviewData;project:Label;folders:ProjectFolder[];items:Item[];allItems:Item[];scope:FolderScope;navigate:(scope:FolderScope)=>void;
   mutate:(change:Change)=>Promise<unknown>;report:(error:unknown)=>void;addFiles:()=>void;paste:(folder:number|null)=>void;
   drop:(data:DataTransfer,folder:number|null)=>void;selected:Set<number>;select:(item:Item,event:React.MouseEvent)=>void;
   menu:(item:Item,event:React.MouseEvent)=>void;preview:(item:Item)=>void;size:number;order:string;search:string;scroller:React.RefObject<HTMLDivElement|null>;
@@ -37,10 +38,18 @@ export default function ProjectWorkspace({overview,project,folders,items,allItem
   const [info,setInfo]=useState<Map<number,Info>>(new Map()),[newFolder,setNewFolder]=useState(false),[name,setName]=useState(''),[busy,setBusy]=useState(false);
   const [sort,setSort]=useState<'name'|'type'|'size'|'modified'|null>(null),[descending,setDescending]=useState(false);
   useEffect(()=>setSort(null),[order]);
-  const [history,setHistory]=useState<FolderScope[]>([scope]),[position,setPosition]=useState(0);
-  const travelling=useRef(false),lastScope=useRef(scope);
-  useEffect(()=>{if(lastScope.current===scope)return;lastScope.current=scope;if(travelling.current){travelling.current=false;return;}setHistory(previous=>[...previous.slice(0,position+1),scope]);setPosition(position+1);},[scope,position]);
-  const travel=(offset:number)=>{const next=position+offset;if(next<0||next>=history.length)return;travelling.current=true;setPosition(next);navigate(history[next]);};
+  type Location={section:ProjectSection;scope:FolderScope};
+  const location={section,scope};const locationKey=JSON.stringify(location);
+  const [history,setHistory]=useState<Location[]>([location]),[position,setPosition]=useState(0);
+  const travelling=useRef(false),lastLocation=useRef(locationKey),lastFile=useRef<FolderScope>((()=>{try{return JSON.parse(localStorage.getItem(`project-files-location:${project.id}`)??'null')??scope;}catch{return scope;}})()),positions=useRef<Record<string,number>>((()=>{try{return JSON.parse(localStorage.getItem(`project-scroll:${project.id}`)??'{}');}catch{return {};}})());
+  const [requestedRecord,setRequestedRecord]=useState<{id:string;nonce:number}|null>(null);
+  useEffect(()=>{if(section==='files'){lastFile.current=scope;localStorage.setItem(`project-files-location:${project.id}`,JSON.stringify(scope));}},[section,scope,project.id]);
+  useEffect(()=>{const element=scroller.current;if(!element)return;let timer=0;const write=()=>{try{localStorage.setItem(`project-scroll:${project.id}`,JSON.stringify(positions.current));}catch{}};const save=()=>{positions.current[lastLocation.current]=element.scrollTop;clearTimeout(timer);timer=window.setTimeout(write,150);};element.addEventListener('scroll',save);return()=>{clearTimeout(timer);write();element.removeEventListener('scroll',save);};},[scroller,project.id]);
+  useLayoutEffect(()=>{const previous=lastLocation.current;if(previous===locationKey)return;lastLocation.current=locationKey;if(travelling.current)travelling.current=false;else{setHistory(previous=>[...previous.slice(0,position+1),location]);setPosition(position+1);}const frame=requestAnimationFrame(()=>{if(scroller.current)scroller.current.scrollTop=positions.current[locationKey]??0;});return()=>cancelAnimationFrame(frame);},[locationKey]);
+  const visit=(next:ProjectSection,folder=lastFile.current)=>{if(next==='files')navigate(typeof folder==='number'&&!folders.some(f=>f.id===folder&&f.project_id===project.id)?null:folder);changeSection(next);};
+  const travel=(offset:number)=>{const next=position+offset;if(next<0||next>=history.length)return;travelling.current=true;setPosition(next);const loc=history[next];navigate(loc.scope);changeSection(loc.section);};
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{if(!event.altKey||event.ctrlKey||event.metaKey||!['ArrowLeft','ArrowRight'].includes(event.key)||document.querySelector('main')?.inert)return;event.preventDefault();(document.activeElement as HTMLElement)?.blur();travel(event.key==='ArrowLeft'?-1:1);};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[position,history]);
+  const openRecord=(id:string)=>{setRequestedRecord({id,nonce:performance.now()});changeSection('client');};
   useEffect(()=>{let current=true;void invoke<Info[]>('project_file_details',{project:project.id}).then(rows=>{if(current)setInfo(new Map(rows.map(row=>[row.id,row])));}).catch(report);return()=>{current=false;};},[project.id,allItems,report]);
   const own=useMemo(()=>folders.filter(folder=>folder.project_id===project.id),[folders,project.id]);
   const ownIds=useMemo(()=>new Set(own.map(folder=>folder.id)),[own]);
@@ -61,7 +70,7 @@ export default function ProjectWorkspace({overview,project,folders,items,allItem
     onDrop:(event:React.DragEvent)=>{event.preventDefault();event.stopPropagation();event.currentTarget.classList.remove('drop-target');const draggedFolder=event.dataTransfer.getData('application/project-folder');if(draggedFolder){if(folder==='unfiled')return;const id=Number(draggedFolder);if(Number.isInteger(id)&&ownIds.has(id)&&id!==folder)void mutate({action:'move_project_folder',target:id,value:typeof folder==='number'?String(folder):''}).catch(report);return;}const text=event.dataTransfer.getData('application/design-items');if(!text){drop(event.dataTransfer,typeof folder==='number'?folder:null);return;}try{const ids:unknown=JSON.parse(text);if(!Array.isArray(ids)||!ids.every(Number.isInteger))return;void mutate({action:typeof folder==='number'?'add_project_folder':'unfile_project_folder',target:typeof folder==='number'?folder:project.id,ids}).catch(report);}catch(error){report(error);}}
   });
   const root=useRef<HTMLDivElement>(null),[width,setWidth]=useState(800),[margin,setMargin]=useState(0);
-  useEffect(()=>{const element=root.current;if(!element)return;const update=()=>{setWidth(element.clientWidth);const parent=scroller.current;if(parent)setMargin(element.getBoundingClientRect().top-parent.getBoundingClientRect().top+parent.scrollTop);};const observer=new ResizeObserver(update);observer.observe(element);update();return()=>observer.disconnect();},[scroller,scope,prefs.layout,visibleFolders.length,newFolder]);
+  useEffect(()=>{const element=root.current;if(!element)return;const update=()=>{setWidth(element.clientWidth);const parent=scroller.current;if(parent)setMargin(element.getBoundingClientRect().top-parent.getBoundingClientRect().top+parent.scrollTop);};const observer=new ResizeObserver(update);observer.observe(element);update();return()=>observer.disconnect();},[scroller,scope,section,prefs.layout,visibleFolders.length,newFolder]);
   const columns=prefs.layout==='tiles'?Math.max(1,Math.floor((width+12)/(size+12))):1;
   const rowHeight=prefs.layout==='tiles'?Math.max(180,(width-(columns-1)*12)/columns*.7+68):48;
   const virtual=useVirtualizer({count:Math.ceil(files.length/columns),getScrollElement:()=>scroller.current,estimateSize:()=>rowHeight,overscan:4,scrollMargin:margin});
@@ -79,8 +88,12 @@ export default function ProjectWorkspace({overview,project,folders,items,allItem
     {prefs.columns.includes('rating')&&<span className="project-file-rating" onClick={event=>event.stopPropagation()}>{item.kind==='link'&&<LinkRating value={item.rating} onChange={value=>void mutate({action:'rate_links',ids:[item.id],value:value==null?'':String(value)}).catch(report)}/>}</span>}
     <span className="project-file-actions"><button title="Preview" aria-label={`Preview ${item.name}`} onClick={event=>{event.stopPropagation();preview(item);}}><Eye size={15}/></button><button title={item.kind==='link'?'Open website':'Open in default app'} aria-label={`Open ${item.name}`} onClick={event=>{event.stopPropagation();open(item);}}><ExternalLink size={15}/></button></span>
   </div>;
-  return <section className="project-workspace" aria-label="Project files">
-    <div className="project-workspace-toolbar"><div className="project-workspace-location"><button aria-label="Back in project" disabled={position===0} onClick={()=>travel(-1)}><ArrowLeft size={16}/></button><button aria-label="Forward in project" disabled={position>=history.length-1} onClick={()=>travel(1)}><ArrowRight size={16}/></button><button onClick={()=>navigate(null)}>{project.name}</button>{chain.map(folder=><span key={folder.id}> / <button onClick={()=>navigate(folder.id)}>{folder.name}</button></span>)}{scope==='unfiled'&&<span> / Unfiled</span>}</div>
+  return <section className="project-workspace" aria-label="Project workspace">
+    <nav className="project-section-nav" aria-label="Project sections"><button className="project-history" aria-label="Back in project" disabled={position===0} onClick={()=>travel(-1)}><ArrowLeft size={16}/></button><button className="project-history" aria-label="Forward in project" disabled={position>=history.length-1} onClick={()=>travel(1)}><ArrowRight size={16}/></button>{(['overview','files','client'] as ProjectSection[]).map(tab=><button key={tab} aria-current={section===tab?'page':undefined} onClick={()=>visit(tab)}>{tab==='overview'?'Overview':tab==='files'?'Files':'Client records'}</button>)}</nav>
+    <div className="project-pane" hidden={section!=='overview'}><ProjectOverview project={project.id} data={overview} mutate={mutate} openRecord={openRecord}/></div>
+    <div className="project-pane" hidden={section!=='client'}><ClientRecords project={project.id} data={clients} items={allItems} overview={overview} mutate={mutate} preview={preview} openOverview={()=>changeSection('overview')} requestedRecord={requestedRecord}/></div>
+    <div className="project-pane" hidden={section!=='files'}>{section==='files'&&fileToolbar}
+    <div className="project-workspace-toolbar"><div className="project-workspace-location"><button onClick={()=>navigate(null)}>{project.name}</button>{chain.map(folder=><span key={folder.id}> / <button onClick={()=>navigate(folder.id)}>{folder.name}</button></span>)}{scope==='unfiled'&&<span> / Unfiled</span>}</div>
       <div className="project-workspace-actions"><button onClick={addFiles}><Plus size={15}/>Add files</button><button onClick={()=>paste(typeof scope==='number'?scope:null)}>Paste here</button><button onClick={()=>setNewFolder(value=>!value)}><FolderPlus size={15}/>New folder</button>
       <div role="group" aria-label="File layout">{(['details','tiles','columns'] as Layout[]).map(layout=><button key={layout} title={layout} aria-label={`${layout} layout`} aria-pressed={prefs.layout===layout} onClick={()=>save({layout})}>{layout==='details'?<List size={16}/>:layout==='tiles'?<Grid2X2 size={16}/>:<Columns3 size={16}/>}</button>)}</div>
       <details className="project-view-options"><summary>View options</summary><div>{['type','size','modified','rating'].map(column=><label key={column}><input type="checkbox" checked={prefs.columns.includes(column)} onChange={()=>save({columns:prefs.columns.includes(column)?prefs.columns.filter(c=>c!==column):[...prefs.columns,column]})}/>{column}</label>)}<label>Name column<input aria-label="Name column width" type="range" min="180" max="600" value={prefs.nameWidth} onChange={event=>save({nameWidth:Number(event.target.value)})}/></label></div></details></div></div>
@@ -98,7 +111,7 @@ export default function ProjectWorkspace({overview,project,folders,items,allItem
       </div>}
       </div>
     </div>
-    {scope===null&&!search&&<ProjectOverview project={project.id} data={overview} mutate={mutate}/>}
+    </div>
   </section>;
 }
 
