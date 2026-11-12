@@ -1,3 +1,4 @@
+import {record as diagnosticRecord,errorCode} from './diagnostics';
 export type HistoryEntry = {
   label: string;
   undo: () => void | Promise<void>;
@@ -55,6 +56,7 @@ export class AppHistory {
       group: this.gesture ? `${this.gesture}:${Object.keys(after).sort().join(",")}` : undefined,
     });
     this.write(after);
+    if(!this.gesture)diagnosticRecord('settings.change','success',0,{count:Object.keys(after).length});
   }
   record(entry: HistoryEntry) {
     if (this.replaying) return;
@@ -79,7 +81,7 @@ export class AppHistory {
     finally { this.pending--; this.notify(); }
   }
   beginGesture(id: string) { if (!this.gesture) this.gesture = id; }
-  endGesture() { this.gesture = null; }
+  endGesture() { if(this.gesture)diagnosticRecord('settings.gesture','success');this.gesture = null; }
   get undoLabel() { return this.past.at(-1)?.label ?? this.fallback?.undoLabel ?? null; }
   get redoLabel() {
     return this.future.at(-1)?.label ??
@@ -98,6 +100,7 @@ export class AppHistory {
     if (redo ? !this.redoLabel : !this.undoLabel) return;
     this.endGesture();
     const source = redo ? this.future : this.past, entry = source.at(-1);
+    const operation=crypto.randomUUID(),started=performance.now();diagnosticRecord(redo?'history.redo':'history.undo','started',0,{},operation);
     this.replaying = true;
     this.notify();
     try {
@@ -114,7 +117,8 @@ export class AppHistory {
         (redo ? this.past : this.future).push({ label, kind: "library", undo: fallback.undo, redo: fallback.redo });
         if (!redo) this.fallbackRedoAllowed = true;
       }
-    } catch (error) { this.onError(error); }
+      diagnosticRecord(redo?'history.redo':'history.undo','success',performance.now()-started,{},operation);
+    } catch (error) { diagnosticRecord(redo?'history.redo':'history.undo','error',performance.now()-started,{error_code:errorCode(error)},operation);this.onError(error); }
     finally { this.replaying = false; this.notify(); }
   }
   clearLibrary() {

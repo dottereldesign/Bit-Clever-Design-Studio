@@ -167,8 +167,8 @@ async fn get_library(state: tauri::State<'_, State>) -> Result<db::Library> {
 async fn update(change: db::Change, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<()> {
     let s=state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();
-        let log=|name:&str,status:&str,duration:f64|diagnostics::record(diagnostics::Event{time:0,name:name.into(),operation:operation.clone(),status:status.into(),duration,fields:serde_json::json!({})});
+        let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();let diagnostic_action=change.action.clone();
+        let log=|name:&str,status:&str,duration:f64|diagnostics::record(diagnostics::Event{time:0,name:name.into(),operation:operation.clone(),status:status.into(),duration,fields:serde_json::json!({"action":diagnostic_action})});
         let _guard=s.content_lock.lock().map_err(err)?;log("native.lock_wait","success",start.elapsed().as_secs_f64()*1000.);
         let start=std::time::Instant::now();let result=db::change(&s.db,change);log("native.database_change",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result?;
         let start=std::time::Instant::now();let result=managed_library::organise(&s.db);log("native.organise_files",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result
@@ -205,20 +205,25 @@ fn scan_background(app: tauri::AppHandle, s: State) {
     if s.scanning.swap(true, Ordering::SeqCst) {
         return;
     }
+    let scan_start=std::time::Instant::now();
+    diagnostics::event("native.scan","started",0.,serde_json::json!({}));
     let _ = app.emit("scan-started", ());
     tauri::async_runtime::spawn_blocking(move || {
         let result = (|| {let _guard=s.content_lock.lock().map_err(err)?;library::scan_all(&s.db)?;managed_library::organise(&s.db)})();
+        diagnostics::event("native.scan",if result.is_ok(){"success"}else{"error"},scan_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
         s.scanning.store(false, Ordering::SeqCst);
         match result {
             Ok(_) => {
                 let _ = app.emit("library-changed", ());
                 let _guard = s.content_lock.lock();
-                let _ = content::index_with_progress(&s.db, &mut |mut progress| {
+                let index_start=std::time::Instant::now();diagnostics::event("native.fingerprint_index","started",0.,serde_json::json!({}));
+                let indexed = content::index_with_progress(&s.db, &mut |mut progress| {
                     progress.phase = "indexing";
                     if let Ok(mut current) = s.index_progress.lock() {
                         *current = Some(progress);
                     }
                 });
+                diagnostics::event("native.fingerprint_index",if indexed.is_ok(){"success"}else{"error"},index_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
                 if let Ok(mut current) = s.index_progress.lock() {
                     *current = None;
                 }
@@ -555,7 +560,8 @@ fn main() {
             app.manage(LibraryLocation{config:config.clone(),error:selected.as_ref().err().cloned()});
             let db_path=match selected {Ok(path)=>path,Err(_)=>{diagnostics::event("library.open","error",0.,serde_json::json!({"error_code":"library_unavailable"}));return Ok(())}};
             let library_data=db_path.parent().unwrap().to_path_buf();
-            db::init(&db_path)?;
+            let schema_start=std::time::Instant::now();diagnostics::event("library.schema","started",0.,serde_json::json!({}));
+            let schema_result=db::init(&db_path);diagnostics::event("library.schema",if schema_result.is_ok(){"success"}else{"error"},schema_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));schema_result?;
             let db = db::connect(&db_path)?;
             if managed_library::root(&db_path)?.is_none(){resources::seed(&db)?;}
             if db::setting(&db, "root").is_none() {

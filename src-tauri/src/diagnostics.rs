@@ -86,6 +86,13 @@ fn clean(mut e: Event) -> Event {
                 "session",
                 "build",
                 "mode",
+                "section",
+                "page",
+                "tab",
+                "record_id",
+                "record_kind",
+                "field",
+                "filtered",
             ]
             .contains(&key.as_str())
             {
@@ -355,9 +362,11 @@ mod tests {
             operation: "op-1".into(),
             status: "failed".into(),
             duration: 12.,
-            fields: serde_json::json!({"url":"https://secret/?token=abc","path":"C:/Private","clipboard":"secret","count":2,"error_code":"timeout"}),
+            fields: serde_json::json!({"url":"https://secret/?token=abc","path":"C:/Private","clipboard":"secret","count":2,"error_code":"timeout","section":"leads","record_kind":"contact","record_id":"record-123","field":"email","email":"secret@example.com"}),
         });
-        assert_eq!(e.fields.as_object().unwrap().len(), 2);
+        assert_eq!(e.fields.as_object().unwrap().len(), 6);
+        assert_eq!(e.fields["section"], "leads");
+        assert!(e.fields.get("email").is_none());
         assert_eq!(e.fields["count"], 2);
     }
     #[test]
