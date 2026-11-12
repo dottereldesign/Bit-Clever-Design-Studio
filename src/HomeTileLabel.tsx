@@ -8,7 +8,7 @@ export default function HomeTileLabel({label,scale}:{label:string;scale:number})
    pending=0;if(!live)return;
    const css=getComputedStyle(box),width=box.clientWidth-parseFloat(css.paddingLeft)-parseFloat(css.paddingRight),height=box.clientHeight-parseFloat(css.paddingTop)-parseFloat(css.paddingBottom);
    if(width<=0||height<=0)return;
-   let low=1,high=Math.max(12,Math.min(180,Math.min(width*.19,height*.36)*scale));
+   let low=1,high=Math.max(12,Math.min(48,Math.min(width*.19,height*.36)*scale));
    content.style.fontSize=`${high}px`;
    const fits=()=>content.scrollWidth<=width+1&&content.offsetHeight<=height+1;
    if(fits())return;

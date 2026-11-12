@@ -69,9 +69,9 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
       const node=[...board.current?.querySelectorAll<HTMLElement>('[data-home-tile]')??[]].find(n=>n.dataset.homeTile===tile.id);
       if(!node)return;node.getAnimations().forEach(a=>a.cancel());
       if(reduced||resizing)return;
-      if(old&&(Math.abs(old.left-rect.left)>1||Math.abs(old.top-rect.top)>1||Math.abs(old.width-rect.width)>1||Math.abs(old.height-rect.height)>1)){
+      if(old&&old.width>0&&old.height>0&&(Math.abs(old.left-rect.left)>1||Math.abs(old.top-rect.top)>1||Math.abs(old.width-rect.width)>1||Math.abs(old.height-rect.height)>1)){
         node.animate([{transform: `translate(${old.left-rect.left}px,${old.top-rect.top}px) scale(${old.width/rect.width},${old.height/rect.height})`},{transform:'none'}],{duration:240,easing:'cubic-bezier(.2,.8,.2,1)'});
-      }else if(!old){node.animate([{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.2,.8,.2,1)'});}
+      }
     });previous.current=next;
   },[layout,resizing,tiles]);
   const change=(next:HomeTile[],rebalance=false)=>{
