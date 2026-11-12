@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="src/assets/app-logo.png" width="72" alt="BitClever logo">
+  <img src="src/assets/app-logo.png" width="72" alt="Bit Clever logo">
 </p>
 
-<h1 align="center">BitClever Design Studio</h1>
+<h1 align="center">Bit Clever Design Studio</h1>
 <p align="center">A Windows workspace for design inspiration, UI components and favourite websites.</p>
 <p align="center">
-  <a href="https://github.com/dottereldesign/BitClever-Design-Studio/releases/latest">Download for Windows</a> ·
+  <a href="https://github.com/dottereldesign/Bit-Clever-Design-Studio/releases/latest">Download for Windows</a> ·
   <a href="#your-library--backups">Storage & backups</a> ·
   <a href="#development">Development</a>
 </p>
@@ -39,8 +39,8 @@ Customise sidebar layouts, section styles, icons and Home tiles. Collapse sectio
 
 **Windows 10/11 · 64-bit.** The installer includes media tools and installs WebView2 if needed.
 
-1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/BitClever-Design-Studio/releases/latest) and install it.
-2. Launch BitClever. Click **Storage** in the header to create or open a self-contained library.
+1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/Bit-Clever-Design-Studio/releases/latest) and install it.
+2. Launch Bit Clever. Click **Storage** in the header to create or open a self-contained library.
 3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
 
 Check **Settings → Get latest update** for new releases. Close the app before installing an update.
@@ -50,7 +50,7 @@ Check **Settings → Get latest update** for new releases. Close the app before 
 Your originals and organisation belong together in a portable library:
 
 ```text
-BitClever Library/
+Bit Clever Library/
 ├── Design Inspo/
 ├── App Components/
 ├── General/
@@ -62,7 +62,7 @@ BitClever Library/
 Files are stored once; the database preserves every folder membership, project hierarchy, link rating and tag. Home covers, custom icons, saved colours, links and website screenshots are included in full backups.
 
 - **Back up while using the app:** Storage → **Back Up Now**, then **Verify Backup** on the destination.
-- **Copy to an external drive:** close BitClever first, then copy the entire library folder.
+- **Copy to an external drive:** close Bit Clever first, then copy the entire library folder.
 - **Open a saved copy:** put it in its permanent location, then Storage → **Open Existing Library**.
 
 Portable backups exclude removed items, undo history and temporary caches. Metadata-only exports are not full backups. **Merge Backup** imports into an existing library and can replace matching records’ organisation; opening a separate copy keeps the libraries separate.

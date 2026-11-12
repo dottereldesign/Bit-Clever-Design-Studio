@@ -1172,7 +1172,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
           <img src={appLogo} alt="" className="brand-logo" />
-          <span className="brand-name"><span>BitClever</span><span>Design</span></span>
+          <span className="brand-name"><span>Bit Clever</span><span>Design Studio</span></span>
         </button>
         <SidebarNavigation order={navLayout.order}>
         <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>

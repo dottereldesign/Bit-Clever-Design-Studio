@@ -84,7 +84,7 @@ async fn prepare_library(path:String,preferences:serde_json::Value,on_progress:t
     s.export_cancel.store(false,Ordering::SeqCst);let active=s.exporting.clone();
     let result=tauri::async_runtime::spawn_blocking(move||{
         let _guard=s.content_lock.lock().map_err(err)?;
-        let result=library_export::export_with_preferences(&s.db,std::path::Path::new(&path),"BitClever Library",preferences,&s.export_cancel,&mut |p|{let _=on_progress.send(p);})?;
+        let result=library_export::export_with_preferences(&s.db,std::path::Path::new(&path),"Bit Clever Library",preferences,&s.export_cancel,&mut |p|{let _=on_progress.send(p);})?;
         if !result.cancelled&&result.missing.is_empty(){managed_library::open(std::path::Path::new(&result.path))?;managed_library::verify_live(std::path::Path::new(&result.path))?;}
         Ok(result)
     }).await.map_err(err);active.store(false,Ordering::SeqCst);result?
