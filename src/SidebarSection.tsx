@@ -4,8 +4,8 @@ import { useState, type ReactNode, type HTMLAttributes } from "react";
 import { useHistoryState } from "./useAppHistory";
 import { ChevronDown, ChevronRight, Palette, Blocks, LayoutGrid, FolderOpen, Megaphone, Users, BookOpen } from "lucide-react";
 
-export default function SidebarSection({name, label = name, action, children, nested = false, dropProps, styleId, identity, preview = false, icon, onOpen, reorder}: {
-  reorder?:{up?:()=>void;down?:()=>void}; onOpen?:()=>void; icon?:ReactNode; styleId?:number; identity?:"clients"|"design"|"components"|"general"|"projects"|"marketing"|"leads"|"research"; preview?:boolean; name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean; dropProps?: HTMLAttributes<HTMLDivElement> & {"data-category"?:string; "data-section-label"?:string};
+export default function SidebarSection({name, label = name, action, children, nested = false, dropProps, styleId, identity, preview = false, icon, reorder}: {
+  reorder?:{up?:()=>void;down?:()=>void}; icon?:ReactNode; styleId?:number; identity?:"clients"|"design"|"components"|"general"|"projects"|"marketing"|"leads"|"research"; preview?:boolean; name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean; dropProps?: HTMLAttributes<HTMLDivElement> & {"data-category"?:string; "data-section-label"?:string};
 }) {
   const [colours]=useSectionColours();
   const [colourMenu,setColourMenu]=useState<{x:number;y:number}|null>(null);
@@ -19,7 +19,7 @@ export default function SidebarSection({name, label = name, action, children, ne
   return <section style={identity?sectionColourStyle(identity,colours,styleId??1):undefined} data-custom-colour={identity&&colours[identity]?true:undefined} data-section={name} className={`${icon?"has-custom-icon":""} ${nested ? "folder-group" : "sidebar-section"} ${identity?`section-feature section-style-${styleId??1} section-${identity}`:""}`} data-open={open}>
     <div {...dropProps} onContextMenu={identity&&!preview?e=>{e.preventDefault();setColourMenu({x:Math.min(e.clientX,window.innerWidth-290),y:Math.min(e.clientY,window.innerHeight-250)});}:dropProps?.onContextMenu} className={`${nested ? "folder-heading" : "sidebar-heading"} ${dropProps?.className??""}`}>
       <button title={reorder?"Drag to reorder · Alt+↑/↓ to move":undefined} className="section-toggle" aria-label={label} aria-expanded={open} onClick={() => {
-        if(preview)setPreview(!open);else {setOpen(!open);onOpen?.();}
+        if(preview)setPreview(!open);else setOpen(!open);
       }}>
         {identity?<>
           <span className="section-number" aria-hidden="true">{treatment?.number}</span>
@@ -28,7 +28,6 @@ export default function SidebarSection({name, label = name, action, children, ne
           <ChevronRight className="section-chevron" size={14} aria-hidden="true"/>
         </>:<>{open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>} {icon} {label}</>}
       </button>
-      {onOpen&&<button className="icon-button" aria-label={`Toggle ${label}`} aria-expanded={open} onClick={()=>setOpen(!open)}>{open?<ChevronDown size={13}/>:<ChevronRight size={13}/>}</button>}
       {action}
     </div>
     {identity?<div className="section-reveal" aria-hidden={!open} inert={!open}><div className="section-reveal-inner">{identity==="general"||identity==="projects"||identity==="clients"||identity==="marketing"||identity==="leads"||identity==="research"?<div className="sidebar-section-body">{children}</div>:children}</div></div>:open&&(nested?children:<div className="sidebar-section-body">{children}</div>)}

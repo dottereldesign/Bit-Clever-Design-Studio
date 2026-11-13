@@ -14,8 +14,8 @@ try{
  const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  const timings=[];
  for(let i=0;i<8;i++){
-  document.querySelector('[aria-label="Leads"]').click();await until(()=>document.querySelector('.studio-workspace'),'Leads');await frames();
-  const start=performance.now();document.querySelector('[aria-label="Clients"]').click();await until(()=>document.querySelector('.clients-workspace'),'Clients');await frames();timings.push(Math.round(performance.now()-start));
+  if(document.querySelector('[aria-label="Leads"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Leads"]').click();document.querySelector('.section-leads .nav-item').click();await until(()=>document.querySelector('.studio-workspace'),'Leads');await frames();
+  const start=performance.now();if(document.querySelector('[aria-label="Clients"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Clients"]').click();document.querySelector('.section-clients .nav-item').click();await until(()=>document.querySelector('.clients-workspace'),'Clients');await frames();timings.push(Math.round(performance.now()-start));
  }
  await until(()=>document.querySelector('.clients-batch'),'Feed');
  const reads=calls.filter(c=>c.command==='get_library').length,setup=calls.filter(c=>c.command==='clients_initialise').length,oldSetup=calls.filter(c=>c.command==='update'&&c.args.change.action==='setup_clients').length,feeds=calls.filter(c=>c.command==='client_feed').length;
