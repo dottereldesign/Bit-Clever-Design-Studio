@@ -40,7 +40,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open, save } from "./nativeUi";
 import { revealItemInDir } from "./nativeUi";
 import { openUrl } from "./api";
-import appLogo from "./assets/app-logo.png";
+import appLogo from "./assets/app-logo.svg";
 import { arrangeMasonry } from "./masonry";
 import {
   Star,

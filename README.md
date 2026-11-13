@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/assets/app-logo.png" width="72" alt="Bit Clever logo">
+  <img src="src/assets/app-logo.svg" width="72" alt="Bit Clever Studio mascot logo">
 </p>
 
 <h1 align="center">Bit Clever Studio</h1>
