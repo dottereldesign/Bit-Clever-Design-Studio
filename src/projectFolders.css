@@ -18,3 +18,5 @@
 .project-folder-row.drop-target,.project-scope.drop-target{background:#dce8d1;outline:2px solid #728967;outline-offset:-2px}
 
 @media(max-width:1100px){.project-breadcrumb{padding-inline:16px}}
+.projects .project-overview-link{margin:4px 6px 7px 25px;width:calc(100% - 31px);padding:7px 9px;border-radius:4px;background:color-mix(in srgb,var(--section-accent,#8c70a4) 10%,transparent);color:var(--section-ink,#624d79);font-weight:650}
+.projects .project-overview-link:hover,.projects .project-overview-link.active{background:color-mix(in srgb,var(--section-accent,#8c70a4) 19%,transparent);color:var(--section-ink,#624d79)}

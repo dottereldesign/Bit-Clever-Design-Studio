@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode, type HTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Folder, MoreHorizontal, X } from 'lucide-react';
+import { ChevronRight, LayoutDashboard, Folder, MoreHorizontal, X } from 'lucide-react';
 import type { Item, Label, ProjectFolder } from './model';
 import './projectFolders.css';
 
@@ -21,7 +21,8 @@ export function folderPath(folder:ProjectFolder,folders:ProjectFolder[]):string 
   while(parent){const p=folders.find(f=>f.id===parent);if(!p||seen.has(p.id))break;seen.add(p.id);names.unshift(p.name);parent=p.parent_id;}
   return names.join(' / ');
 }
-export function ProjectTree({project,folders,items,active,scope,open,mutate,report,rename,remove,icon,externalDrop,homeProps,paste}: {
+export function ProjectTree({project,folders,items,active,overviewActive,scope,open,mutate,report,rename,remove,icon,externalDrop,homeProps,paste}: {
+  overviewActive?:boolean;
   paste:(folder:number|null)=>void;
   project:Label;folders:ProjectFolder[];items:Item[];active:boolean;scope:FolderScope;
   open:(scope:FolderScope)=>void;mutate:Mutate;report:(error:unknown)=>void;rename:()=>void;remove:()=>void;icon:ReactNode;
@@ -70,6 +71,7 @@ export function ProjectTree({project,folders,items,active,scope,open,mutate,repo
       <button className="folder-more" aria-label={`Options for ${project.name}`} onClick={e=>context(e,null)}><MoreHorizontal size={15}/></button>
     </div>
     {expanded&&<div className="project-folder-list">
+      <button className={`nav-item project-overview-link ${active&&overviewActive?'active':''}`} aria-current={active&&overviewActive?'page':undefined} data-project-overview={project.id} onClick={()=>open(null)}><LayoutDashboard size={14}/><span>Overview</span></button>
       <button className={`nav-item project-scope ${active&&scope==='unfiled'?'active':''}`} data-project-unfiled={project.id} {...dragProps('unfiled')} onClick={()=>open('unfiled')}>Unfiled<small>{counts.unfiled||''}</small></button>
       {orderedFolders(own.filter(f=>f.parent_id===null)).map(f=>row(f,0))}
     </div>}

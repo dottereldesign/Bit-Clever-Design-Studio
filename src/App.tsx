@@ -1344,7 +1344,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         <div className="projects">
           <nav aria-label="Projects">
             {lib.projects.map(p=><ProjectTree key={p.id} project={p} folders={lib.project_folders??[]} items={lib.items}
-              active={!homeView&&!generalKey&&project===p.id} scope={projectSection==='files'?projectFolder:null} open={scope=>{navigate(p.id);setProjectFolder(scope);setProjectSection(scope===null?"overview":"files");}}
+              active={!homeView&&!generalKey&&project===p.id} overviewActive={projectSection==='overview'} scope={projectSection==='files'?projectFolder:null} open={scope=>{navigate(p.id);setProjectFolder(scope);setProjectSection(scope===null?"overview":"files");}}
               icon={<FolderIcon preferences={icons} id={`project:${p.id}`}/>} mutate={mutate} report={report}
               paste={folder=>void pasteCapture({category:null,project:p.id,folder})} rename={()=>setModal({kind:'renameProject',id:p.id})} remove={()=>setModal({kind:'deleteProject',id:p.id})}
               homeProps={homeDrag(`project:${p.id}`)} externalDrop={(data,folder)=>queueImageDrop(data,null,{project:p.id,folder})}/>)}

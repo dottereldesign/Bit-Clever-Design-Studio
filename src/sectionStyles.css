@@ -169,3 +169,13 @@
 .section-feature:where(.section-marketing){--section-ink:#69502e;--section-tint:#eee8db;--section-accent:#a7864f}
 .section-feature:where(.section-leads){--section-ink:#365c61;--section-tint:#e1eded;--section-accent:#5d9398}
 .section-marketing .section-chevron,.section-leads .section-chevron{display:none}
+.section-colour-control{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+.section-colour-control label{display:flex;align-items:center;gap:10px;cursor:pointer}
+.section-colour-control input[type=color]{width:30px;height:30px;padding:2px;border:1px solid #8885;border-radius:4px;background:transparent;cursor:pointer}
+.section-colour-control button{font-size:11px;padding:4px 8px}
+.section-colour-dismiss{position:fixed;inset:0;z-index:10000;background:transparent}
+.section-colour-menu{position:absolute;width:270px;padding:14px;background:var(--bg,#fff);color:var(--text,#253024);border:1px solid #8885;box-shadow:0 8px 28px #0002;border-radius:6px}
+.section-colour-menu>button{margin-top:10px}
+/* Explicit colours also tint styles whose original palettes were hard-coded. */
+.section-feature[data-custom-colour=true]>.sidebar-heading{color:var(--section-ink)}
+.section-feature[data-custom-colour=true]:is(.section-style-12,.section-style-13,.section-style-14,.section-style-15,.section-style-17,.section-style-19,.section-style-20)>.sidebar-heading{background:var(--section-tint);color:var(--section-ink)}
