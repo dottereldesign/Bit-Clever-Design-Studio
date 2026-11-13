@@ -11,3 +11,5 @@
 .studio-handover{max-width:900px;margin:24px 0;padding:18px;background:#edf0e9}.studio-handover p{font-size:13px;line-height:1.6;color:#68716a}.studio-handover button{margin-left:8px}.studio-follow-group{margin:12px 0 22px}.studio-follow-group h2{display:flex;gap:8px}.studio-follow-group h2 small{color:#74806d}.studio-associations .studio-quick-add{max-width:320px}.studio-actions>p{font-size:13px;color:#68716a}
 
 .studio-metrics .studio-field>span{display:block}.studio-parent-notice{margin:12px 28px;color:#68716a;font-size:13px}
+
+.calendar-connection{margin:20px 0;max-width:850px}.calendar-connection h2{font-size:16px}.calendar-connection p,.calendar-connection small{color:#68716a;font-size:13px;line-height:1.6}.calendar-connection label{display:flex;flex-direction:column;gap:8px;margin:12px 0}.calendar-connection input{padding:10px;max-width:650px}.calendar-connection button,.studio-meeting button{margin:8px 8px 8px 0}.calendar-connection small{display:block}.calendar-settings{margin-bottom:18px}.studio-meeting{max-width:900px}

@@ -1,7 +1,8 @@
 import type { MoodboardNode, ProjectOverviewData } from './model';
-export type StudioKind = 'lead' | 'campaign' | 'contact' | 'organization' | 'content' | 'activity' | 'pipeline';
+export type StudioKind = 'lead' | 'campaign' | 'contact' | 'organization' | 'content' | 'activity' | 'pipeline' | 'meeting';
 export type StudioEntry = {
     id: string;
+    meeting?: import('./calendarImport').Meeting;
     kind: StudioKind;
     name: string;
     archived: boolean;
@@ -63,5 +64,5 @@ export function followUpGroup(entry:StudioEntry,day=today()):string {
 export const followUpGroups=['Overdue','Today','Upcoming','No date','Closed leads'];
 export function calendarEntries(entries:StudioEntry[],scope?:string){
  const byId=new Map(entries.map(e=>[e.id,e]));
- return entries.filter(e=>!e.archived&&(!e.parent||!byId.get(e.parent)?.archived)&&(scope?e.id===scope||e.parent===scope:e.kind==='campaign'||e.kind==='content'));
+ return entries.filter(e=>!e.archived&&(!e.parent||!byId.get(e.parent)?.archived)&&(scope?e.id===scope||e.parent===scope:e.kind==='campaign'||e.kind==='content'||e.kind==='meeting'));
 }

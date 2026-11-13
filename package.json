@@ -10,7 +10,7 @@
     "package": "node scripts/desktop.mjs build",
     "prepare:downloader": "node scripts/prepare-downloader.mjs",
     "prepare:media": "node scripts/prepare-media.mjs",
-    "test": "tsx --test src/model.test.ts src/zoom.test.ts src/videoQueue.test.ts src/masonry.test.ts src/mediaQueue.test.ts src/homeLayout.test.ts src/sidebarSpace.test.ts src/appHistory.test.ts src/diagnosticContext.test.ts src/studio.test.ts",
+    "test": "tsx --test src/model.test.ts src/zoom.test.ts src/videoQueue.test.ts src/masonry.test.ts src/mediaQueue.test.ts src/homeLayout.test.ts src/sidebarSpace.test.ts src/appHistory.test.ts src/diagnosticContext.test.ts src/studio.test.ts src/calendarImport.test.ts",
     "diagnose:performance": "node scripts/check-grid-return.mjs performance",
     "diagnose:processes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/monitor-performance.ps1",
     "test:clipboard-scroll": "node scripts/check-grid-return.mjs clipboard-scroll",
@@ -40,6 +40,7 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2.5.0",
+    "ical.js": "^2.2.1",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

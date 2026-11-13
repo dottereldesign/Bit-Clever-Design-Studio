@@ -1,3 +1,4 @@
+import CalendarConnection,{useCalendarSync} from './CalendarConnection';
 import {setDiagnosticContext,setDiagnosticRecords,opaqueId} from './diagnosticContext';
 import StudioWorkspace from "./StudioWorkspace";
 import type {StudioRoute} from "./studio";
@@ -389,6 +390,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setReady(true);
     return next;
   }, []);
+  useCalendarSync(ready,refresh);
   const report = useCallback((e: unknown) => {recordDiagnostic('ui.error','error',0,{error_code:errorCode(e)});setError(tidyError(e));}, []);
   useEffect(()=>trackLibraryPreferences(report),[report]);
   const videoQueue = useVideoQueue(ready && isTauri(), refresh, report);
@@ -2582,7 +2584,7 @@ function Dialog({
           </>
         ) : kind === "settings" ? (
           <div className="settings-content">
-            <Diagnostics/>
+            <CalendarConnection/><Diagnostics/>
             <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
               <span className="setting-label">Keyboard shortcuts</span>
               <div className="shortcuts">

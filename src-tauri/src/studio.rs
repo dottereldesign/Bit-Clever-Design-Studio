@@ -10,6 +10,7 @@ use std::collections::HashMap;
 #[serde(default, deny_unknown_fields)]
 pub struct Entry {
     pub id: String,
+    pub meeting: Option<crate::calendar_sync::Meeting>,
     pub kind: String,
     pub name: String,
     pub archived: bool,
@@ -114,6 +115,7 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
             "content",
             "activity",
             "pipeline",
+            "meeting",
         ]
         .contains(&e.kind.as_str())
         || e.name.trim().is_empty()
@@ -375,6 +377,7 @@ pub fn change(db: &Connection, input: &str) -> Result<()> {
     let v: Value = serde_json::from_str(input).map_err(err)?;
     let id = v["id"].as_str().ok_or("Missing record")?;
     let old = get(db, id)?;
+    if old.as_ref().is_some_and(|e|e.kind=="meeting"){return Err("Edit this meeting in Google Calendar, then sync.".into());}
     let mut data = serde_json::to_value(old.clone().unwrap_or_default()).map_err(err)?;
     let patch = v["patch"].as_object().ok_or("Missing record changes")?;
     for (k, value) in patch {
