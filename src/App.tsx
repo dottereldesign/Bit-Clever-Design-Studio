@@ -1,3 +1,4 @@
+import { useAppBranding } from "./AppBranding";
 import ClientsWorkspace from "./ClientsWorkspace";
 import ResearchWorkspace, {researchPages} from "./ResearchWorkspace";
 import {OnboardingSettings} from "./LeadsTour";
@@ -257,6 +258,7 @@ function Popover({
 }
 
 export default function App({startOnHome}:{startOnHome?:boolean}={}) {
+ const branding=useAppBranding();
   useSelectionAppearance();
   const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
   const savedView=savedSession?.view;
@@ -1327,8 +1329,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
-          <img src={appLogo} alt="" className="brand-logo" />
-          <span className="brand-name"><span>Bit Clever</span><span>Studio</span></span>
+          <img src={branding.logo || appLogo} alt="" className="brand-logo" style={{width:branding.size,height:branding.size,maxWidth:"45%"}} />
+          <span className={`brand-name ${branding.name!=="Bit Clever Studio"?"custom-brand-name":""}`}>{branding.name==="Bit Clever Studio"?<><span>Bit Clever</span><span>Studio</span></>:<span>{branding.name}</span>}</span>
         </button>
         <SidebarNavigation order={navLayout.order}>
         <SidebarSection name="Marketing" action={<IconButton title="Add campaign" onClick={()=>startSectionAdd('marketing')}><Plus size={14}/></IconButton>} identity="marketing" styleId={sectionStyle} onOpen={()=>openStudio({section:'marketing',page:'campaigns'})} icon={icons.overrides['section:Marketing']&&<AppIcon value={icons.overrides['section:Marketing']}/>}><nav>{['campaigns','ideas','calendar'].map(page=><button key={page} className={`nav-item ${studioView?.section==='marketing'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='marketing'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'marketing',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>

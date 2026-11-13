@@ -19,6 +19,7 @@ mod project_overview;
 mod client_records;
 mod studio;
 mod clients;
+mod branding;
 mod calendar_sync;
 mod library_export;
 mod managed_library;
@@ -682,6 +683,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            branding::apply_app_branding,
             calendar_initialise,calendar_connect,calendar_disconnect,calendar_feed,calendar_apply,diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
             website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
             client_feed,
