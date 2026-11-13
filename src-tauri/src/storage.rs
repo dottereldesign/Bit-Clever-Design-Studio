@@ -9,10 +9,15 @@ fn measure(paths:Vec<PathBuf>,seen:&mut HashSet<PathBuf>,partial:&mut bool)->u64
  let mut bytes=0u64;
  for root in paths {
   if !root.exists(){continue;}
+  let root=match root.canonicalize(){Ok(p)=>p,Err(_)=>{*partial=true;continue;}};
+  if seen.contains(&root){continue;}
   for entry in walkdir::WalkDir::new(root).follow_links(false) {
    let entry=match entry {Ok(e)=>e,Err(_)=>{*partial=true;continue;}};
+   if entry.file_type().is_dir(){seen.insert(entry.path().to_path_buf());continue;}
    if !entry.file_type().is_file(){continue;}
-   let key=match entry.path().canonicalize(){Ok(p)=>p,Err(_)=>{*partial=true;continue;}};
+   // The root is canonical and WalkDir never follows symlinks. Child paths
+   // are already resolved: avoid a Windows filesystem lookup for every file.
+   let key=entry.path().to_path_buf();
    if !seen.insert(key){continue;}
    match entry.metadata(){Ok(m)=>bytes=bytes.saturating_add(m.len()),Err(_)=>*partial=true}
   }
@@ -43,4 +48,12 @@ pub fn usage(db_path:&Path,app_files:Vec<PathBuf>)->Result<Usage>{
   let a=usage(&db_path,vec![app.clone(),app.clone()]).unwrap();assert_eq!(a.library_bytes,100);assert_eq!(a.app_bytes,30);assert!(a.data_bytes>0);assert_eq!(a.bytes,a.data_bytes+130);assert!(!a.partial);
   std::fs::write(&media,vec![0;240]).unwrap();assert_eq!(usage(&db_path,vec![app]).unwrap().library_bytes,240);
  }
+ #[test] fn overlapping_roots_and_normalised_file_aliases_count_once(){
+  let temp=tempfile::tempdir().unwrap();let root=temp.path().join("media");let nested=root.join("nested");std::fs::create_dir_all(&nested).unwrap();
+  let file=nested.join("image.png");std::fs::write(&file,[0;123]).unwrap();std::fs::write(root.join("other.png"),[0;77]).unwrap();
+  let mut seen=HashSet::new();let mut partial=false;
+  assert_eq!(measure(vec![root.clone(),nested.clone(),file.clone(),nested.join("..").join("nested/image.png")],&mut seen,&mut partial),200);
+  assert_eq!(measure(vec![file,root],&mut seen,&mut partial),0);assert!(!partial);
+ }
+
 }
