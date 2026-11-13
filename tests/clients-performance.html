@@ -10,12 +10,12 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));const assert=(value,message)=>{
 const button=(text,scope=document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text);const fill=(el,value)=>{assert(el,'Missing field');const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,value);el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));};
 async function field(label,value){const el=document.querySelector(`[aria-label="${label}"]`);el.focus();fill(el,value);await pause(30);el.blur();await pause(120);}
 try{
- await until(()=>document.querySelector('[aria-label="Clients"]'),'Startup');
+ await until(()=>document.querySelector('[aria-label="Organisations"]'),'Startup');
  const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  const timings=[];
  for(let i=0;i<8;i++){
   if(document.querySelector('[aria-label="Leads"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Leads"]').click();document.querySelector('.section-leads .nav-item').click();await until(()=>document.querySelector('.studio-workspace'),'Leads');await frames();
-  const start=performance.now();if(document.querySelector('[aria-label="Clients"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Clients"]').click();document.querySelector('.section-clients .nav-item').click();await until(()=>document.querySelector('.clients-workspace'),'Clients');await frames();timings.push(Math.round(performance.now()-start));
+  const start=performance.now();if(document.querySelector('[aria-label="Organisations"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Organisations"]').click();document.querySelector('.section-clients .nav-item').click();await until(()=>document.querySelector('.clients-workspace'),'Clients');await frames();timings.push(Math.round(performance.now()-start));
  }
  await until(()=>document.querySelector('.client-activity-row'),'Feed');
  const reads=calls.filter(c=>c.command==='get_library').length,setup=calls.filter(c=>c.command==='clients_initialise').length,oldSetup=calls.filter(c=>c.command==='update'&&c.args.change.action==='setup_clients').length,feeds=calls.filter(c=>c.command==='client_feed').length;

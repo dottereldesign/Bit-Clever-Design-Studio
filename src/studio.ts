@@ -67,3 +67,5 @@ export function calendarEntries(entries:StudioEntry[],scope?:string){
  const byId=new Map(entries.map(e=>[e.id,e]));
  return entries.filter(e=>!e.archived&&(!e.parent||!byId.get(e.parent)?.archived)&&(scope?e.id===scope||e.parent===scope:e.kind==='campaign'||e.kind==='content'||e.kind==='meeting'));
 }
+
+export const isOrganisation = (entry: StudioEntry) => entry.kind === 'client' || entry.kind === 'organization';

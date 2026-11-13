@@ -17,10 +17,10 @@ pub fn init(db:&Connection)->Result<()> {
    let title=format!("COALESCE(json_extract({a}.data,'$.name'),json_extract({a}.data,'$.title'),'Project overview')");
    let matching=if table=="studio_records" {
     let sides=if op=="UPDATE"{vec!["OLD","NEW"]}else{vec![a]};
-    sides.iter().map(|s|format!("c.id={s}.id OR c.id=json_extract({s}.data,'$.parent') OR EXISTS(SELECT 1 FROM json_each(c.data,'$.projects') cp JOIN json_each({s}.data,'$.projects') ep ON cp.value=ep.value)")).collect::<Vec<_>>().join(" OR ")
+    sides.iter().map(|s|format!("c.id={s}.id OR c.id=json_extract({s}.data,'$.organization') OR c.id=json_extract({s}.data,'$.parent') OR EXISTS(SELECT 1 FROM json_each(c.data,'$.projects') cp JOIN json_each({s}.data,'$.projects') ep ON cp.value=ep.value)")).collect::<Vec<_>>().join(" OR ")
    }else{format!("EXISTS(SELECT 1 FROM json_each(c.data,'$.projects') p WHERE p.value={a}.project_id)")};
-   let self_row=if table=="studio_records"&&old{" UNION SELECT OLD.id WHERE OLD.kind='client'"}else{""};
-   let clients=format!("(SELECT json_group_array(id) FROM (SELECT c.id FROM studio_records c WHERE c.kind='client' AND ({matching}){self_row}))");
+   let self_row=if table=="studio_records"&&old{" UNION SELECT OLD.id WHERE OLD.kind IN ('client','organization')"}else{""};
+   let clients=format!("(SELECT json_group_array(id) FROM (SELECT c.id FROM studio_records c WHERE c.kind IN ('client','organization') AND ({matching}){self_row}))");
    let compact=|side:&str|if table=="studio_records"{format!("json_set({side}.data,'$.avatar',CASE WHEN length(COALESCE(json_extract({side}.data,'$.avatar'),''))=0 THEN '' ELSE 'Profile picture ('||length(json_extract({side}.data,'$.avatar'))||' bytes)' END)")}else{format!("{side}.data")};
    let before=if old{compact("OLD")}else{"NULL".into()};let after=if new{compact("NEW")}else{"NULL".into()};
    let changed=if op=="UPDATE"{"json_remove(OLD.data,'$.updated')<>json_remove(NEW.data,'$.updated') AND "}else{""};
@@ -29,10 +29,10 @@ pub fn init(db:&Connection)->Result<()> {
  }
 
  for (op,a,before,after) in [("INSERT","NEW","NULL","json_object('file',i.name)"),("DELETE","OLD","json_object('file',i.name)","NULL")] {
-  db.execute_batch(&format!("DROP TRIGGER IF EXISTS client_feed_membership_{op};CREATE TRIGGER client_feed_membership_{op} AFTER {op} ON item_projects WHEN COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update')<>'import_client_backup' BEGIN INSERT INTO client_events(event_key,clients,entity,record,project,title,before_data,after_data,action,batch,at) SELECT lower(hex(randomblob(16))),(SELECT json_group_array(c.id) FROM studio_records c WHERE c.kind='client' AND EXISTS(SELECT 1 FROM json_each(c.data,'$.projects') p WHERE p.value={a}.label_id)),'files',CAST(i.id AS TEXT),{a}.label_id,i.name,{before},{after},COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update'),COALESCE(NULLIF((SELECT value FROM settings WHERE key='client_event_batch'),''),lower(hex(randomblob(16)))),CAST(strftime('%s','now') AS INTEGER) FROM items i WHERE i.id={a}.item_id AND EXISTS(SELECT 1 FROM studio_records c,json_each(c.data,'$.projects') p WHERE c.kind='client' AND p.value={a}.label_id);END;")).map_err(err)?;
+  db.execute_batch(&format!("DROP TRIGGER IF EXISTS client_feed_membership_{op};CREATE TRIGGER client_feed_membership_{op} AFTER {op} ON item_projects WHEN COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update')<>'import_client_backup' BEGIN INSERT INTO client_events(event_key,clients,entity,record,project,title,before_data,after_data,action,batch,at) SELECT lower(hex(randomblob(16))),(SELECT json_group_array(c.id) FROM studio_records c WHERE c.kind IN ('client','organization') AND EXISTS(SELECT 1 FROM json_each(c.data,'$.projects') p WHERE p.value={a}.label_id)),'files',CAST(i.id AS TEXT),{a}.label_id,i.name,{before},{after},COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update'),COALESCE(NULLIF((SELECT value FROM settings WHERE key='client_event_batch'),''),lower(hex(randomblob(16)))),CAST(strftime('%s','now') AS INTEGER) FROM items i WHERE i.id={a}.item_id AND EXISTS(SELECT 1 FROM studio_records c,json_each(c.data,'$.projects') p WHERE c.kind IN ('client','organization') AND p.value={a}.label_id);END;")).map_err(err)?;
  }
 
- db.execute_batch("DROP TRIGGER IF EXISTS client_feed_item_edit;CREATE TRIGGER client_feed_item_edit AFTER UPDATE OF name,archived,missing ON items WHEN (OLD.name<>NEW.name OR OLD.archived<>NEW.archived OR OLD.missing<>NEW.missing) AND COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update')<>'import_client_backup' BEGIN INSERT INTO client_events(event_key,clients,entity,record,title,before_data,after_data,action,batch,at) SELECT lower(hex(randomblob(16))),json_group_array(c.id),'files',CAST(NEW.id AS TEXT),NEW.name,json_object('name',OLD.name,'archived',json(CASE OLD.archived WHEN 1 THEN 'true' ELSE 'false' END),'missing',OLD.missing),json_object('name',NEW.name,'archived',json(CASE NEW.archived WHEN 1 THEN 'true' ELSE 'false' END),'missing',NEW.missing),COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update'),COALESCE(NULLIF((SELECT value FROM settings WHERE key='client_event_batch'),''),lower(hex(randomblob(16)))),CAST(strftime('%s','now') AS INTEGER) FROM studio_records c WHERE c.kind='client' AND (EXISTS(SELECT 1 FROM item_projects ip JOIN json_each(c.data,'$.projects') p ON p.value=ip.label_id WHERE ip.item_id=NEW.id) OR EXISTS(SELECT 1 FROM studio_records r,json_each(r.data,'$.files') f WHERE (r.id=c.id OR json_extract(r.data,'$.parent')=c.id) AND f.value=NEW.id)) HAVING count(*)>0;END;").map_err(err)?;
+ db.execute_batch("DROP TRIGGER IF EXISTS client_feed_item_edit;CREATE TRIGGER client_feed_item_edit AFTER UPDATE OF name,archived,missing ON items WHEN (OLD.name<>NEW.name OR OLD.archived<>NEW.archived OR OLD.missing<>NEW.missing) AND COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update')<>'import_client_backup' BEGIN INSERT INTO client_events(event_key,clients,entity,record,title,before_data,after_data,action,batch,at) SELECT lower(hex(randomblob(16))),json_group_array(c.id),'files',CAST(NEW.id AS TEXT),NEW.name,json_object('name',OLD.name,'archived',json(CASE OLD.archived WHEN 1 THEN 'true' ELSE 'false' END),'missing',OLD.missing),json_object('name',NEW.name,'archived',json(CASE NEW.archived WHEN 1 THEN 'true' ELSE 'false' END),'missing',NEW.missing),COALESCE((SELECT value FROM settings WHERE key='client_event_action'),'update'),COALESCE(NULLIF((SELECT value FROM settings WHERE key='client_event_batch'),''),lower(hex(randomblob(16)))),CAST(strftime('%s','now') AS INTEGER) FROM studio_records c WHERE c.kind IN ('client','organization') AND (EXISTS(SELECT 1 FROM item_projects ip JOIN json_each(c.data,'$.projects') p ON p.value=ip.label_id WHERE ip.item_id=NEW.id) OR EXISTS(SELECT 1 FROM studio_records r,json_each(r.data,'$.files') f WHERE (r.id=c.id OR json_extract(r.data,'$.parent')=c.id) AND f.value=NEW.id)) HAVING count(*)>0;END;").map_err(err)?;
  Ok(())
 }
 pub fn seed(db:&Connection)->Result<()> {
@@ -40,7 +40,7 @@ pub fn seed(db:&Connection)->Result<()> {
   let tx=db;
   let mut q=tx.prepare("SELECT id,name FROM projects").map_err(err)?;let projects=q.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;drop(q);
   for (id,name) in [("client:aanzpa","AANZPA"),("client:hoea-to-waka","Hoea tō Waka")]{
-   if crate::studio::get(&tx,id)?.is_none()&&!crate::studio::load(&tx)?.iter().any(|c|c.kind=="client"&&normal(&c.name)==normal(name)){let e=crate::studio::Entry{id:id.into(),name:name.into(),kind:"client".into(),status:"active".into(),currency:"NZD".into(),projects:projects.iter().filter(|(_,n)|normal(n)==normal(name)).map(|(id,_)|*id).collect(),created:db::now(),updated:db::now(),..Default::default()};crate::studio::put(&tx,&e)?;}
+   if crate::studio::get(&tx,id)?.is_none()&&!crate::studio::load(&tx)?.iter().any(|c|(c.kind=="client"||c.kind=="organization")&&normal(&c.name)==normal(name)){let e=crate::studio::Entry{id:id.into(),name:name.into(),kind:"client".into(),status:"active".into(),currency:"NZD".into(),projects:projects.iter().filter(|(_,n)|normal(n)==normal(name)).map(|(id,_)|*id).collect(),created:db::now(),updated:db::now(),..Default::default()};crate::studio::put(&tx,&e)?;}
   }
   db::set_setting(&tx,"client_profiles_v1","1")?;
  }
@@ -49,8 +49,8 @@ pub fn seed(db:&Connection)->Result<()> {
 fn normal(s:&str)->String{s.to_lowercase().replace('ō',"o").split_whitespace().collect::<Vec<_>>().join(" ")}
 pub fn lead_client(db:&Connection,lead:&crate::studio::Entry,target:Option<i64>)->Result<String>{
  let target=target.or_else(||if lead.projects.len()==1{lead.projects.first().copied()}else{None}).or_else(||db.query_row("SELECT id FROM projects WHERE lower(trim(name))=lower(trim(?))",[&lead.name],|r|r.get::<_,i64>(0)).ok());
- let clients=crate::studio::load(db)?.into_iter().filter(|c|c.kind=="client"&&!c.archived).collect::<Vec<_>>();
- let matches=clients.iter().filter(|c|target.is_some_and(|p|c.projects.contains(&p))||(!lead.organization.is_none()&&c.organization==lead.organization)||normal(&c.name)==normal(&lead.name)).collect::<Vec<_>>();
+ let clients=crate::studio::load(db)?.into_iter().filter(|c|(c.kind=="client"||c.kind=="organization")&&!c.archived).collect::<Vec<_>>();
+ let matches=clients.iter().filter(|c|lead.organization.as_deref()==Some(c.id.as_str())||target.is_some_and(|p|c.projects.contains(&p))||(!lead.organization.is_none()&&c.organization==lead.organization)||normal(&c.name)==normal(&lead.name)).collect::<Vec<_>>();
  if matches.len()>1{return Err("More than one client matches this lead. Link its project to one client before handover.".into());}
  Ok(matches.first().map(|c|c.id.clone()).unwrap_or(format!("client:lead:{}",lead.id)))
 }
@@ -76,6 +76,24 @@ pub fn import(db:&Connection,events:Vec<Event>,projects:&std::collections::HashM
  use super::*;use serde_json::json;use std::path::Path;
  fn edit(path:&Path,id:&str,patch:serde_json::Value)->Result<()>{db::change(path,serde_json::from_value(json!({"action":"update_studio","value":json!({"id":id,"patch":patch}).to_string()})).unwrap())}
  fn command(path:&Path,action:&str){db::change(path,serde_json::from_value(json!({"action":action})).unwrap()).unwrap();}
+ #[test]fn contacts_link_to_organisation_profiles_and_legacy_organisations(){
+  let tmp=tempfile::tempdir().unwrap();let path=tmp.path().join("db.sqlite");db::init(&path).unwrap();
+  for kind in ["client","organization"] {
+   let id=format!("org-{kind}");
+   edit(&path,&id,json!({"kind":kind,"name":format!("Organisation {kind}")})).unwrap();
+   let contact=format!("person-{kind}");
+   edit(&path,&contact,json!({"kind":"contact","name":"Person","organization":id})).unwrap();
+   let c=db::connect(&path).unwrap();
+   assert!(events(&c,Some(&id),None,100).unwrap().iter().any(|e|e.record==contact));
+   edit(&path,&format!("note-{kind}"),json!({"kind":"client_entry","name":"Notes","parent":id,"service":"note"})).unwrap();
+   let lead=crate::studio::Entry{id:"lead".into(),kind:"lead".into(),name:"Different project name".into(),organization:Some(id.clone()),..Default::default()};
+   assert_eq!(lead_client(&c,&lead,None).unwrap(),id);
+   command(&path,"undo_organisation");
+   assert!(crate::studio::get(&c,&format!("note-{kind}")).unwrap().is_none());
+   command(&path,"redo_organisation");
+   assert!(crate::studio::get(&c,&format!("note-{kind}")).unwrap().is_some());
+  }
+ }
  #[test]fn profile_seed_feed_undo_backup_and_remap(){
   let tmp=tempfile::tempdir().unwrap();let path=tmp.path().join("source.sqlite");db::init(&path).unwrap();let c=db::connect(&path).unwrap();c.execute("INSERT INTO projects(id,name) VALUES(7,'AANZPA'),(8,'Hoea to Waka')",[]).unwrap();
   command(&path,"setup_clients");command(&path,"setup_clients");assert_eq!(crate::studio::load(&c).unwrap().iter().filter(|e|e.kind=="client").count(),2);assert_eq!(crate::studio::get(&c,"client:aanzpa").unwrap().unwrap().projects,vec![7]);assert_eq!(crate::studio::get(&c,"client:hoea-to-waka").unwrap().unwrap().projects,vec![8]);

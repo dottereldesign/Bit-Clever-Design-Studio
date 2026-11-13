@@ -18,18 +18,18 @@
 | --- | --- | --- |
 | **Marketing** | Plan campaigns, organise creative assets and schedule content. | Development |
 | **Leads** | Track opportunities, contacts and follow-ups through to a project. | Development |
-| **Clients** | Prepare meetings, track tasks and pricing, keep documents and a lasting relationship history. | Development |
+| **Organisations** | Prepare meetings, track tasks and pricing, keep documents and a lasting relationship history. | Development |
 | **Projects** | Manage files, briefs, deadlines, next actions, client records and moodboards. | Available |
 | **General** | Save websites, links, resources, fonts and brand guidelines. | Available |
 | **Design Inspo** | Collect visual references in flexible, shared folders. | Available |
 | **App Components** | Organise interface references, components and page templates. | Available |
 | **Research** | Analyse markets, competitors and pricing; keep plans, books, podcasts, courses and findings. | Development |
 
-Clients, Marketing, Leads and Research are available in the development workspace. Installed releases can lag behind source changes; check release notes before downloading. [Leads and Marketing details](docs/STUDIO-WORKSPACES.md).
+Organisations, Marketing, Leads and Research are available in the development workspace. Installed releases can lag behind source changes; check release notes before downloading. [Leads and Marketing details](docs/STUDIO-WORKSPACES.md).
 
 ## Client relationships
 
-Open **Clients → Today** for upcoming meetings, due tasks, waiting items and the combined activity feed. Each profile has Feed, Meetings, Tasks, Files and Pricing tabs, a cropped display picture and links to existing projects. Shared project tasks and contacts stay in their original records.
+Open **Organisations → Dashboard** for upcoming meetings, due tasks, waiting items and the combined activity feed. Each profile has Feed, Meetings, Tasks, Files and Pricing tabs, a cropped display picture and links to existing projects. Lead contacts link to these same organisations. Add an organisation from the sidebar or the contact form. Shared project tasks and contacts stay in their original records.
 
 Saved relationship changes, including undo/redo, have a durable local history included in metadata and portable backups. Client imports stay out of the Design Inspo inbox. Meeting packs contain a printable HTML document and the selected original attachments; use your browser’s Print → Save as PDF when needed. Email exchanges and payments are tracked manually. [Implementation and coverage](docs/CLIENTS.md).
 

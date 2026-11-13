@@ -5,7 +5,7 @@ import { useHistoryState } from './useAppHistory';
 export const sectionIdentities=['clients','marketing','leads','projects','general','design','components','research'] as const;
 type Identity=typeof sectionIdentities[number];
 type Colours=Partial<Record<Identity,string>>;
-const labels:Record<Identity,string>={clients:'Clients',marketing:'Marketing',leads:'Leads',projects:'Projects',general:'General',design:'Design Inspo',components:'App Components',research:'Research'};
+const labels:Record<Identity,string>={clients:'Organisations',marketing:'Marketing',leads:'Leads',projects:'Projects',general:'General',design:'Design Inspo',components:'App Components',research:'Research'};
 const defaults:Record<Identity,string>={clients:'#21698c',marketing:'#a52b62',leads:'#007b83',projects:'#8c70a4',general:'#626b5d',design:'#b72e42',components:'#5369c3',research:'#8c6418'};
 function read():Colours {try{const value=JSON.parse(localStorage.getItem('sidebar-section-colours')||'{}');return Object.fromEntries(Object.entries(value).filter(([k,v])=>sectionIdentities.includes(k as Identity)&&typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v)));}catch{return {};}}
 export const useSectionColours=()=>useHistoryState<Colours>('sidebar-section-colours',read,'Sidebar section colour');

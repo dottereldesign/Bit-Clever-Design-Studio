@@ -20,8 +20,8 @@ export function clientActivity(e:ClientEvent):Activity[]{
  if(rows.length)return rows;
  if(a&&b&&!Object.keys({...b,...a}).some(k=>!['actions','files','updated','created'].includes(k)&&JSON.stringify(a[k])!==JSON.stringify(b[k])))return [];
  const service=data.service??data.kind;
- const kind:Activity['kind']=e.entity==='files'?'file':service==='meeting'?'meeting':service==='quote'?'pricing':e.entity==='client_contacts'?'contact':data.kind==='client'?'client':'note';
- const noun=kind==='pricing'?'a quote':kind==='client'?'client details':kind==='note'&&e.entity==='project_overviews'?'project details':`a ${kind}`;
+ const kind:Activity['kind']=e.entity==='files'?'file':service==='meeting'?'meeting':service==='quote'?'pricing':e.entity==='client_contacts'||data.kind==='contact'?'contact':['client','organization'].includes(data.kind)?'client':'note';
+ const noun=kind==='pricing'?'a quote':kind==='client'?'organisation details':kind==='note'&&e.entity==='project_overviews'?'project details':`a ${kind}`;
  return [{kind,label:prefix+verb+' '+noun,title:e.title,removed:!a,file:kind==='file'?Number(e.record):undefined}];
 }
 

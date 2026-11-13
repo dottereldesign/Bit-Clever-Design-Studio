@@ -304,13 +304,13 @@ pub fn validate_refs(db: &Connection, e: &Entry) -> Result<()> {
         )
         .chain(e.campaign.iter().map(|id| (id.as_str(), "campaign")))
     {
-        if !get(db, id)?.is_some_and(|r| r.kind == kind) {
+        if !get(db, id)?.is_some_and(|r| r.kind == kind || (kind == "organization" && r.kind == "client")) {
             return Err(format!("Associated {kind} is unavailable."));
         }
     }
     if let Some(id) = &e.parent {
         if !get(db, id)?.is_some_and(|r| {
-            if e.kind == "client_entry" {r.kind == "client"} else if e.kind == "activity" {
+            if e.kind == "client_entry" {r.kind == "client" || r.kind == "organization"} else if e.kind == "activity" {
                 r.kind == "lead"
             } else {
                 r.kind == "campaign"
@@ -427,7 +427,7 @@ pub fn change(db: &Connection, input: &str) -> Result<()> {
     if e.kind == "contact" {
         propagate_contact(db, &e)?;
     }
-    if e.kind == "organization" {
+    if e.kind == "organization" || e.kind == "client" {
         for c in load(db)?
             .iter()
             .filter(|c| c.kind == "contact" && c.organization.as_deref() == Some(&e.id))
@@ -578,13 +578,13 @@ pub fn snapshot(db: &Connection, id: &str) -> Result<Snapshot> {
     let entry = get(db, id)?;
     let clients = if entry
         .as_ref()
-        .is_some_and(|e| e.kind == "contact" || e.kind == "organization")
+        .is_some_and(|e| e.kind == "contact" || e.kind == "organization" || e.kind == "client")
     {
         crate::client_records::load(db)?
             .contacts
             .into_iter()
             .filter(|c| {
-                contact_id(c) == id || entry.as_ref().is_some_and(|e| e.kind == "organization")
+                contact_id(c) == id || entry.as_ref().is_some_and(|e| e.kind == "organization" || e.kind == "client")
             })
             .collect()
     } else {
