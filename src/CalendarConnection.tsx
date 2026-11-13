@@ -13,7 +13,7 @@ export function syncCalendar(){
 }
 export function useCalendarSync(ready:boolean,refresh:()=>Promise<unknown>){
  useEffect(()=>{if(!ready)return;let disposed=false;let timer:ReturnType<typeof setInterval>|undefined;
- void invoke<CalendarStatus>('calendar_initialise').then(async status=>{if(disposed||!status)return;publish({status});if(status.meetings.length)await refresh();if(status.connected)await syncCalendar();if(!disposed)timer=setInterval(()=>{if(snapshot.status?.connected)void syncCalendar();},15*60*1000);}).catch(()=>{if(!disposed)publish({error:'Calendar setup could not be loaded.'});});
+ void invoke<CalendarStatus & {initialised?:boolean}>('calendar_initialise').then(async status=>{if(disposed||!status)return;publish({status});if(status.initialised)await refresh();if(status.connected)await syncCalendar();if(!disposed)timer=setInterval(()=>{if(snapshot.status?.connected)void syncCalendar();},15*60*1000);}).catch(()=>{if(!disposed)publish({error:'Calendar setup could not be loaded.'});});
  const online=()=>{if(snapshot.status?.connected)void syncCalendar();};window.addEventListener('online',online);
  return()=>{disposed=true;clearInterval(timer);window.removeEventListener('online',online);};
  },[ready,refresh]);

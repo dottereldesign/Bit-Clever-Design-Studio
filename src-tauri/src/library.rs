@@ -26,7 +26,9 @@ pub fn kind(path: &Path) -> Option<&'static str> {
     }
 }
 pub fn scan(db_path: &Path, root: &Path) -> Result<usize> {
-    scan_named(db_path, root, "")
+    let count=scan_named(db_path, root, "")?;
+    refresh_missing(db_path)?;
+    Ok(count)
 }
 pub fn scan_all(db_path: &Path) -> Result<usize> {
     let db = db::connect(db_path)?;
@@ -34,9 +36,11 @@ pub fn scan_all(db_path: &Path) -> Result<usize> {
     if roots.is_empty() {
         return Err("Choose your Design folder first".into());
     }
-    roots.into_iter().try_fold(0, |count, (name, root)| {
+    let count=roots.into_iter().try_fold(0, |count, (name, root)| {
         scan_named(db_path, &root, &name).map(|n| count + n)
-    })
+    })?;
+    refresh_missing(db_path)?;
+    Ok(count)
 }
 fn scan_named(db_path: &Path, root: &Path, prefix: &str) -> Result<usize> {
     if !root.is_dir() {
@@ -83,32 +87,35 @@ fn scan_named(db_path: &Path, root: &Path, prefix: &str) -> Result<usize> {
     let mut db = db::connect(db_path)?;
     let managed=db::setting(&db,"managed_root").is_some();
     let tx = db.transaction().map_err(err)?;
-    for (path, name, kind, source, modified) in &records {
-        tx.execute("INSERT INTO items(path,name,kind,source,modified,added,missing) VALUES(?,?,?,?,?,?,0) ON CONFLICT(path) DO UPDATE SET kind=excluded.kind,source=CASE WHEN ? THEN items.source ELSE excluded.source END,modified=excluded.modified,missing=0",params![path,name,kind,source,modified,db::now(),managed]).map_err(err)?;
+    {
+        let mut upsert=tx.prepare_cached("INSERT INTO items(path,name,kind,source,modified,added,missing) VALUES(?,?,?,?,?,?,0) ON CONFLICT(path) DO UPDATE SET kind=excluded.kind,source=CASE WHEN ? THEN items.source ELSE excluded.source END,modified=excluded.modified,missing=0 WHERE items.kind!=excluded.kind OR items.modified!=excluded.modified OR items.missing!=0 OR (?=0 AND items.source!=excluded.source)").map_err(err)?;
+        for (path,name,kind,source,modified) in &records {
+            upsert.execute(params![path,name,kind,source,modified,db::now(),managed,managed]).map_err(err)?;
+        }
     }
     if managed && prefix=="App Components" {
         tx.execute("INSERT OR IGNORE INTO item_categories(item_id,name) SELECT id,'Components / Uncategorised' FROM items WHERE source='App Components'",[]).map_err(err)?;
     }
-    let existing: Vec<(i64, String)> = {
-        let mut stmt = tx
-            .prepare("SELECT id,path FROM items WHERE kind!='link'")
-            .map_err(err)?;
-        let rows = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?;
-        rows
-    };
-    for (id, path) in existing {
-        tx.execute(
-            "UPDATE items SET missing=? WHERE id=?",
-            params![!Path::new(&path).is_file(), id],
-        )
-        .map_err(err)?;
-    }
     tx.commit().map_err(err)?;
     Ok(records.len())
+}
+
+// Check all tracked files once per scan, including files outside the source roots.
+// Filesystem calls happen before the write transaction; unchanged rows aren't written.
+fn refresh_missing(db_path:&Path)->Result<()> {
+    let mut db=db::connect(db_path)?;
+    let existing:Vec<(i64,String,bool)>={
+        let mut stmt=db.prepare("SELECT id,path,missing FROM items WHERE kind!='link'").map_err(err)?;
+        let rows=stmt.query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(err)?.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;
+        rows
+    };
+    let changed=existing.into_iter().filter_map(|(id,path,before)|{let missing=!Path::new(&path).is_file();(missing!=before).then_some((id,missing))}).collect::<Vec<_>>();
+    if changed.is_empty(){return Ok(());}
+    let tx=db.transaction().map_err(err)?;
+    {let mut update=tx.prepare_cached("UPDATE items SET missing=? WHERE id=? AND missing!=?").map_err(err)?;
+    for (id,missing) in changed{update.execute(params![missing,id,missing]).map_err(err)?;}}
+    tx.commit().map_err(err)?;
+    Ok(())
 }
 
 pub(crate) fn run_ffmpeg(ffmpeg: &Path, args: &[&str], timeout: u64) -> Result<()> {
@@ -297,4 +304,23 @@ pub fn default_root() -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+#[cfg(test)]
+mod scan_efficiency_tests {
+ use super::*;
+ #[test]
+ fn unchanged_multiroot_scan_does_not_rewrite_items(){
+  let tmp=tempfile::tempdir().unwrap();let path=tmp.path().join("library.sqlite");db::init(&path).unwrap();let db=db::connect(&path).unwrap();
+  for (key,name) in [("root","Design"),("root_photography","Photography"),("root_videos","Videos")]{let root=tmp.path().join(name);fs::create_dir(&root).unwrap();db::set_setting(&db,key,root.to_str().unwrap()).unwrap();for i in 0..400{fs::write(root.join(format!("sample-{i}.png")),b"fixture").unwrap();}}
+  assert_eq!(scan_all(&path).unwrap(),1200);
+  db.execute_batch("CREATE TABLE scan_writes(id INTEGER); CREATE TRIGGER count_scan_updates AFTER UPDATE ON items BEGIN INSERT INTO scan_writes VALUES(NEW.id); END;").unwrap();
+  let start=Instant::now();scan_all(&path).unwrap();eprintln!("1200-file unchanged scan: {:?}",start.elapsed());
+  assert_eq!(db.query_row("SELECT COUNT(*) FROM scan_writes",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+  let removed=tmp.path().join("Design/sample-0.png");fs::remove_file(&removed).unwrap();scan_all(&path).unwrap();
+  assert_eq!(db.query_row("SELECT COUNT(*) FROM items WHERE missing=1",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+  assert_eq!(db.query_row("SELECT COUNT(*) FROM scan_writes",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+  fs::write(removed,b"returned").unwrap();scan_all(&path).unwrap();
+  assert_eq!(db.query_row("SELECT COUNT(*) FROM items WHERE missing=1",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+ }
 }

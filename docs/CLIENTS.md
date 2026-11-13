@@ -31,3 +31,11 @@ Export creates a new folder without overwriting another pack. It contains escape
 This is a private workspace, not a client portal. Gmail sync, sending emails/invitations, payment collection and accounting integrations are not included. Original sender/date/thread links can be entered for pasted email records; importing an `.eml` preserves the file without parsing all of its attachments automatically.
 
 The feed records database changes, not every view or keystroke. Related changes from one library edit are grouped into an expandable batch. Meeting PDF generation uses the browser print step rather than a bundled PDF service.
+
+## Navigation performance
+
+Opening Clients checks setup once per loaded library. An existing setup does not mutate records, reorganise files or reload the library. Successful activity requests are cached against the current library snapshot; edits invalidate that snapshot, and Refresh explicitly bypasses the cache. Collapsed batches and change details render their contents only when expanded.
+
+`node scripts/check-grid-return.mjs clients-performance` exercises eight visits with 4,000 synthetic references and 100 activity events, checks query counts, manual refresh and cancelled navigation measurements. A local 1440×940 comparison against commit `9f77c43` reduced library reads from 9 to 1 and feed reads from 16 to 1. Median click-to-two-frames time fell from 346 ms to 164 ms in that fixture. These are synthetic frontend measurements, not a guarantee for a live library or network drive.
+
+Native scan regression coverage checks 1,200 files across three roots: unchanged items are not rewritten, and missing/restored files remain detected. Calendar startup takes the content lock and requests a library refresh only when it needs to initialise missing meeting records.

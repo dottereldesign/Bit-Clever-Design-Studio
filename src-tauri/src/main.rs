@@ -171,6 +171,17 @@ async fn get_library(diagnostic_operation:Option<String>,state: tauri::State<'_,
         .map_err(err)?
 }
 #[tauri::command]
+async fn clients_initialise(state:tauri::State<'_,State>)->Result<bool>{
+    let s=state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        if db::setting(&db::connect(&s.db)?,"client_profiles_v1").is_some(){return Ok(false);}
+        let _guard=s.content_lock.lock().map_err(err)?;
+        if db::setting(&db::connect(&s.db)?,"client_profiles_v1").is_some(){return Ok(false);}
+        db::change(&s.db,serde_json::from_value(serde_json::json!({"action":"setup_clients"})).map_err(err)?)?;
+        Ok(true)
+    }).await.map_err(err)?
+}
+#[tauri::command]
 async fn update(change: db::Change, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<()> {
     let s=state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -553,7 +564,7 @@ fn open_external_url(url: String) -> Result<()> {
 }
 
 #[tauri::command]
-async fn calendar_initialise(app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::initialise(&folder,&s.db)?;calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
+async fn calendar_initialise(app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let mut changed=false;if calendar_sync::needs_initialise(&folder,&s.db)?{let _guard=s.content_lock.lock().map_err(err)?;changed=calendar_sync::initialise(&folder,&s.db)?;}let mut status=calendar_sync::status(&folder,&s.db)?;status.initialised=changed;Ok(status)}).await.map_err(err)?}
 #[tauri::command]
 async fn calendar_connect(url:String,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::connect(&folder,&s.db,&url)?;calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
 #[tauri::command]
@@ -683,7 +694,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            branding::apply_app_branding,
+            branding::apply_app_branding,clients_initialise,
             calendar_initialise,calendar_connect,calendar_disconnect,calendar_feed,calendar_apply,diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
             website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
             client_feed,

@@ -12,7 +12,7 @@ pub struct Meeting {
 #[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct Config {pub library:String,pub meetings:Vec<Meeting>,#[serde(default)]pub generation:String}
 #[derive(Serialize)]
-pub struct Status {pub connected:bool,pub last_sync:i64,pub meetings:Vec<Meeting>}
+pub struct Status {pub initialised:bool,pub connected:bool,pub last_sync:i64,pub meetings:Vec<Meeting>}
 pub fn config_path(folder:&Path)->PathBuf{folder.join("calendar-settings.json")}
 fn secret_path(folder:&Path)->PathBuf{folder.join("calendar-feed.protected")}
 pub fn config(folder:&Path,path:&Path)->Result<Config>{
@@ -27,7 +27,12 @@ pub fn config(folder:&Path,path:&Path)->Result<Config>{
 fn write_config(folder:&Path,c:&Config)->Result<()>{atomic(&config_path(folder),&serde_json::to_vec(c).map_err(err)?)}
 fn atomic(path:&Path,bytes:&[u8])->Result<()>{let mut file=tempfile::NamedTempFile::new_in(path.parent().ok_or("Calendar folder missing")?).map_err(err)?;file.write_all(bytes).map_err(err)?;file.persist(path).map_err(|_|"Could not save calendar settings.")?;Ok(())}
 fn identity(id:&str)->String{format!("calendar:{:x}",Sha256::digest(id.as_bytes()))}
-pub fn status(folder:&Path,path:&Path)->Result<Status>{let c=config(folder,path)?;let db=db::connect(path)?;Ok(Status{connected:!c.generation.is_empty()&&secret_path(folder).exists(),last_sync:db::setting(&db,"calendar_last_sync").and_then(|v|v.parse().ok()).unwrap_or(0),meetings:c.meetings})}
+pub fn status(folder:&Path,path:&Path)->Result<Status>{let c=config(folder,path)?;let db=db::connect(path)?;Ok(Status{initialised:false,connected:!c.generation.is_empty()&&secret_path(folder).exists(),last_sync:db::setting(&db,"calendar_last_sync").and_then(|v|v.parse().ok()).unwrap_or(0),meetings:c.meetings})}
+pub fn needs_initialise(folder:&Path,path:&Path)->Result<bool>{
+ let c=config(folder,path)?;let db=db::connect(path)?;
+ for meeting in c.meetings{if studio::get(&db,&identity(&meeting.source_id))?.is_none(){return Ok(true);}}
+ Ok(false)
+}
 pub fn initialise(folder:&Path,path:&Path)->Result<bool>{
  let c=config(folder,path)?;let db=db::connect(path)?;let tx=db.unchecked_transaction().map_err(err)?;let mut changed=false;
  for meeting in &c.meetings {if studio::get(&tx,&identity(&meeting.source_id))?.is_none(){save(&tx,meeting)?;changed=true;}}
@@ -102,7 +107,7 @@ mod tests {
  }
  #[test]fn selected_meetings_seed_once_sync_atomically_and_survive_metadata_restore(){
   let dir=tempfile::tempdir().unwrap();let path=dir.path().join("library.sqlite");db::init(&path).unwrap();db::connect(&path).unwrap().execute("INSERT INTO projects VALUES(1,'Example')",[]).unwrap();
-  let config=Config{library:path.to_string_lossy().into_owned(),meetings:vec![sample()],generation:"test-generation".into()};write_config(dir.path(),&config).unwrap();assert!(initialise(dir.path(),&path).unwrap());assert!(!initialise(dir.path(),&path).unwrap());
+  let config=Config{library:path.to_string_lossy().into_owned(),meetings:vec![sample()],generation:"test-generation".into()};write_config(dir.path(),&config).unwrap();assert!(needs_initialise(dir.path(),&path).unwrap());assert!(initialise(dir.path(),&path).unwrap());assert!(!needs_initialise(dir.path(),&path).unwrap());assert!(!initialise(dir.path(),&path).unwrap());
   std::fs::write(secret_path(dir.path()),b"test-placeholder").unwrap();
   let mut changed=sample();changed.start="2026-11-27T11:30:00+13:00".into();apply(dir.path(),&path,vec![changed.clone()],"test-generation").unwrap();assert_eq!(studio::get(&db::connect(&path).unwrap(),&identity("sample")).unwrap().unwrap().meeting.unwrap().start,changed.start);
   changed.project_name="Unrelated".into();assert!(apply(dir.path(),&path,vec![changed],"test-generation").is_err());
