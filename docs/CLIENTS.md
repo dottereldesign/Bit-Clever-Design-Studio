@@ -7,7 +7,7 @@ Clients is a local relationship workspace between Leads and Projects. The sectio
 - Dashboard: client profiles, upcoming meetings, due/overdue tasks, waiting tasks/records, activity filters and an optional startup preference.
 - Sidebar: drag client names to reorder them beneath the fixed Dashboard link. Escape cancels a drag; Alt + Up/Down reorders a focused client. Order is saved per library with undo/redo and appearance backups.
 - Profiles: name, status, picture upload/paste/drop with crop controls, general contact details, pinned notes and project associations.
-- Feed: compact icon rows identify meetings, tasks, pricing, files and notes. Click a row to open its record, task section or file. Client feeds hide technical diffs; the overall Dashboard retains detailed history. Saved notes, pasted email exchanges, decisions and durable automatic changes. Project records remain linked to their project editors.
+- Feed: compact icon rows identify meetings, tasks, pricing, files and notes. Click a row to open its record, task section or file. Both the client feed and Dashboard use this compact view; Dashboard rows also identify the client. Task edits within five minutes are grouped for display while the underlying event history stays intact. Saved notes, pasted email exchanges, decisions and durable automatic changes. Project records remain linked to their project editors.
 - Meetings: local date/time, attendees, meeting link, location, agenda, ordered agenda items, preparation checklist, notes, attachments and a follow-up action. Synced calendar meetings are read-only. Local meetings do not send invitations.
 - Tasks: client tasks alongside shared project tasks. Completion, priority and waiting status edit the same source record; client tasks also have editable dates.
 - Files: a list of explicitly added client files and attachments on its active records. Linked project files are not automatically included; Link from library deliberately adds a chosen reference. Removing an attachment removes its reference, not the underlying file.
@@ -35,7 +35,7 @@ The feed records database changes, not every view or keystroke. Related changes 
 
 ## Navigation performance
 
-Opening Clients checks setup once per loaded library. An existing setup does not mutate records, reorganise files or reload the library. Successful activity requests are cached against the current library snapshot; edits invalidate that snapshot, and Refresh explicitly bypasses the cache. Collapsed batches and change details render their contents only when expanded.
+Opening Clients checks setup once per loaded library. An existing setup does not mutate records, reorganise files or reload the library. Successful activity requests are cached against the current library snapshot; edits invalidate that snapshot, and Refresh explicitly bypasses the cache. Activity summaries are memoised, and offscreen rows defer their browser rendering.
 
 `node scripts/check-grid-return.mjs clients-performance` exercises eight visits with 4,000 synthetic references and 100 activity events, checks query counts, manual refresh and cancelled navigation measurements. A local 1440×940 comparison against commit `9f77c43` reduced library reads from 9 to 1 and feed reads from 16 to 1. Median click-to-two-frames time fell from 346 ms to 164 ms in that fixture. These are synthetic frontend measurements, not a guarantee for a live library or network drive.
 

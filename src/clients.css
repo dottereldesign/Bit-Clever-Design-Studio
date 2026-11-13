@@ -23,3 +23,5 @@
 
 .client-feed-compose { margin:12px 0;font-size:12px; }
 .client-feed-compose>summary { cursor:pointer;color:#63715e; }
+
+.client-activity-row { content-visibility:auto;contain-intrinsic-size:auto 64px; }

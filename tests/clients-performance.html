@@ -17,12 +17,12 @@ try{
   if(document.querySelector('[aria-label="Leads"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Leads"]').click();document.querySelector('.section-leads .nav-item').click();await until(()=>document.querySelector('.studio-workspace'),'Leads');await frames();
   const start=performance.now();if(document.querySelector('[aria-label="Clients"]').getAttribute('aria-expanded')!=='true')document.querySelector('[aria-label="Clients"]').click();document.querySelector('.section-clients .nav-item').click();await until(()=>document.querySelector('.clients-workspace'),'Clients');await frames();timings.push(Math.round(performance.now()-start));
  }
- await until(()=>document.querySelector('.clients-batch'),'Feed');
+ await until(()=>document.querySelector('.client-activity-row'),'Feed');
  const reads=calls.filter(c=>c.command==='get_library').length,setup=calls.filter(c=>c.command==='clients_initialise').length,oldSetup=calls.filter(c=>c.command==='update'&&c.args.change.action==='setup_clients').length,feeds=calls.filter(c=>c.command==='client_feed').length;
  if(!new URLSearchParams(location.search).has('baseline')){
- assert(reads===1,'Reopening Clients must not reload library: '+reads);assert(setup===1,'Initialise once per library: '+setup);assert(oldSetup===0,'Do not mutate on each open');assert(feeds===1,'Reuse unchanged activity: '+feeds);assert(document.querySelectorAll('.clients-event').length===0,'Collapsed batches must defer event rendering');
- const details=document.querySelector('.clients-batch');details.open=true;details.dispatchEvent(new Event('toggle'));await until(()=>document.querySelectorAll('.clients-event').length===100,'Expanded activity');
- for(const name of ['Leads','Clients','Leads','Clients'])flushSync(()=>document.querySelector(`[aria-label="${name}"]`).click());await frames();await frames();
+ assert(reads===1,'Reopening Clients must not reload library: '+reads);assert(setup===1,'Initialise once per library: '+setup);assert(oldSetup===0,'Do not mutate on each open');assert(feeds===1,'Reuse unchanged activity: '+feeds);assert(document.querySelectorAll('.clients-change').length===0,'Do not render technical diffs');
+ assert(document.querySelectorAll('.client-activity-row').length===100,'Compact activity rows');
+ for(const name of ['Leads','Clients','Leads','Clients'])flushSync(()=>document.querySelector(`.section-${name.toLowerCase()} .nav-item`).click());await frames();await frames();
  const {flushDiagnostics}=await import('/src/diagnostics.ts');await flushDiagnostics();
  const navigation=diagnostics.filter(e=>e.name==='navigation');assert(navigation.some(e=>e.status==='cancelled'),'Interrupted navigation logged as cancelled');assert(navigation.filter(e=>e.status==='started').every(start=>navigation.some(end=>end.operation===start.operation&&['cancelled','success'].includes(end.status))),'No orphaned navigation measurements');
  button('Refresh',document.querySelector('.clients-workspace')).click();await until(()=>calls.filter(c=>c.command==='client_feed').length===2,'Explicit refresh bypasses cache');
