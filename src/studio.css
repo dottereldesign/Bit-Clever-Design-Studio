@@ -17,3 +17,7 @@
 .calendar-meeting-picker{margin-block:20px}.calendar-meeting-options{max-height:360px;overflow:auto;scrollbar-width:thin}.calendar-connection .calendar-meeting-option{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);gap:16px;align-items:center;padding:10px 0}.calendar-meeting-option strong{font-weight:500}.calendar-meeting-option select{max-width:100%;padding:8px}
 
 .calendar-meeting-picker input[type=search]{width:min(100%,420px)}
+
+.studio-workspace .studio-add-contact { background:#26C35D;color:#102b19;border:1px solid transparent;border-radius:6px;min-height:36px;padding:8px 14px;font-weight:600;white-space:nowrap;transition:background 180ms ease; }
+.studio-workspace .studio-add-contact:hover:not(:disabled) { background:#22b456; }
+.studio-workspace .studio-add-contact:focus-visible { outline:2px solid #167a39;outline-offset:3px; }
