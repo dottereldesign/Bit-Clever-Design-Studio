@@ -13,7 +13,7 @@ import { homeLayout, moveDivider, type HomePlan, type Divider } from "./homeLayo
 export { homeLayout } from "./homeLayout";
 const loadPlan=():HomePlan|null=>{try{return JSON.parse(localStorage.getItem("home-plan")??"null");}catch{return null;}};
 
-export type HomeDestination={id:string;label:string;kind:"category"|"collection"|"project"|"group";value:string;group:string;count?:number};
+export type HomeDestination={id:string;label:string;kind:"category"|"collection"|"project"|"group"|"studio";value:string;group:string;count?:number};
 export type HomeCover={path:string;width:number;height:number};
 export type HomeTile={id:string;span?:number;height:number;radius:number;cover?:HomeCover;autoImageSize?:boolean};
 export const homeMime="application/design-home-destination";
