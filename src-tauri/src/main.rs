@@ -572,6 +572,8 @@ async fn calendar_disconnect(app:tauri::AppHandle,state:tauri::State<'_,State>)-
 #[tauri::command]
 async fn calendar_feed(app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Feed>{let path=state.db.clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||calendar_sync::fetch(&folder,&path)).await.map_err(err)?}
 #[tauri::command]
+async fn calendar_select(meetings:Vec<calendar_sync::Meeting>,generation:String,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::select(&folder,&s.db,meetings,&generation)?;let _=app.emit("library-changed",());calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
+#[tauri::command]
 async fn calendar_apply(meetings:Vec<calendar_sync::Meeting>,generation:String,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::apply(&folder,&s.db,meetings,&generation)?;let _=app.emit("library-changed",());calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
 
 fn main() {
@@ -695,7 +697,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             branding::apply_app_branding,clients_initialise,
-            calendar_initialise,calendar_connect,calendar_disconnect,calendar_feed,calendar_apply,diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
+            calendar_initialise,calendar_connect,calendar_disconnect,calendar_feed,calendar_apply,calendar_select,diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
             website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
             client_feed,
             client_meeting_pack,

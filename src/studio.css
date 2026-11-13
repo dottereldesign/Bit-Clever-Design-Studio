@@ -13,3 +13,7 @@
 .studio-metrics .studio-field>span{display:block}.studio-parent-notice{margin:12px 28px;color:#68716a;font-size:13px}
 
 .calendar-connection{margin:20px 0;max-width:850px}.calendar-connection h2{font-size:16px}.calendar-connection p,.calendar-connection small{color:#68716a;font-size:13px;line-height:1.6}.calendar-connection label{display:flex;flex-direction:column;gap:8px;margin:12px 0}.calendar-connection input{padding:10px;max-width:650px}.calendar-connection button,.studio-meeting button{margin:8px 8px 8px 0}.calendar-connection small{display:block}.calendar-settings{margin-bottom:18px}.studio-meeting{max-width:900px}
+
+.calendar-meeting-picker{margin-block:20px}.calendar-meeting-options{max-height:360px;overflow:auto;scrollbar-width:thin}.calendar-connection .calendar-meeting-option{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);gap:16px;align-items:center;padding:10px 0}.calendar-meeting-option strong{font-weight:500}.calendar-meeting-option select{max-width:100%;padding:8px}
+
+.calendar-meeting-picker input[type=search]{width:min(100%,420px)}

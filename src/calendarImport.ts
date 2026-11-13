@@ -34,3 +34,25 @@ export function selectedMeetings(text:string,rules:Meeting[]):Meeting[]{
   return {...rule,uid,name:e.summary||rule.name,start,end,location:String(c.getFirstPropertyValue('location')??rule.location),join_url:join,cancelled:false};
  });
 }
+
+export type CalendarCandidate=Meeting & {unavailable?:string};
+export function calendarCandidates(text:string):CalendarCandidate[]{
+ let root:ICAL.Component;
+ try{root=new ICAL.Component(ICAL.parse(text));}catch{throw Error('Calendar could not be read.');}
+ if(root.name!=='vcalendar')throw Error('The feed is not a calendar.');
+ ICAL.TimezoneService.reset();for(const zone of root.getAllSubcomponents('vtimezone'))ICAL.TimezoneService.register(zone);
+ const components=root.getAllSubcomponents('vevent'),counts=new Map<string,number>();
+ for(const c of components){const uid=String(c.getFirstPropertyValue('uid')??'');counts.set(uid,(counts.get(uid)??0)+1);}
+ const result:CalendarCandidate[]=[];
+ for(const c of components){
+  if(c.getFirstPropertyValue('status')==='CANCELLED')continue;
+  const uid=String(c.getFirstPropertyValue('uid')??'');if(!uid)continue;
+  try{
+   const e=new ICAL.Event(c);if(!e.startDate||!e.endDate)continue;
+   const unavailable=c.hasProperty('rrule')||c.hasProperty('recurrence-id')?'Recurring meetings are not supported yet.':counts.get(uid)!==1?'Multiple events use this identifier.': ['dtstart','dtend'].some(key=>{const zone=c.getFirstProperty(key)?.getParameter('tzid');return zone&&!ICAL.TimezoneService.has(String(zone));})?'Meeting timezone is missing.':undefined;
+   const description=String(c.getFirstPropertyValue('description')??'');
+   result.push({source_id:uid,uid,name:e.summary||'Untitled meeting',project_name:'',start:nzTime(e.startDate.toJSDate()),end:nzTime(e.endDate.toJSDate()),location:String(c.getFirstPropertyValue('location')??''),join_url:description.match(/https:\/\/meet\.google\.com\/[a-z-]+/i)?.[0]??'',source_url:'https://calendar.google.com/',cancelled:false,unavailable});
+  }catch{/* Keep other meetings selectable when one event has invalid dates. */}
+ }
+ return result.sort((a,b)=>a.start.localeCompare(b.start));
+}

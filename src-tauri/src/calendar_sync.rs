@@ -21,7 +21,7 @@ pub fn config(folder:&Path,path:&Path)->Result<Config>{
  if !file.exists(){return Ok(Config{library:path.to_string_lossy().into_owned(),meetings:saved,generation:String::new()});}
  let mut c:Config=serde_json::from_slice(&std::fs::read(file).map_err(err)?).map_err(|_|"Calendar configuration could not be read.")?;
  if Path::new(&c.library)!=path{return Ok(Config{library:path.to_string_lossy().into_owned(),meetings:saved,generation:String::new()});}
- for m in &mut c.meetings{if let Some(current)=saved.iter().find(|e|e.source_id==m.source_id){*m=current.clone();}}
+ for current in saved{if let Some(m)=c.meetings.iter_mut().find(|m|m.source_id==current.source_id){*m=current;}else{c.meetings.push(current);}}
  Ok(c)
 }
 fn write_config(folder:&Path,c:&Config)->Result<()>{atomic(&config_path(folder),&serde_json::to_vec(c).map_err(err)?)}
@@ -59,7 +59,6 @@ fn protect(input:&[u8],decrypt:bool)->Result<Vec<u8>>{
 fn protect(_: &[u8],_:bool)->Result<Vec<u8>>{Err("Calendar credential storage currently requires Windows.".into())}
 pub fn connect(folder:&Path,path:&Path,url:&str)->Result<()> {
  let url=validate_url(url)?;let mut c=config(folder,path)?;
- if c.meetings.is_empty(){return Err("Choose the meetings to sync before connecting a calendar.".into());}
  let encrypted=protect(url.as_bytes(),false)?;atomic(&secret_path(folder),&encrypted)?;
  c.generation=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_nanos().to_string();write_config(folder,&c)
 }
@@ -87,6 +86,20 @@ fn save(db:&rusqlite::Connection,m:&Meeting)->Result<()> {
  let project=if let Some(pid)=old.as_ref().and_then(|e|e.projects.first()).copied(){pid}else{db.query_row("SELECT id FROM projects WHERE name=?",[&m.project_name],|r|r.get::<_,i64>(0)).map_err(|_|"A meeting's project is unavailable. Saved meetings are unchanged.")?};
  if !db.query_row("SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)",[project],|r|r.get::<_,bool>(0)).map_err(err)?{return Err("A meeting's project is unavailable.".into());}
  let mut entry=old.unwrap_or_default();entry.id=id;entry.kind="meeting".into();entry.name=m.name.clone();entry.date=m.start[..10].into();entry.end_date=m.end[..10].into();entry.projects=vec![project];entry.archived=m.cancelled;entry.meeting=Some(m.clone());entry.updated=db::now();if entry.created==0{entry.created=entry.updated;}studio::put(db,&entry)
+}
+pub fn select(folder:&Path,path:&Path,meetings:Vec<Meeting>,generation:&str)->Result<()> {
+ let c=config(folder,path)?;
+ if generation.is_empty()||c.generation!=generation||!secret_path(folder).exists(){return Err("Calendar connection changed. Load meetings again.".into());}
+ if meetings.is_empty()||meetings.len()>100{return Err("Choose between 1 and 100 meetings.".into());}
+ let db=db::connect(path)?;let tx=db.unchecked_transaction().map_err(err)?;
+ let mut ids=std::collections::HashSet::new();
+ for m in &meetings{
+  if m.uid.is_empty()||!ids.insert(&m.uid)||c.meetings.iter().any(|old|old.uid==m.uid||old.source_id==m.source_id){return Err("A meeting is already selected. Reload the meeting list.".into());}
+  save(&tx,m)?;
+ }
+ db::set_setting(&tx,"calendar_last_sync",&db::now().to_string())?;
+ tx.commit().map_err(err)?;
+ Ok(())
 }
 pub fn apply(folder:&Path,path:&Path,meetings:Vec<Meeting>,generation:&str)->Result<()> {
  let c=config(folder,path)?;
@@ -117,4 +130,20 @@ mod tests {
  }
  #[cfg(windows)]
  #[test]fn credential_protection_roundtrips_without_plaintext(){let value=b"synthetic-calendar-credential";let encrypted=protect(value,false).unwrap();assert!(!encrypted.windows(value.len()).any(|w|w==value));assert_eq!(protect(&encrypted,true).unwrap(),value);}
+}
+
+#[cfg(all(test,windows))]
+#[test]
+fn empty_calendar_can_connect_then_select_only_project_meetings(){
+ let dir=tempfile::tempdir().unwrap();let path=dir.path().join("library.sqlite");db::init(&path).unwrap();let db=db::connect(&path).unwrap();db.execute("INSERT INTO projects VALUES(1,'Example')",[]).unwrap();
+ connect(dir.path(),&path,"https://calendar.google.com/calendar/ical/example/private-test/basic.ics").unwrap();
+ let current=status(dir.path(),&path).unwrap();assert!(current.connected);assert!(current.meetings.is_empty());
+ let generation=config(dir.path(),&path).unwrap().generation;
+ let m=Meeting{source_id:"chosen".into(),uid:"chosen@example.test".into(),name:"Discovery".into(),project_name:"Example".into(),start:"2026-11-27T11:00:00+13:00".into(),end:"2026-11-27T12:00:00+13:00".into(),location:String::new(),join_url:String::new(),source_url:"https://calendar.google.com/".into(),cancelled:false};
+ assert!(select(dir.path(),&path,vec![m.clone()],"stale").is_err());
+ let mut invalid=m.clone();invalid.source_id="bad".into();invalid.uid="bad".into();invalid.project_name="Missing".into();
+ assert!(select(dir.path(),&path,vec![m.clone(),invalid],&generation).is_err());assert!(status(dir.path(),&path).unwrap().meetings.is_empty());
+ select(dir.path(),&path,vec![m.clone()],&generation).unwrap();assert_eq!(status(dir.path(),&path).unwrap().meetings.len(),1);
+ assert!(select(dir.path(),&path,vec![m.clone()],&generation).is_err());
+ apply(dir.path(),&path,vec![m],&generation).unwrap();assert_eq!(studio::load(&db).unwrap().iter().filter(|e|e.kind=="meeting").count(),1);
 }
