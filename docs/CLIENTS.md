@@ -4,7 +4,7 @@ Clients is a local relationship workspace between Leads and Projects. The sectio
 
 ## Workflow
 
-- Today: client profiles, upcoming meetings, due/overdue tasks, waiting tasks/records, activity filters and an optional startup preference.
+- Dashboard: client profiles, upcoming meetings, due/overdue tasks, waiting tasks/records, activity filters and an optional startup preference.
 - Profiles: name, status, picture upload/paste/drop with crop controls, general contact details, pinned notes and project associations.
 - Feed: saved notes, pasted email exchanges, decisions and durable automatic changes. Project records remain linked to their project editors.
 - Meetings: local date/time, attendees, meeting link, location, agenda, ordered agenda items, preparation checklist, notes, attachments and a follow-up action. Synced calendar meetings are read-only. Local meetings do not send invitations.
