@@ -38,3 +38,6 @@
 @media(max-width:420px){.add-contact-fields{grid-template-columns:1fr;}}
 
 .studio-table-labels .studio-sort-heading{display:flex;align-items:center;gap:6px;text-align:left;padding:4px 0;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;min-width:0}.studio-table-labels .studio-sort-heading:hover{color:#24321f}.studio-sort-heading span{font-size:14px}
+
+.studio-contacts .studio-row,.studio-contacts .studio-table-labels{grid-template-columns:24px minmax(150px,1.4fr) minmax(120px,1fr) minmax(160px,1.4fr) minmax(100px,.8fr) minmax(100px,1fr);gap:12px}.studio-contacts .studio-rows,.studio-contacts .studio-table-labels{min-width:730px}
+.organisation-contacts{overflow-x:auto}.organisation-contacts>button{margin-bottom:18px}.organisation-contacts table{width:100%;border-collapse:collapse;font-size:13px}.organisation-contacts th{text-align:left;color:#71806d;font-weight:500;padding:12px}.organisation-contacts td{padding:14px 12px;border-bottom:1px solid #e6e8e1}.organisation-contacts td button{background:none;border:0;padding:0;text-align:left}.organisation-contacts .empty{color:#71806d}

@@ -33,6 +33,7 @@ pub struct Entry {
     pub body: String,
     pub email: String,
     pub phone: String,
+    pub location: String,
     pub website: String,
     pub audience: String,
     pub message: String,
@@ -130,7 +131,7 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
     }
     if !e.avatar.is_empty() && (!e.avatar.starts_with("data:image/png;base64,") || e.avatar.len()>700_000) {return Err("Choose a smaller PNG profile picture.".into());}
     if ["contact", "organization"].contains(&e.kind.as_str())
-        && (e.name.len() > 300 || e.email.len() > 500 || e.phone.len() > 100)
+        && (e.name.len() > 300 || e.email.len() > 500 || e.phone.len() > 100 || e.location.len() > 300)
     {
         return Err("Contact details are too long.".into());
     }

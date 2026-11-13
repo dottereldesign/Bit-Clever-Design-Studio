@@ -7,9 +7,9 @@ import {blankEntry} from './studio';
 import type {Change} from './api';
 import {recordError} from './diagnostics';
 
-export default function AddContactDialog({entries,mutate,close,added}:{entries:StudioEntry[];mutate:(change:Change)=>Promise<unknown>;close:()=>void;added:(id:string)=>void}){
+export default function AddContactDialog({entries,mutate,close,added,organisation}:{entries:StudioEntry[];organisation?:string;mutate:(change:Change)=>Promise<unknown>;close:()=>void;added:(id:string)=>void}){
  const dialog=useRef<HTMLDialogElement>(null),saving=useRef(false),contactId=useRef(crypto.randomUUID()),createdOrg=useRef<{name:string;id:string}|null>(null);
- const [first,setFirst]=useState(''),[last,setLast]=useState(''),[org,setOrg]=useState(''),[orgChoice,setOrgChoice]=useState(''),[phone,setPhone]=useState(''),[email,setEmail]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [first,setFirst]=useState(''),[last,setLast]=useState(''),[org,setOrg]=useState(''),[orgChoice,setOrgChoice]=useState(organisation??''),[phone,setPhone]=useState(''),[location,setLocation]=useState(''),[email,setEmail]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>{const element=dialog.current!;element.showModal();element.querySelector<HTMLInputElement>('input')?.focus();return()=>element.close();},[]);
  const save=async(event:React.FormEvent<HTMLFormElement>)=>{
   event.preventDefault();if(saving.current)return;
@@ -23,7 +23,7 @@ export default function AddContactDialog({entries,mutate,close,added}:{entries:S
    if(orgChoice!=='__new__'&&!organization)throw Error('Choose an available organisation.');
    if(!organization){const entry=blankEntry('client',org.trim());const {id,created,updated,...patch}=entry;await mutate({action:'update_studio',value:JSON.stringify({id,patch:{...patch,status:"active"}})});createdOrg.current={name:normalized,id};organization=id;}
    const {id:unused,created,updated,...patch}=blankEntry('contact',[first.trim(),last.trim()].filter(Boolean).join(' '));
-   await mutate({action:'update_studio',value:JSON.stringify({id:contactId.current,patch:{...patch,organization,phone:phone.trim(),email:email.trim()}})});
+   await mutate({action:'update_studio',value:JSON.stringify({id:contactId.current,patch:{...patch,organization,phone:phone.trim(),email:email.trim(),location:location.trim()}})});
    added(contactId.current);
   }catch(e){recordError('studio.contact.create',e);setError(String(e));}finally{saving.current=false;setBusy(false);}
  };
@@ -36,5 +36,6 @@ export default function AddContactDialog({entries,mutate,close,added}:{entries:S
  {orgChoice==='__new__'&&<label className="wide">New organisation<input autoFocus required aria-label="New organisation" maxLength={300} autoComplete="organization" value={org} onChange={e=>setOrg(e.target.value)} disabled={busy}/></label>}
  <label className="wide">Email<input required type="email" maxLength={500} autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy}/></label>
  <label className="wide">Phone number <span>(optional)</span><input type="tel" maxLength={100} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} disabled={busy}/></label>
+ <label className="wide">Location <span>(optional)</span><input aria-label="Location" maxLength={300} autoComplete="address-level2" placeholder="City or region" value={location} onChange={e=>setLocation(e.target.value)} disabled={busy}/></label>
  </div>{error&&<p role="alert">{error}</p>}<footer><button type="button" disabled={busy} onClick={close}>Cancel</button><button className="studio-add-contact" disabled={busy}>{busy?'Saving…':'Save contact'}</button></footer></form></dialog>,document.body);
 }

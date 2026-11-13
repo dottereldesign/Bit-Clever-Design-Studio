@@ -25,6 +25,7 @@ export type StudioEntry = {
     body: string;
     email: string;
     phone: string;
+    location?: string;
     website: string;
     audience: string;
     message: string;
@@ -55,7 +56,7 @@ export const leadStages = [{ id: 'new', name: 'New' }, { id: 'contacted', name: 
 export const campaignStages = ['idea', 'planning', 'ready', 'active', 'complete', 'paused'].map(id => ({ id, name: id[0].toUpperCase() + id.slice(1) }));
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 export const nextAction = (entry: StudioEntry) => entry.actions.filter(a => !a.done).sort((a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999'))[0];
-export const blankEntry = (kind: StudioKind, name: string): StudioEntry => ({ id: crypto.randomUUID(), kind, name, archived: false, organization: null, contacts: [], projects: [], campaign: null, parent: null, files: [], tags: [], status: kind === 'lead' ? 'new' : kind === 'campaign' ? 'idea' : 'draft', service: '', source: '', value: null, currency: 'NZD', date: '', end_date: '', body: '', email: '', phone: '', website: '', audience: '', message: '', offer: '', channel: '', results: '', activity_type: 'note', actions: [], moodboard: [], stages: [], created: 0, updated: 0 });
+export const blankEntry = (kind: StudioKind, name: string): StudioEntry => ({ id: crypto.randomUUID(), kind, name, archived: false, organization: null, contacts: [], projects: [], campaign: null, parent: null, files: [], tags: [], status: kind === 'lead' ? 'new' : kind === 'campaign' ? 'idea' : 'draft', service: '', source: '', value: null, currency: 'NZD', date: '', end_date: '', body: '', email: '', phone: '', location: '', website: '', audience: '', message: '', offer: '', channel: '', results: '', activity_type: 'note', actions: [], moodboard: [], stages: [], created: 0, updated: 0 });
 
 export function followUpGroup(entry:StudioEntry,day=today()):string {
  if (['won','lost'].includes(entry.status)) return 'Closed leads';

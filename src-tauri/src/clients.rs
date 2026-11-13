@@ -82,9 +82,10 @@ pub fn import(db:&Connection,events:Vec<Event>,projects:&std::collections::HashM
    let id=format!("org-{kind}");
    edit(&path,&id,json!({"kind":kind,"name":format!("Organisation {kind}")})).unwrap();
    let contact=format!("person-{kind}");
-   edit(&path,&contact,json!({"kind":"contact","name":"Person","organization":id})).unwrap();
+   edit(&path,&contact,json!({"kind":"contact","name":"Person","organization":id,"location":"Wellington"})).unwrap();
    let c=db::connect(&path).unwrap();
    assert!(events(&c,Some(&id),None,100).unwrap().iter().any(|e|e.record==contact));
+   edit(&path,&contact,json!({"location":"Auckland"})).unwrap();command(&path,"undo_organisation");assert_eq!(crate::studio::get(&c,&contact).unwrap().unwrap().location,"Wellington");command(&path,"redo_organisation");assert_eq!(crate::studio::get(&c,&contact).unwrap().unwrap().location,"Auckland");
    edit(&path,&format!("note-{kind}"),json!({"kind":"client_entry","name":"Notes","parent":id,"service":"note"})).unwrap();
    let lead=crate::studio::Entry{id:"lead".into(),kind:"lead".into(),name:"Different project name".into(),organization:Some(id.clone()),..Default::default()};
    assert_eq!(lead_client(&c,&lead,None).unwrap(),id);
