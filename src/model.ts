@@ -4,7 +4,7 @@ export type ClientRecord={id:string;project_id:number;kind:'meeting'|'feedback'|
 export type ClientData={contacts:ClientContact[];records:ClientRecord[]};
 export type ProjectSection='overview'|'files'|'client'|'moodboard';
 export type MoodboardNode={id:string;kind:"reference"|"note"|"color";item_id:number|null;text:string;color:string;x:number;y:number;width:number;height:number};
-export type ProjectOverviewData={moodboard?:MoodboardNode[]|null;project_id:number;brief:string;status:string;deadline:string;actions:{source_record?:string|null;id:string;text:string;deadline:string;done:boolean}[]};
+export type ProjectOverviewData={moodboard?:MoodboardNode[]|null;project_id:number;brief:string;status:string;deadline:string;actions:{priority?:string;waiting?:boolean;source_record?:string|null;id:string;text:string;deadline:string;done:boolean}[]};
 export type ProjectFolder = {id:number;project_id:number;parent_id:number|null;name:string;position:number|null};
 export type Item = {
   project_only?:boolean;

@@ -18,6 +18,7 @@ mod project_files;
 mod project_overview;
 mod client_records;
 mod studio;
+mod clients;
 mod calendar_sync;
 mod library_export;
 mod managed_library;
@@ -50,6 +51,10 @@ struct State {
     exporting: Arc<AtomicBool>,
     export_cancel: Arc<AtomicBool>,
 }
+#[tauri::command]
+async fn client_meeting_pack(id:String,destination:String,state:tauri::State<'_,State>)->Result<String>{let path=state.db.clone();tauri::async_runtime::spawn_blocking(move||clients::meeting_pack(&db::connect(&path)?,&id,std::path::Path::new(&destination))).await.map_err(err)?}
+#[tauri::command]
+async fn client_feed(client:Option<String>,before:Option<i64>,state:tauri::State<'_,State>)->Result<Vec<clients::Event>>{let path=state.db.clone();tauri::async_runtime::spawn_blocking(move||clients::events(&db::connect(&path)?,client.as_deref(),before,100)).await.map_err(err)?}
 #[tauri::command]
 fn website_capture_browsers()->Vec<website_capture::Browser>{website_capture::browsers()}
 #[tauri::command]
@@ -679,6 +684,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             calendar_initialise,calendar_connect,calendar_disconnect,calendar_feed,calendar_apply,diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
             website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
+            client_feed,
+            client_meeting_pack,
             library_overview,
             library_preferences,
             save_library_preferences,

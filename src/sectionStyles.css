@@ -179,3 +179,5 @@
 /* Explicit colours also tint styles whose original palettes were hard-coded. */
 .section-feature[data-custom-colour=true]>.sidebar-heading{color:var(--section-ink)}
 .section-feature[data-custom-colour=true]:is(.section-style-12,.section-style-13,.section-style-14,.section-style-15,.section-style-17,.section-style-19,.section-style-20)>.sidebar-heading{background:var(--section-tint);color:var(--section-ink)}
+
+.section-clients .section-chevron{display:none}

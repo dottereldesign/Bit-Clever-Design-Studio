@@ -2,7 +2,7 @@ use crate::db::{err,Result};
 use rusqlite::{Connection,params,OptionalExtension};
 use serde::{Serialize,Deserialize};
 #[derive(Clone,Debug,Serialize,Deserialize,Default)]
-pub struct Action {#[serde(default)] pub source_record:Option<String>,pub id:String,pub text:String,pub deadline:String,pub done:bool}
+pub struct Action {#[serde(default)] pub priority:String,#[serde(default)] pub waiting:bool,#[serde(default)] pub source_record:Option<String>,pub id:String,pub text:String,pub deadline:String,pub done:bool}
 #[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct BoardNode {pub id:String,pub kind:String,pub item_id:Option<i64>,pub text:String,pub color:String,pub x:f64,pub y:f64,pub width:f64,pub height:f64}
 #[derive(Clone,Debug,Serialize,Deserialize)]
@@ -14,7 +14,7 @@ pub fn date(s:&str)->bool{if s.is_empty(){return true;}let b=s.as_bytes();if b.l
 pub fn save(db:&Connection,o:&Overview)->Result<()>{
  if !["planned","active","waiting","paused","complete"].contains(&o.status.as_str())||o.brief.len()>20000||!date(&o.deadline)||o.actions.len()>500{return Err("Invalid project overview.".into());}
  if let Some(nodes)=&o.moodboard {if nodes.len()>300{return Err("A moodboard can contain up to 300 elements.".into());}let mut ids=std::collections::HashSet::new();for n in nodes {if n.id.is_empty()||n.id.len()>100||!ids.insert(&n.id)||!["reference","note","color"].contains(&n.kind.as_str())||n.text.len()>10000||n.color.len()!=7||!n.color.starts_with('#')||!n.color[1..].bytes().all(|c|c.is_ascii_hexdigit())||![n.x,n.y,n.width,n.height].iter().all(|n|n.is_finite())||n.x<0.0||n.y<0.0||n.width<100.0||n.height<80.0||n.x+n.width>2000.01||n.y+n.height>1400.01{return Err("Invalid moodboard element.".into());}}}
- let mut ids=std::collections::HashSet::new();for a in &o.actions{if a.id.is_empty()||a.id.len()>100||!ids.insert(&a.id)||a.text.trim().is_empty()||a.text.len()>1000||!date(&a.deadline){return Err("Check the action text and deadline.".into());}}
+ let mut ids=std::collections::HashSet::new();for a in &o.actions{if a.id.is_empty()||a.id.len()>100||!ids.insert(&a.id)||a.text.trim().is_empty()||a.text.len()>1000||!date(&a.deadline)||!["","normal","high","low"].contains(&a.priority.as_str()){return Err("Check the action text and deadline.".into());}}
  db.execute("INSERT INTO project_overviews VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET data=excluded.data",params![o.project_id,serde_json::to_string(o).map_err(err)?]).map_err(err)?;Ok(())
 }
 pub fn change(db:&Connection,id:i64,value:&str)->Result<()>{
@@ -27,7 +27,7 @@ pub fn change(db:&Connection,id:i64,value:&str)->Result<()>{
  "brief"=>o.brief=string("value")?.trim().into(),"status"=>o.status=string("value")?.into(),"deadline"=>o.deadline=string("value")?.into(),
  "action"=>{let aid=string("id")?;if v["remove"]==true{o.actions.retain(|a|a.id!=aid);}else{
  if !o.actions.iter().any(|a|a.id==aid){o.actions.push(Action{id:aid.into(),..Default::default()});}
- let a=o.actions.iter_mut().find(|a|a.id==aid).unwrap();if let Some(source)=v["source_record"].as_str(){a.source_record=Some(source.into());}if let Some(t)=v["text"].as_str(){a.text=t.trim().into();}if let Some(d)=v["deadline"].as_str(){a.deadline=d.into();}if let Some(d)=v["done"].as_bool(){a.done=d;}
+ let a=o.actions.iter_mut().find(|a|a.id==aid).unwrap();if let Some(source)=v["source_record"].as_str(){a.source_record=Some(source.into());}if let Some(t)=v["text"].as_str(){a.text=t.trim().into();}if let Some(d)=v["deadline"].as_str(){a.deadline=d.into();}if let Some(d)=v["done"].as_bool(){a.done=d;}if let Some(p)=v["priority"].as_str(){a.priority=p.into();}if let Some(w)=v["waiting"].as_bool(){a.waiting=w;}
  }},_=>return Err("Unknown overview field.".into())}
  save(db,&o)
 }

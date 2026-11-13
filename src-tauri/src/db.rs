@@ -140,6 +140,7 @@ pub fn init(path: &Path) -> Result<()> {
     crate::project_overview::init(&db)?;
     crate::client_records::init(&db)?;
     crate::studio::init(&db)?;
+    crate::clients::init(&db)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -474,21 +475,23 @@ pub struct Change {
 pub fn change(path: &Path, c: Change) -> Result<()> {
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
+    crate::clients::begin(&tx,&c.action)?;
     if c.action == "undo_organisation" {
         if let Some(expected) = &c.value {
             let latest: Option<String> = tx.query_row("SELECT label FROM organisation_history ORDER BY id DESC LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?;
             if latest.as_ref() != Some(expected) { return Err("A newer change took place. Review the header Undo action.".into()); }
         }
         crate::history::undo(&tx)?;
-        tx.commit().map_err(err)?;
+        crate::clients::end(&tx)?;tx.commit().map_err(err)?;
         return Ok(());
     }
-    if c.action=="redo_organisation" {crate::history::redo(&tx)?;tx.commit().map_err(err)?;return Ok(());}
+    if c.action=="redo_organisation" {crate::history::redo(&tx)?;crate::clients::end(&tx)?;tx.commit().map_err(err)?;return Ok(());}
     let undo=crate::history::snapshot(&tx,&c)?;
     let target = c.target.unwrap_or(0);
     let name = c.name.as_deref().unwrap_or("");
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
+        "setup_clients" => crate::clients::seed(&tx)?,
         "update_studio" => crate::studio::change(&tx,c.value.as_deref().unwrap_or(""))?,
         "win_studio_lead" => crate::studio::win(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
         "convert_studio_lead" => crate::studio::convert(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
@@ -673,7 +676,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         let unchanged=if let Some(crate::history::Patch::ClientEdit(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::client_records::inverse(&tx,before)?).map_err(err)?}else if let Some(crate::history::Patch::ProjectOrganisation(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::project_folders::snapshot(&tx)?).map_err(err)?}else{false};
         if !unchanged{crate::history::record(&tx,&label,patches)?;}
     }
-    tx.commit().map_err(err)?;
+    crate::clients::end(&tx)?;tx.commit().map_err(err)?;
     Ok(())
 }
 
@@ -705,11 +708,14 @@ pub struct Backup {
     #[serde(default)]
     pub portable: bool,
     pub library: Library,
+    #[serde(default)]
+    pub client_events: Vec<crate::clients::Event>,
 }
 pub fn export(path: &Path, destination: PathBuf) -> Result<()> {
     let data = Backup {
         version: 1,
         portable: false,
+        client_events: crate::clients::events(&connect(path)?,None,None,-1)?,
         library: load(path, false)?,
     };
     std::fs::write(destination, serde_json::to_vec_pretty(&data).map_err(err)?).map_err(err)
@@ -733,6 +739,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
     if let Some(folder)=crate::managed_library::root(path)?{crate::managed_library::own_import(&folder,&mut backup.library.items)?;}
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
+    set_setting(&tx,"client_event_action","import_client_backup")?;
     if backup.portable && setting(&tx,"root").is_none() {
         for (name,path) in &backup.library.source_paths {
             let key=match name.as_str() {"Design"=>"root","Photography"=>"root_photography","Videos"=>"root_videos",_=>continue};
@@ -874,10 +881,12 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
     }
     for mut overview in backup.library.project_overviews {overview.project_id=*projects.get(&overview.project_id).ok_or("Missing overview project in backup")?;if let Some(nodes)=&mut overview.moodboard{for node in nodes{node.item_id=node.item_id.and_then(|id|item_map.get(&id).copied());}}else{overview.moodboard=crate::project_overview::load(&tx)?.into_iter().find(|o|o.project_id==overview.project_id).and_then(|o|o.moodboard);}crate::project_overview::save(&tx,&overview)?;}
     crate::studio::import(&tx,backup.library.studio,&projects,&item_map)?;
+    crate::clients::import(&tx,backup.client_events,&projects,&item_map)?;
     for mut c in backup.library.client_records.contacts {c.project_id=*projects.get(&c.project_id).ok_or("Missing contact project")?;crate::client_records::save_contact(&tx,&c)?;}
     for mut r in backup.library.client_records.records {r.project_id=*projects.get(&r.project_id).ok_or("Missing record project")?;r.files=r.files.iter().filter_map(|id|item_map.get(id).copied()).collect();crate::client_records::save_record(&tx,&r)?;}
     tx.execute("DELETE FROM organisation_history",[]).map_err(err)?;
     tx.execute("DELETE FROM organisation_redo",[]).map_err(err)?;
+    crate::clients::end(&tx)?;
     tx.commit().map_err(err)?;
     Ok(())
 }

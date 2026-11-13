@@ -2,11 +2,11 @@ import {appHistory} from "./appHistory";
 import type { CSSProperties } from 'react';
 import { useHistoryState } from './useAppHistory';
 
-export const sectionIdentities=['marketing','leads','projects','general','design','components','research'] as const;
+export const sectionIdentities=['clients','marketing','leads','projects','general','design','components','research'] as const;
 type Identity=typeof sectionIdentities[number];
 type Colours=Partial<Record<Identity,string>>;
-const labels:Record<Identity,string>={marketing:'Marketing',leads:'Leads',projects:'Projects',general:'General',design:'Design Inspo',components:'App Components',research:'Research'};
-const defaults:Record<Identity,string>={marketing:'#a52b62',leads:'#007b83',projects:'#8c70a4',general:'#626b5d',design:'#b72e42',components:'#5369c3',research:'#8c6418'};
+const labels:Record<Identity,string>={clients:'Clients',marketing:'Marketing',leads:'Leads',projects:'Projects',general:'General',design:'Design Inspo',components:'App Components',research:'Research'};
+const defaults:Record<Identity,string>={clients:'#21698c',marketing:'#a52b62',leads:'#007b83',projects:'#8c70a4',general:'#626b5d',design:'#b72e42',components:'#5369c3',research:'#8c6418'};
 function read():Colours {try{const value=JSON.parse(localStorage.getItem('sidebar-section-colours')||'{}');return Object.fromEntries(Object.entries(value).filter(([k,v])=>sectionIdentities.includes(k as Identity)&&typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v)));}catch{return {};}}
 export const useSectionColours=()=>useHistoryState<Colours>('sidebar-section-colours',read,'Sidebar section colour');
 export function sectionColourStyle(identity:Identity,colours:Colours,style:number):CSSProperties|undefined {

@@ -219,6 +219,7 @@ fn run(conn: &rusqlite::Connection, output: &Path, data: &Path, preferences: &mu
     let snapshot=output.join("metadata.snapshot.sqlite");
     conn.backup("main",&snapshot,None).map_err(err)?;
     let mut library=db::load(&snapshot,false)?;
+    let client_events=crate::clients::events(&db::connect(&snapshot)?,None,None,-1)?;
     for suffix in ["", "-wal", "-shm"] {let path=output.join(format!("metadata.snapshot.sqlite{suffix}"));if path.exists(){fs::remove_file(path).map_err(err)?;}}
     fs::create_dir_all(output.join("Library Data")).map_err(err)?;
     let mut used=std::collections::HashSet::new();
@@ -309,7 +310,7 @@ fn run(conn: &rusqlite::Connection, output: &Path, data: &Path, preferences: &mu
 
     write_browser(output,&library,preferences)?;
     fs::write(output.join("Read Me.txt"),"BIT CLEVER LIBRARY BACKUP\n\nDesign Inspo/ and App Components/ contain originals, stored once per item. General/ holds other collections. Appearance/ holds custom images. Library Data/ preserves every folder membership, project, tag, saved link and setting.\n\nOpen Browse Library.html to browse offline. In Bit Clever, choose Storage > Open Existing Library to use this folder separately, or Merge Backup to add it to your current library.\n\nCopy this ENTIRE folder to an external drive and Verify Backup on that copy. INCOMPLETE.txt means the backup did not finish. Review unavailable files before relying on a backup. Removed items, undo history, browser sessions and caches are excluded. Keep another copy on a separate drive or location.\n").map_err(err)?;
-    fs::write(output.join("Library Data/library.json.part"),serde_json::to_vec_pretty(&Backup{version:1,portable:true,library}).map_err(err)?).map_err(err)?;
+    fs::write(output.join("Library Data/library.json.part"),serde_json::to_vec_pretty(&Backup{version:1,portable:true,client_events,library}).map_err(err)?).map_err(err)?;
     fs::rename(output.join("Library Data/library.json.part"),output.join("Library Data/library.json")).map_err(err)?;
     fs::write(output.join("Library Data/preferences.json"),serde_json::to_vec_pretty(preferences).map_err(err)?).map_err(err)?;
     for name in ["Library Data/library.json","Library Data/preferences.json","Library Data/links.html","Library Data/links.csv","Read Me.txt","Browse Library.html"] {

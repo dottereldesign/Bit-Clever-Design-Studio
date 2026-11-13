@@ -10,6 +10,7 @@ use std::collections::HashMap;
 #[serde(default, deny_unknown_fields)]
 pub struct Entry {
     pub id: String,
+    pub avatar: String,
     pub meeting: Option<crate::calendar_sync::Meeting>,
     pub kind: String,
     pub name: String,
@@ -117,6 +118,8 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
             "pipeline",
             "meeting",
             "research",
+            "client",
+            "client_entry",
         ]
         .contains(&e.kind.as_str())
         || e.name.trim().is_empty()
@@ -125,6 +128,7 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
     {
         return Err("Check the record name and size.".into());
     }
+    if !e.avatar.is_empty() && (!e.avatar.starts_with("data:image/png;base64,") || e.avatar.len()>700_000) {return Err("Choose a smaller PNG profile picture.".into());}
     if ["contact", "organization"].contains(&e.kind.as_str())
         && (e.name.len() > 300 || e.email.len() > 500 || e.phone.len() > 100)
     {
@@ -152,6 +156,7 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
         if a.id.is_empty()
             || a.text.trim().is_empty()
             || a.text.len() > 1000
+            || !["","normal","high","low"].contains(&a.priority.as_str())
             || !crate::project_overview::date(&a.deadline)
         {
             return Err("Check the next action and date.".into());
@@ -305,7 +310,7 @@ pub fn validate_refs(db: &Connection, e: &Entry) -> Result<()> {
     }
     if let Some(id) = &e.parent {
         if !get(db, id)?.is_some_and(|r| {
-            if e.kind == "activity" {
+            if e.kind == "client_entry" {r.kind == "client"} else if e.kind == "activity" {
                 r.kind == "lead"
             } else {
                 r.kind == "campaign"
@@ -560,6 +565,7 @@ pub fn convert(db: &Connection, id: &str, target: Option<i64>) -> Result<()> {
     e.handover_project=Some(pid);
     e.actions.retain(|a|a.done);
     e.updated=db::now();
+    crate::clients::handover(db,&e,pid)?;
     put(db, &e)
 }
 #[derive(Serialize, Deserialize)]

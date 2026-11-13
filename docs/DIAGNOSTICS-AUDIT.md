@@ -46,3 +46,7 @@ Hot-path calls still sample fast successes outside detailed mode; errors and slo
 - Context improves future incidents; it cannot reconstruct evidence discarded by older versions.
 
 Run `npm run audit:diagnostics` to catch direct core-command bypasses. Tests cover redaction, code locations, timeline bounds, native phase/error sanitisation, large histories, observer disposal and incident inspection. This is an instrumentation audit, not a claim that every feature has been manually exercised against the private production library.
+
+## Clients
+
+Client workspace navigation uses the shared route context; client/client_entry IDs are opaque in diagnostics. Saves and imports go through the shared traced command and import queue. Client feed reads, meeting pack exports, avatar failures and local action errors are traced. The lasting relationship feed is separate from diagnostics and is backed up with the library.

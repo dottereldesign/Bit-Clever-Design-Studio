@@ -5,12 +5,13 @@ import { useHistoryState } from './useAppHistory';
 export default function SidebarNavigation({order,children}:{order:string[];children:ReactNode}){
  const arranged=order.filter(n=>n!=="Projects");
  arranged.splice(Math.max(0,arranged.indexOf("General")),0,"Projects");
- const defaults=["Marketing","Leads",...arranged.filter(n=>!["Marketing","Leads","Research"].includes(n))];
+ const defaults=["Marketing","Leads","Clients",...arranged.filter(n=>!["Marketing","Leads","Research"].includes(n))];
  defaults.splice(defaults.indexOf("Components")+1,0,"Research");
  const [saved,setSaved]=useHistoryState<string[]>('sidebar-section-order',()=>{try{const v=JSON.parse(localStorage.getItem('sidebar-section-order')??'[]');return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];}catch{return [];}},'Sidebar section order');
  const nodes=Children.toArray(children);
  const names=nodes.flatMap(c=>isValidElement<{name?:string}>(c)&&c.props.name?[c.props.name]:[]);
- const fullOrder=[...new Set([...saved,...defaults,...names])].filter(n=>names.includes(n));
+ const preferred=[...saved];if(!preferred.includes("Clients")&&preferred.includes("Leads"))preferred.splice(preferred.indexOf("Leads")+1,0,"Clients");
+ const fullOrder=[...new Set([...preferred,...defaults,...names])].filter(n=>names.includes(n));
  const root=useRef<HTMLDivElement>(null), cleanup=useRef<()=>void>(()=>{}), suppressClick=useRef(false);
  const positions=useRef(new Map<string,number>());
  const [visual,setVisual]=useState<{name:string;label:string;x:number;y:number;line:number;left:number;width:number}|null>(null);

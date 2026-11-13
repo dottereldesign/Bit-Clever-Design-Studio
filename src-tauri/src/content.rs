@@ -375,7 +375,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         db::valid_url(&c.source_url)?;
     }
     let mut db = db::connect(db_path)?;
-    if let Some(id)=&c.studio{if !crate::studio::get(&db,id)?.is_some_and(|e|!e.archived&&["lead","campaign","content","activity","research"].contains(&e.kind.as_str())){return Err("Choose an active lead, campaign, content or research record.".into());}}
+    if let Some(id)=&c.studio{if !crate::studio::get(&db,id)?.is_some_and(|e|!e.archived&&["lead","campaign","content","activity","research","client","client_entry"].contains(&e.kind.as_str())){return Err("Choose an active lead, campaign, content or research record.".into());}}
     // Validate all labels before writing files or adding any metadata.
     for (table, ids) in [("projects", &c.projects), ("tags", &c.tags)] {
         for id in ids {
@@ -391,6 +391,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             }
         }
     }
+    let client_batch:String=db.query_row("SELECT lower(hex(randomblob(16)))",[],|r|r.get(0)).map_err(err)?;
     let mut result = CaptureResult {
         history_labels: vec![],
         move_label: None,
@@ -444,6 +445,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         }
         drop(stmt);
         let tx = db.transaction().map_err(err)?;
+        db::set_setting(&tx,"client_event_batch",&client_batch)?;db::set_setting(&tx,"client_event_action","capture_items")?;
         let id = if let Some(id) = existing {
             result.reused = 1;
             id
@@ -505,7 +507,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             let label=result.move_label.clone().unwrap_or_else(||if existing.is_some(){"Update saved link"}else{"Create link"}.to_owned());
             crate::history::record(&tx,&label,patches)?;result.history_labels.push(label);
         }
-        tx.commit().map_err(err)?;
+        crate::clients::end(&tx)?;tx.commit().map_err(err)?;
         thumbnail.0.take();
         result.ids.push(id);
         return Ok(result);
@@ -531,10 +533,11 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         let fp = fingerprint(&path)?;
         if let Some(id) = matching(&db, &fp, &dedup_root)? {
             let tx = db.transaction().map_err(err)?;
+        db::set_setting(&tx,"client_event_batch",&client_batch)?;db::set_setting(&tx,"client_event_action","capture_items")?;
             let patches=attachment_history(&tx,id,&c)?;
             attach(&tx, id, &c)?;
             if !patches.is_empty(){crate::history::record(&tx,"Update captured reference",patches)?;result.history_labels.push("Update captured reference".to_owned());}
-            tx.commit().map_err(err)?;
+            crate::clients::end(&tx)?;tx.commit().map_err(err)?;
             result.ids.push(id);
             result.reused += 1;
             report(position+1,input.name.clone());
@@ -573,6 +576,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
                 .to_string()
         };
         let tx = db.transaction().map_err(err)?;
+        db::set_setting(&tx,"client_event_batch",&client_batch)?;db::set_setting(&tx,"client_event_action","capture_items")?;
         let source = if db::setting(&tx, "source_layout").is_some() {
             format!(
                 "{}/Captures",
@@ -605,7 +609,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         store(&tx, id, &Fingerprint { modified, ..fp })?;
         crate::history::record(&tx,"Add reference",patches)?;
         result.history_labels.push("Add reference".to_owned());
-        tx.commit().map_err(err)?;
+        crate::clients::end(&tx)?;tx.commit().map_err(err)?;
         result.ids.push(id);
         result.added += 1;
         report(position+1,input.name.clone());

@@ -28,4 +28,4 @@ export default function CalendarConnection(){
  {error&&<p role="alert">{error}</p>}</section>;
 }
 
-export function CalendarSyncStatus(){const {status,busy,error}=useSyncExternalStore(subscribe,()=>snapshot);return <p className="calendar-sync-status" role={error?'alert':'status'}>{error|| (busy?'Syncing calendar...':status?.connected?`Google Calendar connected${status.last_sync?' - Last synced '+new Date(status.last_sync*1000).toLocaleTimeString():''}`:'Connect Google Calendar below to keep these meetings updated.')}</p>;}
+export function CalendarSyncStatus(){const {status,busy,error}=useSyncExternalStore(subscribe,()=>snapshot);return <p className="calendar-sync-status" role={error?'alert':'status'}>{error|| (busy?'Syncing calendar...':status?.connected?`Google Calendar connected${status.last_sync?' - Last synced '+new Date(status.last_sync*1000).toLocaleTimeString():''}`:'Google Calendar is not connected. Connect it in Settings to keep meetings updated.')}</p>;}
