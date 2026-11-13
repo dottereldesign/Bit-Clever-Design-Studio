@@ -113,7 +113,7 @@ import type { GeneralDraft,GeneralOption } from './GeneralEditor';
 import CollectionView from './CollectionView';
 import { appHistory } from "./appHistory";
 import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
-import { allComponents, componentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
+import { allComponents, componentFolders as builtInComponentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
 import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink, createMembershipIndex} from "./model";
 
@@ -126,6 +126,7 @@ const empty: Library = {
   scanning: false,
 };
 type Modal = {
+  componentFolder?: boolean;
   kind:
     | "project"
     | "renameProject"
@@ -571,6 +572,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     document.addEventListener('keydown',key,true);document.addEventListener('keyup',end,true);document.addEventListener('pointerdown',down,true);document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);window.addEventListener('blur',end);
     return ()=>{document.removeEventListener('keydown',key,true);document.removeEventListener('keyup',end,true);document.removeEventListener('pointerdown',down,true);document.removeEventListener('pointerup',end);document.removeEventListener('pointercancel',end);window.removeEventListener('blur',end);};
   },[]);
+  const componentFolders=useMemo(()=>[...new Set([...builtInComponentFolders,...(lib.categories??[]).filter(isComponent),...lib.items.flatMap(componentFoldersOf)])],[lib]);
   const categories = useMemo(()=>libraryCategories(lib),[lib]);
   const categoryCounts = useMemo(() => new Map([...membershipIndex.categories].map(([name,items])=>[name,items.length])), [membershipIndex]);
   const generalCounts=useMemo(()=>{const counts=new Map<string,number>();for(const item of lib.items){counts.set(item.source,(counts.get(item.source)??0)+1);if(item.kind==='link'&&!isCollectionLink(item))counts.set('__links',(counts.get('__links')??0)+1);if(item.kind==='video'&&(item.source==='Videos'||item.source.startsWith('Videos/')))counts.set('__videos',(counts.get('__videos')??0)+1);}return counts;},[lib.items]);
@@ -581,17 +583,17 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
     ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
     ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?categoryLabel(name).slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
-  ],[lib.items,lib.projects,collectionPrefs,categories,folderLabels,categoryCounts]);
+  ],[lib.items,lib.projects,collectionPrefs,categories,folderLabels,categoryCounts,componentFolders]);
   const generalOptions=useMemo<GeneralOption[]>(()=>[
     ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
     {label:'Design Inspo / All',target:{kind:'category',value:'__all__'}},{label:'App Components / All',target:{kind:'category',value:allComponents}},
     ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
     ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
-  ],[lib.projects,categories,folderLabels]);
+  ],[lib.projects,categories,folderLabels,componentFolders]);
   const iconTargets=useMemo(()=>[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:Marketing',label:'Marketing section'},{id:'section:Leads',label:'Leads section'},{id:'section:Research',label:'Research section'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
-    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))],[collectionPrefs,sitePrefs,lib.projects,categories,folderLabels]);
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))],[collectionPrefs,sitePrefs,lib.projects,categories,folderLabels,componentFolders]);
   const designRows=useMemo(()=>sortedFolders([...categories,''],'design'),[categories,folderOrder,folderLabels]);
-  const componentRows=useMemo(()=>sortedFolders(componentFolders,'components'),[folderOrder,folderLabels]);
+  const componentRows=useMemo(()=>sortedFolders(componentFolders,'components'),[folderOrder,folderLabels,componentFolders]);
   const saveGeneral=async(draft:GeneralDraft,key?:string)=>{
     if(!draft.name)throw Error('Enter a name for the entry.');
     let target:GeneralTarget;
@@ -925,6 +927,10 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     }
   }, [report, resourcesView, boardView, linkDestination, videoView, category, project, projectFolder, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
   const openStudio=(route:StudioRoute)=>{navigate(null);setStudioView(route);};
+  const [addSectionRequest,setAddSectionRequest]=useState(0);
+  const startSectionAdd=(section:'marketing'|'leads'|'research')=>{openStudio({section,page:section==='marketing'?'campaigns':section==='leads'?'pipeline':'all'});setAddSectionRequest(n=>n+1);};
+  useEffect(()=>{if(!addSectionRequest)return;const input=document.querySelector<HTMLInputElement>('.studio-quick-add input[aria-label="New record name"],.research-add input');input?.focus();input?.scrollIntoView({block:'nearest'});},[addSectionRequest]);
+
   const importStudio=(id:string,mode:'paste'|'files'|'drop',data?:DataTransfer)=>{
     const payload=data?readWebDrop(data):null;
     const snapshot=mode==='paste'?readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error})):null;
@@ -1324,8 +1330,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           <span className="brand-name"><span>Bit Clever</span><span>Studio</span></span>
         </button>
         <SidebarNavigation order={navLayout.order}>
-        <SidebarSection name="Marketing" identity="marketing" styleId={sectionStyle} onOpen={()=>openStudio({section:'marketing',page:'campaigns'})} icon={icons.overrides['section:Marketing']&&<AppIcon value={icons.overrides['section:Marketing']}/>}><nav>{['campaigns','ideas','calendar'].map(page=><button key={page} className={`nav-item ${studioView?.section==='marketing'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='marketing'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'marketing',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
-        <SidebarSection name="Leads" identity="leads" styleId={sectionStyle} onOpen={()=>openStudio({section:'leads',page:'pipeline'})} icon={icons.overrides['section:Leads']&&<AppIcon value={icons.overrides['section:Leads']}/>}><nav>{['pipeline','follow-ups','contacts'].map(page=><button key={page} className={`nav-item ${studioView?.section==='leads'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='leads'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'leads',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
+        <SidebarSection name="Marketing" action={<IconButton title="Add campaign" onClick={()=>startSectionAdd('marketing')}><Plus size={14}/></IconButton>} identity="marketing" styleId={sectionStyle} onOpen={()=>openStudio({section:'marketing',page:'campaigns'})} icon={icons.overrides['section:Marketing']&&<AppIcon value={icons.overrides['section:Marketing']}/>}><nav>{['campaigns','ideas','calendar'].map(page=><button key={page} className={`nav-item ${studioView?.section==='marketing'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='marketing'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'marketing',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
+        <SidebarSection name="Leads" action={<IconButton title="Add lead" onClick={()=>startSectionAdd('leads')}><Plus size={14}/></IconButton>} identity="leads" styleId={sectionStyle} onOpen={()=>openStudio({section:'leads',page:'pipeline'})} icon={icons.overrides['section:Leads']&&<AppIcon value={icons.overrides['section:Leads']}/>}><nav>{['pipeline','follow-ups','contacts'].map(page=><button key={page} className={`nav-item ${studioView?.section==='leads'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='leads'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'leads',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
         <SidebarSection name="General" identity="general" styleId={sectionStyle} icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
         <nav aria-label="Library">
           {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
@@ -1383,13 +1389,13 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           {designRows.map(folderRow)}
         </nav>
         </SidebarSection>
-        <SidebarSection name="Components" label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
+        <SidebarSection name="Components" action={<IconButton title="New component folder" onClick={()=>setModal({kind:"category",ids:[],componentFolder:true})}><Plus size={14}/></IconButton>} label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
           <nav aria-label="App Components">
             {folderRow(allComponents)}
             {componentRows.map(folderRow)}
           </nav>
         </SidebarSection>
-        <SidebarSection name="Research" identity="research" styleId={sectionStyle} onOpen={()=>openStudio({section:'research',page:'all'})} icon={icons.overrides['section:Research']&&<AppIcon value={icons.overrides['section:Research']}/>}><nav>{researchPages.map(([page,label])=><button key={page} className={`nav-item ${studioView?.section==='research'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='research'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'research',page})}>{label}</button>)}</nav></SidebarSection>
+        <SidebarSection name="Research" action={<IconButton title="Add research" onClick={()=>startSectionAdd('research')}><Plus size={14}/></IconButton>} identity="research" styleId={sectionStyle} onOpen={()=>openStudio({section:'research',page:'all'})} icon={icons.overrides['section:Research']&&<AppIcon value={icons.overrides['section:Research']}/>}><nav>{researchPages.map(([page,label])=><button key={page} className={`nav-item ${studioView?.section==='research'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='research'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'research',page})}>{label}</button>)}</nav></SidebarSection>
         </SidebarNavigation>
         <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('sidebar')}><SlidersHorizontal size={15}/><span>Customise</span></button>
           <button title="Settings" aria-label="Settings" onClick={() => setModal({ kind: "settings" })}>
@@ -1609,11 +1615,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         </div>
       )}
       {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{const next=await refresh();if(!next.undo_entries)appHistory.record({label:'Change thumbnail',kind:'library',undo:()=>runLibraryHistory(false,'Change thumbnail'),redo:()=>runLibraryHistory(true)});setModal(null);setNotice("Thumbnail updated");}}/>}
-      {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
+      {modal?.kind==="category"&&<CategoryPicker creatingComponents={modal.componentFolder} categories={modal.ids?.length ? [...categories,...componentFolders] : modal.componentFolder?componentFolders:categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
         const ids=modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))??[];
         await mutate({action:remove?(isComponent(name)?"remove_component_folder":"remove_design_folder"):"set_category",ids,value:name});
         setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from folder":"Added to folder");
-      }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
+      }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.componentFolder)name=`Components / ${name}`;if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
       {folderMembers&&<OrganiseProjectFolders folders={lib.project_folders??[]} projects={lib.projects} items={lib.items.filter(i=>folderMembers.includes(i.id))} mutate={mutate} close={()=>setFolderMembers(null)}/>}
       {modal?.kind!=='settings'&&libraryDialog}
       {queueOpen && !videoDialog && !capture && !modal && viewer===null && !duplicatesOpen && !removedOpen && <VideoDownloadQueue queue={videoQueue} project={project} close={()=>setQueueOpen(false)}/>}
