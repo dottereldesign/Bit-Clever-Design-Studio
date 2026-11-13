@@ -496,7 +496,7 @@ main {
   pointer-events: none;
   opacity: 0;
   background: transparent;
-  transition: opacity .12s ease;
+  transition: opacity var(--motion-quick) ease;
 }
 .card .hover-preview.is-ready { opacity: 1; }
 .card video {
@@ -505,7 +505,7 @@ main {
   pointer-events: none;
 }
 .card img {
-  transition: opacity 0.16s;
+  transition: opacity var(--motion-quick);
 }
 .card:hover img:not(.hover-preview) {
   opacity: 1;
@@ -532,7 +532,7 @@ main {
   inset: 0;
   background: linear-gradient(transparent 55%, #0009);
   opacity: 0;
-  transition: opacity 0.16s;
+  transition: opacity var(--motion-quick);
 }
 .card:hover .card-shade,
 .card:focus-within .card-shade {
@@ -1331,7 +1331,7 @@ main {
   border-radius: 6px;
   color: #555b51;
   font-size: 12px;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--motion-quick) ease, color var(--motion-quick) ease;
 }
 .resource-favourites > button:hover {
   background: #eeeee9;
@@ -1698,7 +1698,7 @@ main {
   min-width: 0;
   position: relative;
   isolation: isolate;
-  animation: preview-slide-in 560ms cubic-bezier(.22,1,.36,1) both;
+  animation: preview-slide-in var(--motion-panel) var(--motion-ease) both;
 }
 @keyframes preview-slide-in {
   from { transform: translateX(100%); opacity: 0; }
@@ -1904,3 +1904,5 @@ main {
 @media(max-width:800px){.settings-page-shell{padding:20px}.settings-page .shortcuts{grid-template-columns:1fr}}
 
 .app .sidebar-scroll > .section-feature > .sidebar-heading { margin-top:12px; margin-bottom:7px; }
+
+:root { --motion-quick:220ms; --motion-standard:380ms; --motion-panel:640ms; --motion-ease:cubic-bezier(.32,0,.2,1); }
