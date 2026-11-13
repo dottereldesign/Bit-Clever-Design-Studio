@@ -9,7 +9,7 @@ Clients is a local relationship workspace between Leads and Projects. The sectio
 - Feed: saved notes, pasted email exchanges, decisions and durable automatic changes. Project records remain linked to their project editors.
 - Meetings: local date/time, attendees, meeting link, location, agenda, ordered agenda items, preparation checklist, notes, attachments and a follow-up action. Synced calendar meetings are read-only. Local meetings do not send invitations.
 - Tasks: client tasks alongside shared project tasks. Completion, priority and waiting status edit the same source record; client tasks also have editable dates.
-- Files: private client attachments and links to shared project files. Removing an attachment removes its reference, not the underlying file.
+- Files: a list of explicitly added client files and attachments on its active records. Linked project files are not automatically included; Link from library deliberately adds a chosen reference. Removing an attachment removes its reference, not the underlying file.
 - Pricing: proposed/agreed/paid status, amount, currency, tax notes, deposit/payment schedule, payments received, scope and attached documents. This is manual tracking, not accounting or payment processing.
 
 AANZPA and Hoea tō Waka are seeded once when Clients is first opened, with exact normalised matching project names. Unknown dates, amounts and email history are not invented. A won lead reuses a matching client or creates a profile and links its handover project in the same undoable transaction.
