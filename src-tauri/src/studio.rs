@@ -475,6 +475,26 @@ pub fn attach(db: &Connection, id: &str, item: i64) -> Result<()> {
     }
     Ok(())
 }
+/// Closing a successful opportunity and transferring ownership is one undoable transaction.
+pub fn win(db: &Connection, id: &str, target: Option<i64>) -> Result<()> {
+    let e=get(db,id)?.ok_or("Lead no longer exists")?;
+    if e.kind!="lead" || e.archived {return Err("Restore the lead before closing it as Won.".into());}
+    if e.handover_project.is_some() {
+        return change(db,&json!({"id":id,"patch":{"status":"won"}}).to_string());
+    }
+    let target=if target.is_some(){target}else if e.projects.len()==1{e.projects.first().copied()}else if e.projects.len()>1 {
+        return Err("Choose one handover project before marking this lead Won.".into());
+    }else{
+        let mut q=db.prepare("SELECT id,name FROM projects").map_err(err)?;
+        let rows=q.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
+        let mut matches=vec![];
+        for row in rows {let (pid,name)=row.map_err(err)?;if name.trim().to_lowercase()==e.name.trim().to_lowercase(){matches.push(pid);}}
+        if matches.len()>1{return Err("Choose one handover project before marking this lead Won.".into());}
+        matches.first().copied()
+    };
+    change(db,&json!({"id":id,"patch":{"status":"won"}}).to_string())?;
+    convert(db,id,target)
+}
 pub fn convert(db: &Connection, id: &str, target: Option<i64>) -> Result<()> {
     let mut e = get(db, id)?.ok_or("Lead no longer exists")?;
     if e.kind != "lead" || e.status != "won" || e.archived {
@@ -681,6 +701,21 @@ mod tests {
         assert!(command(&path,"update_studio",json!({"id":"campaign","patch":{"milestones":[{"id":"bad","text":"Invalid date","deadline":"2026-02-30","done":false}]}}).to_string()).is_err());
         assert_eq!(entry(&path,"campaign").milestones.len(),1);
         db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();assert!(get(&db::connect(&path).unwrap(),"campaign").unwrap().is_none());
+    }
+    #[test]
+    fn winning_is_atomic_reuses_projects_and_does_not_duplicate_on_retry() {
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("db.sqlite");db::init(&path).unwrap();
+        edit(&path,"lead",json!({"kind":"lead","name":"New client","status":"proposal","body":"Website","actions":[{"id":"a","text":"Kickoff","deadline":"2026-12-01","done":false}]}));
+        command(&path,"win_studio_lead","lead".into()).unwrap();
+        let pid=entry(&path,"lead").handover_project.unwrap();
+        assert_eq!(entry(&path,"lead").status,"won");assert_eq!(db::load(&path,false).unwrap().projects.len(),1);
+        db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();
+        assert_eq!(entry(&path,"lead").status,"proposal");assert_eq!(entry(&path,"lead").actions.len(),1);assert!(db::load(&path,false).unwrap().projects.is_empty());
+        db::change(&path,serde_json::from_value(json!({"action":"redo_organisation"})).unwrap()).unwrap();
+        command(&path,"win_studio_lead","lead".into()).unwrap();assert_eq!(entry(&path,"lead").handover_project,Some(pid));assert_eq!(db::load(&path,false).unwrap().projects.len(),1);
+        edit(&path,"another",json!({"kind":"lead","name":" new CLIENT ","status":"new"}));command(&path,"win_studio_lead","another".into()).unwrap();assert_eq!(entry(&path,"another").handover_project,Some(pid));assert_eq!(db::load(&path,false).unwrap().projects.len(),1);
+        edit(&path,"lost",json!({"kind":"lead","name":"Not proceeding","status":"lost"}));assert_eq!(db::load(&path,false).unwrap().projects.len(),1);
+        edit(&path,"invalid",json!({"kind":"lead","name":"Broken target","status":"proposal"}));assert!(db::change(&path,serde_json::from_value(json!({"action":"win_studio_lead","value":"invalid","target":999})).unwrap()).is_err());assert_eq!(entry(&path,"invalid").status,"proposal");
     }
     #[test]
     fn studio_handover_contacts_and_history_are_atomic() {

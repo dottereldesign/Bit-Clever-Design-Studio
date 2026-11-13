@@ -25,7 +25,7 @@ export function commandFields(command:string,input:Record<string,any>):Diagnosti
  if(Array.isArray(change.ids)&&change.ids.length===1&&typeof change.ids[0]==='number')result.id=change.ids[0];
  if(typeof change.studio==='string')Object.assign(result,recordContext(change.studio),{mode:'studio_only'});
  if(command==='update'){
-  if(change.action==='convert_studio_lead'&&typeof change.value==='string')Object.assign(result,recordContext(change.value,'lead'),{phase:'handover',mode:typeof change.target==='number'?'existing_project':'new_project',...(typeof change.target==='number'?{project:change.target}:{})});
+  if(['convert_studio_lead','win_studio_lead'].includes(change.action)&&typeof change.value==='string')Object.assign(result,recordContext(change.value,'lead'),{phase:'handover',mode:typeof change.target==='number'?'existing_project':change.action==='win_studio_lead'?'automatic_project':'new_project',...(typeof change.target==='number'?{project:change.target}:{})});
   if(['update_studio','update_client_records','update_project_overview'].includes(change.action)&&typeof change.value==='string'){
    try{const value=JSON.parse(change.value);
     if(change.action==='update_studio'&&typeof value.id==='string')Object.assign(result,recordContext(value.id,value.patch?.kind),{mode:recordKinds.has(value.id)?'edit':'create'});

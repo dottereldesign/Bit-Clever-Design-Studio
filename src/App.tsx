@@ -1,3 +1,4 @@
+import {OnboardingSettings} from "./LeadsTour";
 import CalendarConnection,{useCalendarSync} from './CalendarConnection';
 import {setDiagnosticContext,setDiagnosticRecords,opaqueId} from './diagnosticContext';
 import StudioWorkspace from "./StudioWorkspace";
@@ -525,6 +526,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setTags([]);
     setSource("");
   };
+  useEffect(()=>{const replay=()=>{setModal(null);setHomeView(false);setStudioView({section:'leads',page:'pipeline'});};window.addEventListener('replay-leads-tour',replay);return()=>window.removeEventListener('replay-leads-tour',replay);},[]);
   const navigate = (id: number | null, onlyLinks = false) => {
     setStudioView(null);
     setHomeView(false);
@@ -2584,7 +2586,7 @@ function Dialog({
           </>
         ) : kind === "settings" ? (
           <div className="settings-content">
-            <CalendarConnection/><Diagnostics/>
+            <OnboardingSettings/><CalendarConnection/><Diagnostics/>
             <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
               <span className="setting-label">Keyboard shortcuts</span>
               <div className="shortcuts">
