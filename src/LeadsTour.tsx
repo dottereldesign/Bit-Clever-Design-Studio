@@ -22,10 +22,10 @@ const steps=[
  {title:'5. Continue in Projects',text:'The brief, contacts and files carry through. Unfinished actions move to the project. The lead history stays here, and Undo can reverse a handover.',target:'.studio-handover,.studio-actions,.studio-tabs',tab:'overview'},
  {title:'Ready when you are',text:'After handover, a lead stays linked to its project. Use Open project to continue the work. You can replay this guide or switch walkthroughs off in Settings.',target:'.studio-actions,.studio-tabs',tab:'overview'}
 ];
-function Mascot({talking}:{talking:boolean}){return <svg className={`tour-mascot ${talking?'is-talking':''}`} viewBox="0 0 140 160" aria-hidden="true"><ellipse cx="70" cy="151" rx="47" ry="5" fill="currentColor" opacity=".12"/><g className="tour-breathe"><path d="M48 61C11 71 7 113 19 135C29 154 54 143 71 146C104 153 132 140 126 115C122 94 101 67 93 64Z" fill="currentColor"/><rect x="36" y="12" width="69" height="64" rx="9" fill="var(--tour-light)"/><circle cx="56" cy="39" r="5" fill="#111"/><circle cx="85" cy="39" r="5" fill="#111"/><ellipse className="tour-mouth" cx="70" cy="58" rx="8" ry="3" fill="#111"/><path d="M21 104Q10 96 15 87M113 103Q129 97 125 87" fill="none" stroke="currentColor" strokeWidth="12" strokeLinecap="round"/></g></svg>;}
+function Mascot({talking}:{talking:boolean}){return <div className={`tour-mascot ${talking?'is-talking':''}`} aria-hidden="true"><div key={talking?'talking':'idle'} className="tour-mascot-frames"/></div>;}
 export default function LeadsTour({route,navigate,entries}:{route:StudioRoute;navigate:(r:StudioRoute)=>void;entries:StudioEntry[]}){
  const [prefs,setPrefs]=useOnboarding();const [colours]=useSectionColours();
- const [step,setStep]=useState(0),[typed,setTyped]=useState(0),[geometry,setGeometry]=useState<{x:number;y:number;w:number;h:number;colour:string}|null>(null);
+ const [step,setStep]=useState(0),[typed,setTyped]=useState(0),[geometry,setGeometry]=useState<{x:number;y:number;w:number;h:number;cw:number;ch:number;colour:string}|null>(null);
  const [reduced]=useHistoryState('reduce-motion',()=>localStorage.getItem('reduce-motion')==='true','Reduce motion');
  const [osReduced,setOsReduced]=useState(()=>matchMedia('(prefers-reduced-motion: reduce)').matches);
  const card=useRef<HTMLDivElement>(null),startFocus=useRef<HTMLElement|null>(null);
@@ -38,19 +38,35 @@ export default function LeadsTour({route,navigate,entries}:{route:StudioRoute;na
  useLayoutEffect(()=>{
   if(!visible)return;
   const findTarget=()=>current.target.split(',').flatMap(selector=>[...document.querySelectorAll<HTMLElement>(selector)]).find(e=>e.getBoundingClientRect().height>0&&!e.closest('[inert]'));
-  const measure=()=>{const rect=findTarget()?.getBoundingClientRect();const heading=document.querySelector('.sidebar .section-leads>.sidebar-heading');if(!rect||rect.bottom<8||rect.top>=window.innerHeight-8){setGeometry(null);return;}const x=Math.max(8,rect.left),y=Math.max(8,rect.top);setGeometry({x,y,w:Math.max(0,Math.min(rect.right,window.innerWidth-8)-x),h:Math.max(0,Math.min(rect.bottom,window.innerHeight-8)-y),colour:heading?getComputedStyle(heading).getPropertyValue('--section-accent').trim():'#007b83'});};
+  const measure=()=>{const rect=findTarget()?.getBoundingClientRect();const heading=document.querySelector('.sidebar .section-leads>.sidebar-heading');if(!rect||rect.bottom<8||rect.top>=window.innerHeight-8){setGeometry(null);return;}const x=Math.max(8,rect.left),y=Math.max(8,rect.top);setGeometry({x,y,cw:card.current?.offsetWidth??390,ch:card.current?.offsetHeight??280,w:Math.max(0,Math.min(rect.right,window.innerWidth-8)-x),h:Math.max(0,Math.min(rect.bottom,window.innerHeight-8)-y),colour:heading?getComputedStyle(heading).getPropertyValue('--section-accent').trim():'#007b83'});};
   findTarget()?.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});measure();
-  const observer=new ResizeObserver(measure);observer.observe(document.body);const timer=setTimeout(measure,300);window.addEventListener('scroll',measure,true);window.addEventListener('resize',measure);
+  const observer=new ResizeObserver(measure);observer.observe(document.body);if(card.current)observer.observe(card.current);const target=findTarget();if(target)observer.observe(target);const timer=setTimeout(measure,300);window.addEventListener('scroll',measure,true);window.addEventListener('resize',measure);
   return()=>{observer.disconnect();clearTimeout(timer);window.removeEventListener('scroll',measure,true);window.removeEventListener('resize',measure);};
  },[visible,step,route.id,route.tab,current.target,colours]);
  if(!visible)return null;
  const finish=(mode:string)=>{setPrefs({...prefs,leadsSeen:true});record('onboarding.close','success',0,{section:'leads',mode,count:step+1});};
  const go=(next:number)=>{setStep(next);const tab=steps[next].tab;navigate(tab&&lead?{section:'leads',page:'pipeline',id:lead.id,tab}:{section:'leads',page:'pipeline'});record('onboarding.step','success',0,{section:'leads',count:next+1});};
- const left=Math.max(16,window.innerWidth-Math.min(390,window.innerWidth-32)-24),top=Math.max(16,Math.min(window.innerHeight-305,geometry?geometry.y+geometry.h+48:window.innerHeight-305));
- const arrowX=geometry?Math.min(window.innerWidth-24,geometry.x+Math.max(20,geometry.w-100)):left;
- const arrowY=geometry?Math.min(window.innerHeight-20,Math.max(20,geometry.y+geometry.h+8)):top;
+ const width=geometry?.cw??Math.min(390,window.innerWidth-32),height=geometry?.ch??280,gap=18;
+ const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(v,Math.max(min,max)));
+ const contentLeft=document.querySelector('.sidebar')?.getBoundingClientRect().right??0;
+ const minLeft=Math.min(contentLeft+12,window.innerWidth-width-16);
+ let left=clamp(geometry?geometry.x+12:minLeft,minLeft,window.innerWidth-width-16);
+ let top=16,side='below';
+ if(geometry){
+  if(geometry.y+geometry.h+gap+height<=window.innerHeight-12)top=geometry.y+geometry.h+gap;
+  else if(geometry.y-gap-height>=12){top=geometry.y-gap-height;side='above';}
+  else if(geometry.x+geometry.w+gap+width<=window.innerWidth-12){left=geometry.x+geometry.w+gap;top=geometry.y;side='right';}
+  else if(geometry.x-gap-width>=minLeft){left=geometry.x-gap-width;top=geometry.y;side='left';}
+  else{top=geometry.y+geometry.h+gap;}
+ }
+ top=clamp(top,12,window.innerHeight-height-12);
+ const horizontal=side==='left'||side==='right';
+ const arrowX=geometry?(horizontal?(side==='right'?geometry.x+geometry.w+4:geometry.x-4):clamp(left+38,geometry.x+8,geometry.x+geometry.w-8)):left;
+ const arrowY=geometry?(horizontal?clamp(top+42,geometry.y+8,geometry.y+geometry.h-8):(side==='above'?geometry.y-4:geometry.y+geometry.h+4)):top;
+ const startX=horizontal?(side==='right'?left:left+width):clamp(arrowX,left+20,left+width-20);
+ const startY=horizontal?clamp(arrowY,top+20,top+height-20):(side==='above'?top+height:top);
  return createPortal(<div className="leads-tour" data-still={still} style={{'--tour-colour':geometry?.colour||'#007b83'} as CSSProperties}>
- {geometry&&<svg className="tour-pointer" width="100%" height="100%" aria-hidden="true"><defs><marker id="leads-tour-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M1 1L7 4L1 7" fill="none" stroke="currentColor" strokeWidth="1.5"/></marker></defs><rect x={geometry.x-4} y={geometry.y-4} width={geometry.w+8} height={geometry.h+8} rx="9" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="5 6"/><path d={`M${left+60} ${top+20} Q${left+20} ${top-45} ${arrowX} ${arrowY}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" markerEnd="url(#leads-tour-arrow)"/></svg>}
+ {geometry&&<svg className="tour-pointer" width="100%" height="100%" aria-hidden="true"><defs><marker id="leads-tour-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M1 1L7 4L1 7" fill="none" stroke="currentColor" strokeWidth="1.5"/></marker></defs><rect x={geometry.x-4} y={geometry.y-4} width={geometry.w+8} height={geometry.h+8} rx="9" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="5 6"/><path d={`M${startX} ${startY} L${arrowX} ${arrowY}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" markerEnd="url(#leads-tour-arrow)"/></svg>}
  <div ref={card} className="tour-card" role="dialog" aria-label="Leads walkthrough" aria-describedby="tour-description" tabIndex={-1} style={{left,top}} onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();finish('skip');}}}>
  <button className="tour-close" aria-label="Skip walkthrough" onClick={()=>finish('skip')}><X size={17}/></button><Mascot talking={!still&&typed<current.text.length}/><div className="tour-copy"><small>{step+1} / {steps.length}</small><h2>{current.title}</h2><p aria-hidden="true" onClick={()=>setTyped(current.text.length)}>{current.text.slice(0,typed)}<span className="tour-cursor" hidden={typed>=current.text.length}>▏</span></p><span className="tour-sr" id="tour-description" aria-live="polite">{current.text}</span></div>
  <footer><button disabled={step===0} onClick={()=>go(step-1)}><ArrowLeft size={14}/>Back</button><button className="tour-next" onClick={()=>step===steps.length-1?finish('complete'):go(step+1)}>{step===steps.length-1?'Got it':'Next'}<ArrowRight size={14}/></button></footer></div></div>,document.body);
