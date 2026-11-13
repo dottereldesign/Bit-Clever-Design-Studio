@@ -97,7 +97,7 @@
 .app[data-sidebar-brand=center] .brand-name { flex-direction:row;align-items:baseline;font-size:19px;gap:4px; }
 .app[data-sidebar-brand=center] .brand-name > span:last-child { font-size:12px; }
 .app[data-sidebar-brand=small] .brand { height:59px;gap:7px; }
-.app[data-sidebar-brand=small] .brand-logo { width:30px;height:30px; }
+.app[data-sidebar-brand=small] .brand-logo { width:42px;height:42px; }
 .app[data-sidebar-brand=small] .brand-name { font-size:19px; }
 .app[data-sidebar-brand=small] .brand-name > span:last-child { font-size:12px; }
 .app[data-sidebar-brand=quiet] .brand { height:53px;padding-left:8px; }
@@ -105,8 +105,11 @@
 .app[data-sidebar-brand=quiet] .brand-name { flex-direction:row;align-items:baseline;font-size:19px;gap:4px; }
 .app[data-sidebar-brand=quiet] .brand-name > span:last-child { font-size:12px; }
 .app:is([data-sidebar-brand=center],[data-sidebar-brand=quiet]) .brand-name { flex-wrap:wrap; }
+@container (min-width:161px) and (max-width:230px) {
+  .app:not([data-sidebar-brand=center]):not([data-sidebar-brand=quiet]):not([data-sidebar-brand=small]) .brand-name { font-size:22px; }
+}
 @container (max-width:160px) {
-  .app[data-sidebar-layout] .brand-logo { width:30px;height:30px; }
+  .app[data-sidebar-layout] .brand-logo { width:36px;height:36px; }
   .app[data-sidebar-layout] .brand-name { font-size:clamp(16px,14cqi,18px); }
   .app[data-sidebar-layout] .brand-name > span:last-child { font-size:12px; }
 }
