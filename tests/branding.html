@@ -18,7 +18,7 @@ window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback
   history.push({id:++historyId,label:c.action==='create_project'?'Create project':'Add to project',state:before});redo.length=0;return;
  }throw Error(command);
 }};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
-localStorage.setItem('sidebar-width','300');
+localStorage.setItem('sidebar-width','300');localStorage.setItem('app-branding',JSON.stringify({name:'Bit Clever Studio',logo:'',size:80,desktopSync:false}));
 let root=createRoot(document.getElementById('root'));root.render(React.createElement(App));
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
 async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(25);}}
@@ -35,14 +35,20 @@ const checks=[];
 try{
  await until(()=>document.querySelector('.brand-logo'),'Brand visible');
  assert(document.querySelector('.brand-logo').getBoundingClientRect().width===80,'Default logo should be 80px: '+document.querySelector('.brand-logo').getBoundingClientRect().width+' brand '+document.querySelector('.brand').getBoundingClientRect().width);
+ const originalName=getComputedStyle(document.querySelector('.brand-name > span:first-child')),originalSize=originalName.fontSize,originalWeight=originalName.fontWeight;
  await settings('Branding');
+ assert(document.querySelector('[aria-label="App name"]').value==='Bit Clever'&&document.querySelector('[aria-label="Slogan"]').value==='Studio','Legacy branding migration');
  input('App name','Acorn Studio');await pause(500);
- assert(document.querySelector('.brand-name').textContent==='Acorn Studio','Sidebar name');
- assert(document.title==='Acorn Studio','Window document title');
- await until(()=>calls.some(c=>c.command==='apply_app_branding'&&c.args.name==='Acorn Studio'),'Native branding call');
+ assert(document.querySelector('.brand-name > span:first-child').textContent==='Acorn Studio','Sidebar name');
+ assert(document.title==='Acorn Studio Studio','Window document title');
+ await until(()=>calls.some(c=>c.command==='apply_app_branding'&&c.args.name==='Acorn Studio Studio'),'Native branding call');
  document.querySelector('[aria-label="Undo change"]').click();await pause(50);
  assert(document.querySelector('.brand-name').textContent==='Bit CleverStudio','Name undo');
  document.querySelector('[aria-label="Redo change"]').click();await pause(50);
+ input('Slogan','Ideas into reality');await pause(50);
+ assert(document.querySelector('.brand-name > span:last-child').textContent==='Ideas into reality','Slogan live update');
+ const editedName=getComputedStyle(document.querySelector('.brand-name > span:first-child'));assert(editedName.fontSize===originalSize&&editedName.fontWeight===originalWeight,'Editing must retain original name styling');
+ assert(parseFloat(getComputedStyle(document.querySelector('.brand-name > span:last-child')).fontSize)<parseFloat(editedName.fontSize),'Slogan stays smaller');
  input('Logo size','96');await pause(50);assert(document.querySelector('.brand-logo').getBoundingClientRect().width===96,'Logo resize');
  const canvas=document.createElement('canvas');canvas.width=500;canvas.height=300;const context=canvas.getContext('2d');context.fillStyle='#245742';context.fillRect(0,0,500,300);context.fillStyle='#fff';context.font='bold 160px sans-serif';context.fillText('A',190,210);
  const blob=await new Promise(resolve=>canvas.toBlob(resolve));const transfer=new DataTransfer();transfer.items.add(new File([blob],'logo.png',{type:'image/png'}));const upload=document.querySelector('[aria-label="Choose app logo"]');upload.files=transfer.files;upload.dispatchEvent(new Event('change',{bubbles:true}));
@@ -53,6 +59,8 @@ try{
  await until(()=>calls.some(c=>c.command==='apply_app_branding'&&c.args.shortcut===true),'Desktop shortcut opt in');
  checks.push('Larger default logo; name and size live updates; undo/redo; normalized PNG; backup includes logo; desktop sync explicit opt-in');
  await shot('branding');
+ root.unmount();root=createRoot(document.getElementById('root'));root.render(React.createElement(App));await until(()=>document.querySelector('.brand-name > span:last-child')?.textContent==='Ideas into reality','Saved slogan survives remount');
+ const stored=JSON.parse(localStorage.getItem('app-branding'));assert(stored.name==='Acorn Studio'&&stored.slogan==='Ideas into reality','Name and slogan saved');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack});}
 </script></body></html>

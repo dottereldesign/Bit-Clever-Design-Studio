@@ -1330,7 +1330,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       >
         <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
           <img src={branding.logo || appLogo} alt="" className="brand-logo" style={{width:branding.size,height:branding.size,maxWidth:"45%"}} />
-          <span className={`brand-name ${branding.name!=="Bit Clever Studio"?"custom-brand-name":""}`}>{branding.name==="Bit Clever Studio"?<><span>Bit Clever</span><span>Studio</span></>:<span>{branding.name}</span>}</span>
+          <span className="brand-name"><span>{branding.name}</span><span>{branding.slogan}</span></span>
         </button>
         <SidebarNavigation order={navLayout.order}>
         <SidebarSection name="Marketing" action={<IconButton title="Add campaign" onClick={()=>startSectionAdd('marketing')}><Plus size={14}/></IconButton>} identity="marketing" styleId={sectionStyle} onOpen={()=>openStudio({section:'marketing',page:'campaigns'})} icon={icons.overrides['section:Marketing']&&<AppIcon value={icons.overrides['section:Marketing']}/>}><nav>{['campaigns','ideas','calendar'].map(page=><button key={page} className={`nav-item ${studioView?.section==='marketing'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='marketing'&&studioView.page===page?'page':undefined} onClick={()=>openStudio({section:'marketing',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>

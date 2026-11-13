@@ -64,7 +64,7 @@ Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrang
 
 ![Customisation panel with sidebar appearance choices](docs/images/customise.jpg)
 
-Customise sidebar layouts, section styles, icons and Home tiles. Branding controls change the app name, logo and logo size, with an optional branded Windows desktop shortcut. Branding is included in backups and supports Undo/Redo. Windows may require re-pinning a shortcut to refresh a cached taskbar icon; installer and executable metadata remain unchanged. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes, including per-section colours from Customise or right-click, and organisation actions support Undo/Redo; settings undo lasts for the current session.
+Customise sidebar layouts, section styles, icons and Home tiles. Branding controls change the app name, slogan, logo and logo size, with an optional branded Windows desktop shortcut. Branding is included in backups and supports Undo/Redo. Windows may require re-pinning a shortcut to refresh a cached taskbar icon; installer and executable metadata remain unchanged. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes, including per-section colours from Customise or right-click, and organisation actions support Undo/Redo; settings undo lasts for the current session.
 
 *Screenshots show the app with the owner’s design library. Reference artwork belongs to its respective creators and is not bundled with the app.*
 

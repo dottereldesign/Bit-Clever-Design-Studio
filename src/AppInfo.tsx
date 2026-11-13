@@ -1,4 +1,4 @@
-import {useBranding} from "./AppBranding";
+import {useBranding,brandingTitle} from "./AppBranding";
 import { useEffect, useState } from "react";
 import { invoke } from "./diagnostics";
 import { ExternalLink } from "lucide-react";
@@ -11,7 +11,7 @@ export default function AppInfo() {
   useEffect(()=>{void invoke<string>("app_version").then(setVersion).catch(()=>{});},[]);
   return <div className="setting-block">
     <span className="setting-label">Installed version</span>
-    <span>{branding.name.trim() || "Bit Clever Studio"} {version || "—"}</span>
+    <span>{brandingTitle(branding)} {version || "—"}</span>
     <button className="text-button" onClick={()=>void openUrl("https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest").catch(e=>setError(String(e)))}>Get latest update <ExternalLink size={12}/></button>
     {error && <small role="alert">{error}</small>}
   </div>;

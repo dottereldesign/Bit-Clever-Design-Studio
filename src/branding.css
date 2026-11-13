@@ -1,10 +1,9 @@
 .brand {min-height:94px;height:auto;padding-block:7px;}
-.brand-name.custom-brand-name{white-space:normal;overflow-wrap:anywhere;font-size:22px;line-height:1.15;}
 .branding-controls{display:grid;grid-template-columns:minmax(160px,1fr) minmax(260px,2fr);gap:32px;width:100%;max-width:960px;align-items:start;}
 .branding-preview{display:flex;align-items:center;gap:16px;overflow-wrap:anywhere;}
 .branding-preview img{width:100px;height:100px;object-fit:contain;}
 .branding-fields{display:grid;gap:16px;}.branding-fields>label{display:grid;gap:8px;}.branding-fields input:not([type=checkbox]){width:100%;}.branding-fields small{color:var(--muted);line-height:1.5;}.branding-fields button{justify-self:start;}.branding-fields p{margin:0;}
 
 .app .brand-name{white-space:normal;}
-.app .brand-name.custom-brand-name>span{font-size:inherit;}
 .app[data-sidebar-brand=center] .brand{height:auto;min-height:130px;}
+.brand-name{overflow-wrap:anywhere;}
