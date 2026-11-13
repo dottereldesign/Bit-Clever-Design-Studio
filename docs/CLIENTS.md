@@ -7,7 +7,7 @@ Clients is a local relationship workspace between Leads and Projects. The sectio
 - Dashboard: client profiles, upcoming meetings, due/overdue tasks, waiting tasks/records, activity filters and an optional startup preference.
 - Sidebar: drag client names to reorder them beneath the fixed Dashboard link. Escape cancels a drag; Alt + Up/Down reorders a focused client. Order is saved per library with undo/redo and appearance backups.
 - Profiles: name, status, picture upload/paste/drop with crop controls, general contact details, pinned notes and project associations.
-- Feed: saved notes, pasted email exchanges, decisions and durable automatic changes. Project records remain linked to their project editors.
+- Feed: compact icon rows identify meetings, tasks, pricing, files and notes. Click a row to open its record, task section or file. Client feeds hide technical diffs; the overall Dashboard retains detailed history. Saved notes, pasted email exchanges, decisions and durable automatic changes. Project records remain linked to their project editors.
 - Meetings: local date/time, attendees, meeting link, location, agenda, ordered agenda items, preparation checklist, notes, attachments and a follow-up action. Synced calendar meetings are read-only. Local meetings do not send invitations.
 - Tasks: client tasks alongside shared project tasks. Completion, priority and waiting status edit the same source record; client tasks also have editable dates.
 - Files: a list of explicitly added client files and attachments on its active records. Linked project files are not automatically included; Link from library deliberately adds a chosen reference. Removing an attachment removes its reference, not the underlying file.
