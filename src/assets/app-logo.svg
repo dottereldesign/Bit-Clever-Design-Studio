@@ -3,10 +3,11 @@
   <defs><clipPath id="crop"><rect x="24" y="8" width="160" height="160"/></clipPath></defs>
   <g transform="translate(12 12) scale(1.45) translate(-24 -8)">
     <g clip-path="url(#crop)" fill="#080808" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M120 76C152 82 173 112 177 152L180 172H93C72 149 72 109 120 76Z"/>
+      <path d="M120 76C152 82 173 112 177 152L179.4 168H144V100Z"/>
       <path d="M43 69L48 44Q49 35 62 40L95 17Q102 12 102 22L103 47Q124 26 131 35Q138 40 136 70Z"/>
       <path d="M69 42L96 25L96 47Z" fill="#fff"/>
-      <path d="M38 68Q78 72 145 66L144 174H45Q40 135 38 68Z" fill="#fff" stroke="#080808" stroke-width="7"/>
+      <path d="M38 68Q78 72 145 66L144.06 168H44.25Q40 135 38 68Z" fill="#fff"/>
+      <path d="M44.25 168Q40 135 38 68Q78 72 145 66L144.06 168" fill="none" stroke="#080808" stroke-width="7" stroke-linecap="butt"/>
       <ellipse cx="62" cy="102" rx="11" ry="15" fill="#fff" stroke="#080808" stroke-width="4"/>
       <ellipse cx="90" cy="101" rx="11" ry="15" fill="#fff" stroke="#080808" stroke-width="4"/>
       <ellipse cx="63" cy="102" rx="4.5" ry="8"/>
