@@ -90,7 +90,10 @@ export class AppHistory {
   async undo() { await this.run(false); }
   async redo() { await this.run(true); }
   private async run(redo: boolean) {
-    if (this.busy) return;
+    if (this.replaying) return;
+    // A shortcut pressed while a save is finishing should undo that save, not vanish.
+    while (this.pending > 0) await this.queue;
+    if (this.replaying) return;
     if (this.cancelGesture) {
       const cancel = this.cancelGesture;
       this.cancelGesture = null;

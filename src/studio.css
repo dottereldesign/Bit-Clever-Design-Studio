@@ -18,7 +18,7 @@
 
 .calendar-meeting-picker input[type=search]{width:min(100%,420px)}
 
-.studio-add-contact { background:#26C35D;color:#102b19;border:1px solid transparent;border-radius:6px;min-height:36px;padding:8px 14px;font-weight:600;white-space:nowrap;transition:background 180ms ease; }
+.studio-add-contact { background:#26C35D;color:#fff;border:1px solid transparent;border-radius:6px;min-height:36px;padding:8px 14px;font-weight:600;white-space:nowrap;transition:background 180ms ease; }
 .studio-add-contact:hover:not(:disabled) { background:#22b456; }
 .studio-add-contact:focus-visible { outline:2px solid #167a39;outline-offset:3px; }
 
