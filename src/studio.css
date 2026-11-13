@@ -31,8 +31,8 @@
 .add-contact-fields label { display:flex;flex-direction:column;gap:7px;font-size:12px; }
 .add-contact-fields label>span { display:contents;color:#788276; }
 .add-contact-fields .wide { grid-column:1/-1; }
-.add-contact-fields input { width:100%;min-width:0;border:1px solid #dce0d7;background:white;color:inherit;border-radius:5px;padding:10px; }
-.add-contact-fields input:focus-visible { outline:2px solid #26c35d;outline-offset:1px; }
+.add-contact-fields input,.add-contact-fields select { width:100%;max-width:none;min-width:0;border:1px solid #dce0d7;background:white;color:inherit;border-radius:5px;padding:10px; }
+.add-contact-fields input:focus-visible,.add-contact-fields select:focus-visible { outline:2px solid #26c35d;outline-offset:1px; }
 .add-contact-dialog footer { justify-content:flex-end; }
 .add-contact-dialog [role=alert] { color:#a53627;font-size:12px; }
 @media(max-width:420px){.add-contact-fields{grid-template-columns:1fr;}}
