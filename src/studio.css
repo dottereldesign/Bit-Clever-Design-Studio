@@ -36,3 +36,5 @@
 .add-contact-dialog footer { justify-content:flex-end; }
 .add-contact-dialog [role=alert] { color:#a53627;font-size:12px; }
 @media(max-width:420px){.add-contact-fields{grid-template-columns:1fr;}}
+
+.studio-table-labels .studio-sort-heading{display:flex;align-items:center;gap:6px;text-align:left;padding:4px 0;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;min-width:0}.studio-table-labels .studio-sort-heading:hover{color:#24321f}.studio-sort-heading span{font-size:14px}
