@@ -1906,3 +1906,14 @@ main {
 .app .sidebar-scroll > .section-feature > .sidebar-heading { margin-top:12px; margin-bottom:7px; }
 
 :root { --motion-quick:220ms; --motion-standard:380ms; --motion-panel:640ms; --motion-ease:cubic-bezier(.32,0,.2,1); }
+
+/* Section reordering never repurposes folder/media drop targets. */
+.sidebar-scroll > .sidebar-section > .sidebar-heading .section-toggle { cursor:grab; touch-action:pan-x; }
+body.reordering-sidebar, body.reordering-sidebar * { cursor:grabbing !important; user-select:none !important; }
+.sidebar-scroll[data-reordering] > .sidebar-drag-source { opacity:.35; }
+.sidebar-order-overlay { position:fixed;inset:0;pointer-events:none;z-index:10000; }
+.sidebar-order-line { position:absolute;height:3px;background:#476c9b;border-radius:2px;box-shadow:0 0 0 1px #fff; }
+.sidebar-order-line::before { content:'';position:absolute;left:-3px;top:-3px;width:9px;height:9px;border:2px solid #476c9b;border-radius:50%;background:#fff; }
+.sidebar-order-ghost { position:absolute;padding:10px 16px;background:var(--panel,#fff);color:#203247;border:1px solid #b8c3cc;box-shadow:0 8px 28px #172b4d26;font-size:13px;font-weight:600;border-radius:5px; }
+.sidebar-order-announcement { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%); }
+.sidebar-reorder-actions { display:flex;gap:8px;margin-bottom:12px; }
