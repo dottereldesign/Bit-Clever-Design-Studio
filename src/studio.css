@@ -18,6 +18,21 @@
 
 .calendar-meeting-picker input[type=search]{width:min(100%,420px)}
 
-.studio-workspace .studio-add-contact { background:#26C35D;color:#102b19;border:1px solid transparent;border-radius:6px;min-height:36px;padding:8px 14px;font-weight:600;white-space:nowrap;transition:background 180ms ease; }
-.studio-workspace .studio-add-contact:hover:not(:disabled) { background:#22b456; }
-.studio-workspace .studio-add-contact:focus-visible { outline:2px solid #167a39;outline-offset:3px; }
+.studio-add-contact { background:#26C35D;color:#102b19;border:1px solid transparent;border-radius:6px;min-height:36px;padding:8px 14px;font-weight:600;white-space:nowrap;transition:background 180ms ease; }
+.studio-add-contact:hover:not(:disabled) { background:#22b456; }
+.studio-add-contact:focus-visible { outline:2px solid #167a39;outline-offset:3px; }
+
+.studio-toolbar>.studio-add-contact { margin-left:auto; }
+.add-contact-dialog { width:min(480px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;border:1px solid #dce0d7;border-radius:10px;padding:24px;background:#fafbf9;color:#24321f;box-shadow:0 16px 60px #142b2520; }
+.add-contact-dialog::backdrop { background:#15271d40; }
+.add-contact-dialog header,.add-contact-dialog footer { display:flex;align-items:center;justify-content:space-between;gap:16px; }
+.add-contact-dialog h2 { margin:0;font-size:19px; }
+.add-contact-fields { display:grid;grid-template-columns:1fr 1fr;gap:18px 14px;margin:24px 0; }
+.add-contact-fields label { display:flex;flex-direction:column;gap:7px;font-size:12px; }
+.add-contact-fields label>span { display:contents;color:#788276; }
+.add-contact-fields .wide { grid-column:1/-1; }
+.add-contact-fields input { width:100%;min-width:0;border:1px solid #dce0d7;background:white;color:inherit;border-radius:5px;padding:10px; }
+.add-contact-fields input:focus-visible { outline:2px solid #26c35d;outline-offset:1px; }
+.add-contact-dialog footer { justify-content:flex-end; }
+.add-contact-dialog [role=alert] { color:#a53627;font-size:12px; }
+@media(max-width:420px){.add-contact-fields{grid-template-columns:1fr;}}
