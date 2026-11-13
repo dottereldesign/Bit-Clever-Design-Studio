@@ -188,3 +188,5 @@ export default function StudioWorkspace({ lib, route, navigate:onNavigate, mutat
  </>}</div></>}
  </section>;
 }
+
+export {Field as StudioField, Rows as StudioRows};

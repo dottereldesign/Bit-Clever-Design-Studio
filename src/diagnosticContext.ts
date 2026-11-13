@@ -1,7 +1,7 @@
 // Diagnostic metadata is an allowlisted description, never a copy of user data.
 export type DiagnosticFields = Record<string, string | number | boolean | null>;
-export const diagnosticSections = ['marketing','leads','general','projects','designs','components','home','settings'] as const;
-const kinds = ['lead','campaign','contact','organization','content','activity','pipeline','meeting'];
+export const diagnosticSections = ['research','marketing','leads','general','projects','designs','components','home','settings'] as const;
+const kinds = ['research','lead','campaign','contact','organization','content','activity','pipeline','meeting'];
 const fields = new Set(['name','archived','organization','contacts','projects','campaign','parent','files','tags','status','service','source','value','currency','date','end_date','body','email','phone','website','audience','message','offer','channel','results','activity_type','actions','moodboard','stages','brief','deadline','action','done','text','primary','role','company','notes','title','people','related','kind','milestones','metrics','variant_group']);
 let context: DiagnosticFields = {};
 let recordKinds = new Map<string,string>();
@@ -11,7 +11,7 @@ export function setDiagnosticContext(next:DiagnosticFields) {context={...next};}
 export function diagnosticContext():DiagnosticFields {return {...context};}
 function recordContext(id:string,kind?:string):DiagnosticFields {
  const known=kind&&kinds.includes(kind)?kind:recordKinds.get(id);
- return {record_id:opaqueId(id),record_kind:known??'unknown',...(known?{section:['campaign','content','meeting'].includes(known)?'marketing':'leads'}:{})};
+ return {record_id:opaqueId(id),record_kind:known??'unknown',...(known?{section:known==='research'?'research':['campaign','content','meeting'].includes(known)?'marketing':'leads'}:{})};
 }
 export function commandFields(command:string,input:Record<string,any>):DiagnosticFields {
  const change=input.change??input.input??{};

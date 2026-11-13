@@ -1,5 +1,5 @@
 import type { MoodboardNode, ProjectOverviewData } from './model';
-export type StudioKind = 'lead' | 'campaign' | 'contact' | 'organization' | 'content' | 'activity' | 'pipeline' | 'meeting';
+export type StudioKind = 'lead' | 'campaign' | 'contact' | 'organization' | 'content' | 'activity' | 'pipeline' | 'meeting' | 'research';
 export type StudioEntry = {
     id: string;
     meeting?: import('./calendarImport').Meeting;
@@ -44,7 +44,7 @@ export type StudioEntry = {
     updated: number;
 };
 export type StudioRoute = {
-    section: 'marketing' | 'leads';
+    section: 'marketing' | 'leads' | 'research';
     page: string;
     id?: string;
     tab?: string;

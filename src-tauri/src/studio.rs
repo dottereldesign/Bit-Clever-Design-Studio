@@ -116,6 +116,7 @@ pub fn put(db: &Connection, e: &Entry) -> Result<()> {
             "activity",
             "pipeline",
             "meeting",
+            "research",
         ]
         .contains(&e.kind.as_str())
         || e.name.trim().is_empty()
@@ -701,6 +702,17 @@ mod tests {
         assert!(command(&path,"update_studio",json!({"id":"campaign","patch":{"milestones":[{"id":"bad","text":"Invalid date","deadline":"2026-02-30","done":false}]}}).to_string()).is_err());
         assert_eq!(entry(&path,"campaign").milestones.len(),1);
         db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();assert!(get(&db::connect(&path).unwrap(),"campaign").unwrap().is_none());
+    }
+    #[test]
+    fn research_records_attachments_history_and_backup_roundtrip() {
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("library.sqlite");db::init(&path).unwrap();
+        edit(&path,"research",json!({"kind":"research","name":"Competitor pricing","status":"saved","service":"pricing","value":49,"currency":"NZD","offer":"per month","body":"Compare services","results":"Check support coverage","tags":["market"],"website":"https://example.com/pricing"}));
+        let captured=content::capture(&path,serde_json::from_value(json!({"studio":"research","url":"https://example.com/source"})).unwrap()).unwrap();
+        assert_eq!(entry(&path,"research").files,captured.ids);assert!(db::load(&path,false).unwrap().items[0].project_only);
+        edit(&path,"research",json!({"status":"complete","archived":true}));
+        db::change(&path,serde_json::from_value(json!({"action":"undo_organisation"})).unwrap()).unwrap();assert_eq!(entry(&path,"research").status,"saved");assert!(!entry(&path,"research").archived);
+        let backup=dir.path().join("metadata.json");db::export(&path,backup.clone()).unwrap();let restored=dir.path().join("restored.sqlite");db::init(&restored).unwrap();db::import(&restored,backup).unwrap();
+        let e=entry(&restored,"research");assert_eq!(e.kind,"research");assert_eq!(e.results,"Check support coverage");assert_eq!(e.value,Some(49.));assert_eq!(e.files.len(),1);assert_eq!(db::load(&restored,false).unwrap().items[0].path,"https://example.com/source");
     }
     #[test]
     fn winning_is_atomic_reuses_projects_and_does_not_duplicate_on_retry() {

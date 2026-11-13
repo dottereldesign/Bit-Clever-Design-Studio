@@ -375,7 +375,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         db::valid_url(&c.source_url)?;
     }
     let mut db = db::connect(db_path)?;
-    if let Some(id)=&c.studio{if !crate::studio::get(&db,id)?.is_some_and(|e|!e.archived&&["lead","campaign","content","activity"].contains(&e.kind.as_str())){return Err("Choose an active lead, campaign or content record.".into());}}
+    if let Some(id)=&c.studio{if !crate::studio::get(&db,id)?.is_some_and(|e|!e.archived&&["lead","campaign","content","activity","research"].contains(&e.kind.as_str())){return Err("Choose an active lead, campaign, content or research record.".into());}}
     // Validate all labels before writing files or adding any metadata.
     for (table, ids) in [("projects", &c.projects), ("tags", &c.tags)] {
         for id in ids {

@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Bit Clever Studio</h1>
-<p align="center">A local workspace for creative projects, moodboards and design inspiration.</p>
+<p align="center">A local studio for research, inspiration, leads and creative projects.</p>
 <p align="center">
   <a href="https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest">Download for Windows</a> ·
   <a href="#your-library--backups">Storage & backups</a> ·
@@ -12,20 +12,23 @@
 
 ![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.jpg)
 
-## Six areas, one studio
+## Seven areas, one studio
 
 | Area | Purpose | Availability |
 | --- | --- | --- |
 | **Marketing** | Plan campaigns, organise creative assets and schedule content. | Development |
 | **Leads** | Track opportunities, contacts and follow-ups through to a project. | Development |
-| **General** | Save websites, links, resources, fonts and brand guidelines. | Available |
 | **Projects** | Manage files, briefs, deadlines, next actions, client records and moodboards. | Available |
+| **General** | Save websites, links, resources, fonts and brand guidelines. | Available |
 | **Design Inspo** | Collect visual references in flexible, shared folders. | Available |
 | **App Components** | Organise interface references, components and page templates. | Available |
+| **Research** | Analyse markets, competitors and pricing; keep plans, books, podcasts, courses and findings. | Development |
 
-Marketing and Leads are available in the development workspace. Installed releases can lag behind source changes; check release notes before downloading. [Leads and Marketing details](docs/STUDIO-WORKSPACES.md).
+Marketing, Leads and Research are available in the development workspace. Installed releases can lag behind source changes; check release notes before downloading. [Leads and Marketing details](docs/STUDIO-WORKSPACES.md).
 
-## From enquiry to delivery
+## Research to delivery
+
+- **Research** — keep notes, source links, tags, status and review dates. Link research to projects, attach files or existing references, and capture findings separately from working notes. Books, podcasts, courses and articles share a reading/listening list. Research records and attachments are included in library backups.
 
 - **Leads** — track opportunities in a table or draggable pipeline, record interactions and schedule next actions. Share contacts across projects without merging people by name.
 - **Project handover** — turn a won lead into a project, carrying its brief, contacts, actions and file references. Keep a link back to the opportunity and its source campaign.
@@ -54,7 +57,7 @@ Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrang
 
 ![Customisation panel with sidebar appearance choices](docs/images/customise.jpg)
 
-Customise sidebar layouts, section styles, icons and Home tiles. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes and organisation actions support Undo/Redo; settings undo lasts for the current session.
+Customise sidebar layouts, section styles, icons and Home tiles. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes, including per-section colours from Customise or right-click, and organisation actions support Undo/Redo; settings undo lasts for the current session.
 
 *Screenshots show the app with the owner’s design library. Reference artwork belongs to its respective creators and is not bundled with the app.*
 
