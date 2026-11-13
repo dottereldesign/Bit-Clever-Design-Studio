@@ -130,4 +130,4 @@ npm run test:boards      # Browser interaction checks (requires Chrome)
 
 Standalone builds and installers are separate from development. See the [workflow](docs/WORKFLOW.md) for packaging and releases.
 
-[Development notes](docs/DEVELOPMENT.md) · [Performance](docs/PERFORMANCE.md) · [MIT licence](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Development notes](docs/DEVELOPMENT.md) · [Performance](docs/PERFORMANCE.md) · [Diagnostics coverage](docs/DIAGNOSTICS-AUDIT.md) · [MIT licence](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)

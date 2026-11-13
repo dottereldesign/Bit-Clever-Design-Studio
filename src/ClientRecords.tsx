@@ -1,4 +1,4 @@
-import {traceDiagnostic,record as diagnosticRecord} from './diagnostics';
+import {traceDiagnostic,recordError,record as diagnosticRecord} from './diagnostics';
 import {useEffect,useRef,useState} from 'react';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {ArrowLeft,Plus,Trash2,ExternalLink} from 'lucide-react';
@@ -12,7 +12,7 @@ function read<T>(key:string,fallback:T):T{try{return JSON.parse(localStorage.get
 function Field({store,value,label,multiline=false,type='text',save}:{store:string;value:string;label:string;multiline?:boolean;type?:string;save:(value:string)=>Promise<unknown>}){
  const [draft,setDraft]=useState(()=>read(store,value)),[error,setError]=useState(''),[busy,setBusy]=useState(false);const dirty=useRef(localStorage.getItem(store)!==null);
  useEffect(()=>{if(!dirty.current)setDraft(value);},[value]);
- const commit=async()=>{if(busy||!dirty.current)return;setBusy(true);setError('');try{await traceDiagnostic('form.save',{mode:error?'retry':'save'},()=>save(draft));dirty.current=false;localStorage.removeItem(store);}catch(e){setError(String(e));}finally{setBusy(false);}};
+ const commit=async()=>{if(busy||!dirty.current)return;setBusy(true);setError('');try{await traceDiagnostic('form.save',{mode:error?'retry':'save'},()=>save(draft));dirty.current=false;localStorage.removeItem(store);}catch(e){recordError('project.client_records',e);setError(String(e));}finally{setBusy(false);}};
  const props={value:draft,disabled:busy,'aria-label':label,onChange:(e:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>{dirty.current=true;setDraft(e.target.value);localStorage.setItem(store,JSON.stringify(e.target.value));},onBlur:()=>void commit()};
  return <label className="client-field"><span>{label}</span>{multiline?<textarea {...props} rows={8} maxLength={50000}/>:<input {...props} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}}} type={type} maxLength={type==='text'?500:undefined}/>}{busy?<small role="status">Saving…</small>:dirty.current&&!error&&<small className="client-unsaved">Unsaved <button onClick={()=>void commit()}>Save</button></small>}{error&&<small role="alert">Not saved: {error} <button onClick={()=>void commit()}>Retry</button></small>}</label>;
 }
@@ -28,7 +28,7 @@ export default function ClientRecords({project,data=empty,items,overview,mutate,
  const record=selected.startsWith('record:')?records.find(r=>'record:'+r.id===selected):undefined;
  const primary=activeContacts.find(c=>c.primary)??activeContacts[0];
  const update=(type:'record'|'contact'|'action',id:string,patch?:Record<string,unknown>)=>mutate({action:'update_client_records',target:project,value:JSON.stringify({type,id,patch})});
- const run=async(operation:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await operation();}catch(e){setError(String(e));}finally{setBusy(false);}};
+ const run=async(operation:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await operation();}catch(e){recordError('project.client_records',e);setError(String(e));}finally{setBusy(false);}};
  const add=async(type:'contact'|'record')=>run(async()=>{const id=crypto.randomUUID();await update(type,id,type==='contact'?{name:'New contact',primary:activeContacts.length===0}:{kind:newKind,title:`New ${newKind}`,date:today(),status:newKind==='meeting'?'':newKind==='feedback'?'open':'proposed'});setSelected(type+':'+id);if(type==='contact')setContactsOpen(true);else{setFilter('all');setSearch('');}});
  const field=(type:'contact'|'record',id:string,name:string,value:string,label:string,multiline=false,inputType='text')=><Field key={id+name} store={`client-draft:${project}:${type}:${id}:${name}`} value={value} label={label} multiline={multiline} type={inputType} save={value=>update(type,id,{[name]:value})}/>;
  const visible=records.filter(r=>(filter==='archived'?r.archived:!r.archived)&&(filter==='all'||filter==='archived'||r.kind===filter)&&`${r.title} ${r.body}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date)||a.title.localeCompare(b.title));

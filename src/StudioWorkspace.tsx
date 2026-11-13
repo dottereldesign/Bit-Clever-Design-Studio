@@ -1,3 +1,4 @@
+import {recordError} from './diagnostics';
 import LeadsTour from "./LeadsTour";
 import CalendarConnection,{CalendarSyncStatus} from './CalendarConnection';
 import {openUrl} from './api';
@@ -38,6 +39,7 @@ function Field({ id, label, value, save, type = 'text', large = false }: {
         localStorage.removeItem(id);
     }
     catch (e) {
+        recordError('studio.action',e);
         setError(String(e));
     }
     finally {
@@ -99,6 +101,7 @@ export default function StudioWorkspace({ lib, route, navigate:onNavigate, mutat
         await fn();
     }
     catch (e) {
+        recordError('studio.action',e);
         setError(String(e));
     }
     finally {

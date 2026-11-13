@@ -2,8 +2,8 @@ import {collectBackupPreferences} from "./backupPreferences";
 import { useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "./diagnostics";
 import { homeDir } from "@tauri-apps/api/path";
-import { open } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { open } from "./nativeUi";
+import { revealItemInDir } from "./nativeUi";
 import { Download, FolderOpen, LoaderCircle, X } from "lucide-react";
 
 type Progress = { phase: string; copied_bytes: number; total_bytes: number; completed_files: number; total_files: number; current: string };

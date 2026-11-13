@@ -1,3 +1,4 @@
+import {recordError} from './diagnostics';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "./diagnostics";
 import { createPortal } from "react-dom";
@@ -97,7 +98,7 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
       const next=rows.map(t=>t.id===id?{...t,cover,autoImageSize:true,span:t.span??span}:t);
       if(!mounted.current){change(next);return;}
       change(next);setMessage("Tile image updated. The layout has adapted to the image.");setOptions(null);
-    }catch(error){setMessage(`Could not use that image. ${error instanceof Error?error.message:String(error)}`);}
+    }catch(error){recordError('home.cover',error);setMessage(`Could not use that image. ${error instanceof Error?error.message:String(error)}`);}
     finally{pendingCovers.current.delete(id);if(mounted.current)setCoverBusy([...pendingCovers.current]);}
   };
   const drop=(event:React.DragEvent,index?:number)=>{event.preventDefault();event.stopPropagation();setOver(false);if(event.dataTransfer.files.length){if(index===undefined){setMessage("Drop the image onto an existing tile to replace its cover.");return;}if(event.dataTransfer.files.length!==1){setMessage("Drop one image at a time onto a tile.");return;}void setCover(current.current[index].id,event.dataTransfer.files[0]);return;}const id=event.dataTransfer.getData(homeMime);if(id){add(id);return;}const moving=event.dataTransfer.getData(tileMime);if(moving){const next=[...current.current],from=next.findIndex(t=>t.id===moving);if(from<0)return;const [tile]=next.splice(from,1);next.splice(index??next.length,0,tile);change(next);}};

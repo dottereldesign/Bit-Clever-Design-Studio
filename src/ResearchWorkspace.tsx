@@ -1,3 +1,4 @@
+import {recordError} from './diagnostics';
 import {ProjectFilePreview} from "./ProjectWorkspace";
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ArrowLeft,ExternalLink,Plus,Paperclip,Archive,Search} from 'lucide-react';
@@ -21,7 +22,7 @@ export default function ResearchWorkspace({lib,route,navigate,mutate,importInto,
  useEffect(()=>{const focus=()=>search.current?.focus();window.addEventListener('studio-search',focus);return()=>window.removeEventListener('studio-search',focus);},[]);
  useEffect(()=>{setAdding(false);setAttachSearch('');setError('');},[route.id]);
  const update=(e:StudioEntry,patch:Partial<StudioEntry>)=>mutate({action:'update_studio',value:JSON.stringify({id:e.id,patch,base:Object.fromEntries(Object.keys(patch).map(k=>[k,e[k as keyof StudioEntry]]))})});
- const run=async(work:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setError('');try{await work();}catch(e){setError(String(e));}finally{setBusy(false);}};
+ const run=async(work:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setError('');try{await work();}catch(e){recordError('research.action',e);setError(String(e));}finally{setBusy(false);}};
  const open=(e:StudioEntry)=>navigate({section:'research',page:route.page,id:e.id});
  const create=async(title:string,url='')=>{const e=blankEntry('research',title);const {id,created,updated,...patch}=e;await mutate({action:'update_studio',value:JSON.stringify({id,patch:{...patch,status:'saved',service:route.page==='all'?'other':route.page==='learning'?'book':route.page,website:url}})});setName('');navigate({section:'research',page:route.page,id});};
  const field=(key:keyof StudioEntry,label:string,large=false,type='text')=>entry&&<StudioField id={`research-draft:${lib.root}:${entry.id}:${key}`} label={label} value={entry[key]==null?'':String(entry[key])} large={large} type={type} save={value=>update(entry,{[key]:key==='value'?(value===''?null:Number(value)):value})}/>;

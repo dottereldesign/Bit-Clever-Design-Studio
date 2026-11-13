@@ -3,9 +3,10 @@ import {invoke,isTauri} from "./diagnostics";
 import {appHistory} from "./appHistory";
 const keys=['research-view','onboarding','sidebar-section-colours','studio-layouts','project-file-layouts','selection-style','colour-history','collection-shortcuts','site-shortcuts','tile-size','sidebar-width','sidebar-section-style','home-style','home-appearance','reduce-motion','sidebar-layout','app-icons','folder-labels','folder-appearance','sidebar-folder-order','home-plan','home-tiles'];
 const allowed=(key:string)=>keys.includes(key)||key.startsWith('sidebar-open:');
+const invalidKeys=new Set<string>();
 export function collectBackupPreferences(){
  const result:Record<string,unknown>={};
- for(const key of Object.keys(localStorage)){if(allowed(key)){try{result[key]=JSON.parse(localStorage.getItem(key)!);}catch{/* Skip invalid settings. */}}}
+ for(const key of Object.keys(localStorage)){if(allowed(key)){try{result[key]=JSON.parse(localStorage.getItem(key)!);invalidKeys.delete(key);}catch{if(!invalidKeys.has(key)){invalidKeys.add(key);record('settings.invalid_value','warning',0,{field:keys.includes(key)?key:'sidebar_visibility',error_code:'invalid_json'});}}}}
  return result;
 }
 export function applyBackupPreferences(values:Record<string,unknown>){

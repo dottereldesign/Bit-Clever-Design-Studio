@@ -60,7 +60,18 @@ fn clean(mut e: Event) -> Event {
     let mut fields = serde_json::Map::new();
     if let Some(input) = e.fields.as_object() {
         for (key, value) in input {
+            if key=="active_operations"||key=="recent_operations" {
+                if let Some(text)=value.as_str(){fields.insert(key.clone(),text.split('.').filter(|s|s.len()==36&&s.chars().all(|c|c.is_ascii_hexdigit()||c=='-')).take(8).collect::<Vec<_>>().join(".").into());}continue;
+            }
+            if key=="code_frames" {
+                if let Some(text)=value.as_str(){let frames=text.split(',').take(8).filter(|frame|{let parts=frame.split(':').collect::<Vec<_>>();parts.len()==3&&parts[0].len()<100&&parts[0].chars().all(|c|c.is_ascii_alphanumeric()||"._-".contains(c))&&[".ts",".tsx",".js",".jsx",".rs"].iter().any(|ext|parts[0].ends_with(ext))&&parts[1].parse::<u32>().is_ok()&&parts[2].parse::<u32>().is_ok()}).collect::<Vec<_>>().join(",");fields.insert(key.clone(),frames.into());}continue;
+            }
             if [
+                "input_timing", "time_origin", "event_start_ms", "browser_interaction", "input_delay_ms", "handler_ms",
+                "frontend_session", "interaction", "surface", "control", "input_type",
+                "active_operations", "recent_operations", "since_start_ms", "visibility",
+                "error_type", "error_fingerprint", "script_offset", "script_ms", "layout_ms", "long_tasks", "frame_attribution",
+                "render_ms", "base_ms", "source_file", "line", "column", "parent_operation", "previous_session",
                 "count",
                 "id",
                 "project",
@@ -183,12 +194,28 @@ pub fn event(name: &str, status: &str, duration: f64, fields: serde_json::Value)
         fields,
     });
 }
+pub fn phase_event(operation:&str,name:&str,status:&str,duration:f64,fields:serde_json::Value){
+    record(Event{time:0,name:name.into(),operation:operation.into(),status:status.into(),duration,fields});
+}
+#[track_caller]
+pub fn phase<T>(operation:&str,name:&str,work:impl FnOnce()->Result<T,String>)->Result<T,String>{
+    let location=std::panic::Location::caller();let start=std::time::Instant::now();
+    phase_event(operation,name,"started",0.,serde_json::json!({}));
+    let result=work();let mut fields=serde_json::json!({});
+    if let Err(error)=&result {
+        use std::hash::{Hash,Hasher};let mut hasher=std::collections::hash_map::DefaultHasher::new();error.hash(&mut hasher);
+        let lower=error.to_lowercase();let code=if lower.contains("locked")||lower.contains("busy"){"busy"}else if lower.contains("denied")||lower.contains("permission"){"permission"}else if lower.contains("not found")||lower.contains("cannot find"){"missing"}else if lower.contains("clipboard")||lower.contains("format"){"clipboard_format"}else if lower.contains("cancel"){"cancelled"}else{"native_failure"};
+        fields=serde_json::json!({"error_code":code,"error_fingerprint":format!("{:016x}",hasher.finish()),"source_file":Path::new(location.file()).file_name().map(|f|f.to_string_lossy()),"line":location.line(),"column":location.column()});
+    }
+    phase_event(operation,name,if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.,fields);result
+}
 pub fn init(data: &Path) {
     let root = data.join("Diagnostics");
     if std::fs::create_dir_all(&root).is_err() {
         return;
     }
-    let interrupted = root.join("active-session.json").exists();
+    let previous_session = std::fs::read_to_string(root.join("active-session.json")).ok();
+    let interrupted = previous_session.is_some();
     let session = now().to_string();
     let _ = std::fs::write(root.join("active-session.json"), &session);
     let (tx, rx) = sync_channel(2048);
@@ -235,7 +262,7 @@ pub fn init(data: &Path) {
             "session.previous_interrupted",
             "warning",
             0.,
-            serde_json::json!({}),
+            serde_json::json!({"previous_session":previous_session.as_deref().map(token),"mode":if cfg!(debug_assertions){"development"}else{"standalone"}}),
         );
     }
     let previous = std::panic::take_hook();
@@ -243,7 +270,7 @@ pub fn init(data: &Path) {
         if let Some(l) = LOGGER.get() {
             let _ = std::fs::write(
                 l.root.join("crash.json"),
-                serde_json::json!({"time":now(),"session":l.session,"kind":"native-panic"})
+                serde_json::json!({"time":now(),"session":l.session,"kind":"native-panic","build":env!("BITCLEVER_COMMIT"),"source_file":info.location().and_then(|p|Path::new(p.file()).file_name()).map(|p|p.to_string_lossy().to_string()),"line":info.location().map(|p|p.line()),"column":info.location().map(|p|p.column())})
                     .to_string(),
             );
         }
@@ -368,6 +395,11 @@ mod tests {
         assert_eq!(e.fields["section"], "leads");
         assert!(e.fields.get("email").is_none());
         assert_eq!(e.fields["count"], 2);
+    }
+    #[test]
+    fn diagnostic_code_locations_are_bounded_and_paths_are_rejected(){
+        let e=clean(Event{time:0,name:"error".into(),operation:"id".into(),status:"error".into(),duration:1.,fields:serde_json::json!({"code_frames":"App.tsx:2:3,C:/Users/private.ts:2:3,https://secret/a.js:4:5,studio.rs:6:7","frontend_session":"abc","interaction":"def","error_type":"TypeError","error_fingerprint":"123","message":"secret"})});
+        assert_eq!(e.fields["code_frames"],"App.tsx:2:3,studio.rs:6:7");assert!(e.fields.get("message").is_none());assert_eq!(e.fields["interaction"],"def");
     }
     #[test]
     fn retention_and_readable_events() {

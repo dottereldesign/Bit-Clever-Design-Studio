@@ -108,9 +108,9 @@ fn open_library_location(name:String,state:tauri::State<'_,State>)->Result<()>{
     tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
 }
 #[tauri::command]
-async fn storage_usage(state:tauri::State<'_,State>)->Result<storage::Usage>{
+async fn storage_usage(diagnostic_operation:Option<String>,state:tauri::State<'_,State>)->Result<storage::Usage>{
  let s=state.inner().clone();
- tauri::async_runtime::spawn_blocking(move||{let mut app_files=vec![s.ffmpeg,s.downloader];if let Ok(exe)=std::env::current_exe(){app_files.push(exe);}storage::usage(&s.db,app_files)}).await.map_err(err)?
+ tauri::async_runtime::spawn_blocking(move||{let mut app_files=vec![s.ffmpeg,s.downloader];if let Ok(exe)=std::env::current_exe(){app_files.push(exe);}storage::usage_traced(&s.db,app_files,&diagnostic_operation.unwrap_or_default())}).await.map_err(err)?
 }
 #[tauri::command]
 fn open_data_folder(state:tauri::State<'_,State>)->Result<()>{
@@ -158,9 +158,9 @@ async fn backup_preferences(path:String, app:tauri::AppHandle,state:tauri::State
 #[tauri::command]
 fn cancel_library_export(state: tauri::State<'_, State>) {state.export_cancel.store(true,Ordering::SeqCst);}
 #[tauri::command]
-async fn get_library(state: tauri::State<'_, State>) -> Result<db::Library> {
+async fn get_library(diagnostic_operation:Option<String>,state: tauri::State<'_, State>) -> Result<db::Library> {
     let s = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || db::load(&s.db, s.scanning.load(Ordering::SeqCst)))
+    {let queued=std::time::Instant::now();tauri::async_runtime::spawn_blocking(move || {let op=diagnostic_operation.unwrap_or_default();diagnostics::phase_event(&op,"native.library_worker_wait","success",queued.elapsed().as_secs_f64()*1000.,serde_json::json!({}));diagnostics::phase(&op,"native.library_read",||db::load(&s.db, s.scanning.load(Ordering::SeqCst)))})}
         .await
         .map_err(err)?
 }
@@ -171,19 +171,21 @@ async fn update(change: db::Change, diagnostic_operation:Option<String>, state: 
         let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();let diagnostic_action=change.action.clone();let organise_files=!matches!(change.action.as_str(),"update_studio"|"update_client_records"|"update_project_overview");
         let log=|name:&str,status:&str,duration:f64|diagnostics::record(diagnostics::Event{time:0,name:name.into(),operation:operation.clone(),status:status.into(),duration,fields:serde_json::json!({"action":diagnostic_action})});
         let _guard=s.content_lock.lock().map_err(err)?;log("native.lock_wait","success",start.elapsed().as_secs_f64()*1000.);
-        let start=std::time::Instant::now();let result=db::change(&s.db,change);log("native.database_change",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result?;
+        diagnostics::phase(&operation,"native.database_change",||db::change(&s.db,change))?;
         if !organise_files {log("native.organise_files_skipped","success",0.);return Ok(());}
-        let start=std::time::Instant::now();let result=managed_library::organise(&s.db);log("native.organise_files",if result.is_ok(){"success"}else{"error"},start.elapsed().as_secs_f64()*1000.);result
+        diagnostics::phase(&operation,"native.organise_files",||managed_library::organise(&s.db))
     })
         .await
         .map_err(err)?
 }
 #[tauri::command]
-async fn get_media(id: i64, mode: String, state: tauri::State<'_, State>) -> Result<String> {
+async fn get_media(id: i64, mode: String, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<String> {
     let s = state.inner().clone();
+    let operation=diagnostic_operation.unwrap_or_default();let queued=std::time::Instant::now();
     let _permit = s.media_slots.clone().acquire_owned().await.map_err(err)?;
+    diagnostics::phase_event(&operation,"native.media_queue","success",queued.elapsed().as_secs_f64()*1000.,serde_json::json!({"id":id,"mode":mode}));
     tauri::async_runtime::spawn_blocking(move || {
-        library::media(&s.db, &s.cache, &s.ffmpeg, id, &mode)
+        diagnostics::phase(&operation,"native.media_generate",||library::media(&s.db, &s.cache, &s.ffmpeg, id, &mode))
     })
     .await
     .map_err(err)?
@@ -207,25 +209,25 @@ fn scan_background(app: tauri::AppHandle, s: State) {
     if s.scanning.swap(true, Ordering::SeqCst) {
         return;
     }
-    let scan_start=std::time::Instant::now();
-    diagnostics::event("native.scan","started",0.,serde_json::json!({}));
+    let scan_start=std::time::Instant::now();let operation=format!("scan-{}",diagnostics::now());
+    diagnostics::phase_event(&operation,"native.scan","started",0.,serde_json::json!({}));
     let _ = app.emit("scan-started", ());
     tauri::async_runtime::spawn_blocking(move || {
-        let result = (|| {let _guard=s.content_lock.lock().map_err(err)?;library::scan_all(&s.db)?;managed_library::organise(&s.db)})();
-        diagnostics::event("native.scan",if result.is_ok(){"success"}else{"error"},scan_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
+        let result = (|| {let _guard=diagnostics::phase(&operation,"native.scan_lock_wait",||s.content_lock.lock().map_err(err))?;diagnostics::phase(&operation,"native.scan_files",||library::scan_all(&s.db))?;diagnostics::phase(&operation,"native.scan_organise",||managed_library::organise(&s.db))})();
+        diagnostics::phase_event(&operation,"native.scan",if result.is_ok(){"success"}else{"error"},scan_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
         s.scanning.store(false, Ordering::SeqCst);
         match result {
             Ok(_) => {
                 let _ = app.emit("library-changed", ());
-                let _guard = s.content_lock.lock();
-                let index_start=std::time::Instant::now();diagnostics::event("native.fingerprint_index","started",0.,serde_json::json!({}));
+                let Ok(_guard) = diagnostics::phase(&operation,"native.index_lock_wait",||s.content_lock.lock().map_err(err)) else {return;};
+                let index_start=std::time::Instant::now();diagnostics::phase_event(&operation,"native.fingerprint_index","started",0.,serde_json::json!({}));
                 let indexed = content::index_with_progress(&s.db, &mut |mut progress| {
                     progress.phase = "indexing";
                     if let Ok(mut current) = s.index_progress.lock() {
                         *current = Some(progress);
                     }
                 });
-                diagnostics::event("native.fingerprint_index",if indexed.is_ok(){"success"}else{"error"},index_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
+                diagnostics::phase_event(&operation,"native.fingerprint_index",if indexed.is_ok(){"success"}else{"error"},index_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
                 if let Ok(mut current) = s.index_progress.lock() {
                     *current = None;
                 }
@@ -371,9 +373,9 @@ async fn download_video(input: download::Request, on_progress: tauri::ipc::Chann
 #[tauri::command]
 fn cancel_video_download(state: tauri::State<'_,State>) { state.download_cancel.store(true,Ordering::SeqCst); }
 #[tauri::command]
-async fn read_clipboard(app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<content::ClipboardContent> {
+async fn read_clipboard(diagnostic_operation:Option<String>,app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<content::ClipboardContent> {
     let data = state.db.parent().unwrap().to_path_buf();
-    let result = tauri::async_runtime::spawn_blocking(move || content::clipboard(&data))
+    let result = tauri::async_runtime::spawn_blocking(move || diagnostics::phase(&diagnostic_operation.unwrap_or_default(),"native.clipboard_read",||content::clipboard(&data)))
         .await
         .map_err(err)??;
     // Grant preview access only to the files the user explicitly pasted.

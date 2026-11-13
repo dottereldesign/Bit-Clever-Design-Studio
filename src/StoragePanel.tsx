@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {invoke} from "./diagnostics";
-import {open} from '@tauri-apps/plugin-dialog';
+import {open} from './nativeUi';
 import {FolderOpen,Download,ShieldCheck,Upload,Layers,Palette,Folder} from 'lucide-react';
 import {StudioDialog} from './Shortcuts';
 import {storageSize} from './StorageBar';

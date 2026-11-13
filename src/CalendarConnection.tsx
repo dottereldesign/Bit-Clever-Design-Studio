@@ -1,5 +1,5 @@
 import {useEffect,useState,useSyncExternalStore} from 'react';
-import {invoke,record} from './diagnostics';
+import {invoke,record,recordError} from './diagnostics';
 import {openUrl} from './api';
 import {selectedMeetings,type CalendarStatus} from './calendarImport';
 type Snapshot={status:CalendarStatus|null;busy:boolean;error:string};
@@ -9,7 +9,7 @@ const subscribe=(fn:()=>void)=>{listeners.add(fn);return()=>{listeners.delete(fn
 export function syncCalendar(){
  if(inFlight)return inFlight;
  publish({busy:true,error:''});
- inFlight=(async()=>{try{const feed=await invoke<{text:string;rules:CalendarStatus['meetings'];generation:string}>('calendar_feed');const meetings=selectedMeetings(feed.text,feed.rules);publish({status:await invoke<CalendarStatus>('calendar_apply',{meetings,generation:feed.generation})});}catch(error){record('calendar.sync','error',0,{error_code:'calendar_sync'});publish({error:String(error).replace(/^Error: /,'')});}finally{publish({busy:false});inFlight=null;}})();return inFlight;
+ inFlight=(async()=>{try{const feed=await invoke<{text:string;rules:CalendarStatus['meetings'];generation:string}>('calendar_feed');const meetings=selectedMeetings(feed.text,feed.rules);publish({status:await invoke<CalendarStatus>('calendar_apply',{meetings,generation:feed.generation})});}catch(error){recordError('calendar.sync',error,{error_code:'calendar_sync'});publish({error:String(error).replace(/^Error: /,'')});}finally{publish({busy:false});inFlight=null;}})();return inFlight;
 }
 export function useCalendarSync(ready:boolean,refresh:()=>Promise<unknown>){
  useEffect(()=>{if(!ready)return;let disposed=false;let timer:ReturnType<typeof setInterval>|undefined;

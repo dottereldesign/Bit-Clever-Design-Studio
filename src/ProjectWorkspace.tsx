@@ -8,7 +8,7 @@ import {useVirtualizer} from '@tanstack/react-virtual';
 import {ArrowLeft,ArrowRight,Columns3,ExternalLink,Eye,File,Folder,FolderPlus,Grid2X2,List,Plus,X} from 'lucide-react';
 import {convertFileSrc,invoke} from './diagnostics';
 import {media,openUrl,type Change} from './api';
-import {revealItemInDir} from '@tauri-apps/plugin-opener';
+import {revealItemInDir} from './nativeUi';
 import {useHistoryState} from './useAppHistory';
 import {orderedFolders,folderPath,type FolderScope} from './ProjectFolders';
 import type {Item,Label,ProjectFolder} from './model';

@@ -7,7 +7,7 @@ import type {StudioRoute} from "./studio";
 import ProjectWorkspace, {ProjectFilePreview} from "./ProjectWorkspace";
 import {useThumbnailReadiness} from './useThumbnailReadiness';
 import Diagnostics from './DiagnosticsPanel';
-import {record as recordDiagnostic,errorCode} from './diagnostics';
+import {record as recordDiagnostic,recordError,errorCode} from './diagnostics';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {ProjectTree, OrganiseProjectFolders, type FolderScope} from './ProjectFolders';
 import LinkRating from './LinkRating';
@@ -37,8 +37,8 @@ import {
 } from "react";
 import { invoke, isTauri } from "./diagnostics";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { open, save } from "./nativeUi";
+import { revealItemInDir } from "./nativeUi";
 import { openUrl } from "./api";
 import appLogo from "./assets/app-logo.png";
 import { arrangeMasonry } from "./masonry";
@@ -394,7 +394,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     return next;
   }, []);
   useCalendarSync(ready,refresh);
-  const report = useCallback((e: unknown) => {recordDiagnostic('ui.error','error',0,{error_code:errorCode(e)});setError(tidyError(e));}, []);
+  const report = useCallback((e: unknown) => {recordError('ui.error',e);setError(tidyError(e));}, []);
   useEffect(()=>trackLibraryPreferences(report),[report]);
   const videoQueue = useVideoQueue(ready && isTauri(), refresh, report);
   useEffect(() => {
