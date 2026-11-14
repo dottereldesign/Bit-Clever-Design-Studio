@@ -25,9 +25,9 @@ try {
  window.__screenshotReady=true;await pause(600);document.querySelector('[aria-label="Close dialog"]').click();await pause(60);
  checks.push('Storage shows media and metadata locations, explains one-folder backup and verifies a copied backup');
  button('Settings').click();await until(()=>document.querySelector('.settings-page, .settings-modal'),'Settings');
- await until(()=>document.querySelector('.settings-page, .settings-modal').textContent.includes('0.2.0'),'Running version');
+ button('About').click();await until(()=>document.querySelector('.settings-page, .settings-modal').textContent.includes('0.2.0'),'Running version');
  button('Get latest update').click();await until(()=>calls.some(c=>c.command==='open_external_url'),'Update link');assert(calls.find(c=>c.command==='open_external_url').args.url.endsWith('/releases/latest'),'Wrong update destination');
- button('Export full library').click();await until(()=>document.querySelector('.library-export'),'Export panel');assert(!document.querySelector('.settings-page, .settings-modal'),'Settings stayed open');
+ button('Backup').click();await until(()=>button('Export full library'),'Backup settings');button('Export full library').click();await until(()=>document.querySelector('.library-export'),'Export panel');assert(!document.querySelector('.settings-page, .settings-modal'),'Settings stayed open');
  assert(document.querySelector('main').inert,'Background not inert');
  button('Choose Backup Folder').click();await until(()=>active,'Export started');assert(active.args.path==='D:/Backups','Wrong backup folder');assert(active.args.preferences['folder-labels'].Mobile==='iOS & Android','Appearance not exported');
  active.args.onProgress.onmessage({phase:'copying',copied_bytes:250000000,total_bytes:1000000000,completed_files:2,total_files:8,current:'A photograph.png'});
