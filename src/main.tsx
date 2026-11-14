@@ -1,3 +1,4 @@
+import {initializeAppearanceDefaults} from './defaultAppearance';
 import {prepareHomeStartup} from './startup';
 import {startDiagnostics,flushDiagnostics,record,recordError} from './diagnostics';
 import React from "react";
@@ -19,6 +20,7 @@ const stopDiagnostics=startDiagnostics();
 if(import.meta.hot)import.meta.hot.dispose(stopDiagnostics);
 const root=ReactDOM.createRoot(document.getElementById("root")!);
 loadLibraryPreferences().then(async()=>{
+ initializeAppearanceDefaults(localStorage,!isTauri());
  prepareHomeStartup();
  if(isTauri())await getCurrentWindow().onCloseRequested(async event=>{event.preventDefault();try{await flushLibraryPreferences();await flushDiagnostics();await getCurrentWindow().destroy();}catch(error){root.render(<Recovery error={error}/>);}});
  root.render(

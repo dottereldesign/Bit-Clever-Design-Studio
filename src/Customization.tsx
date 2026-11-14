@@ -1,3 +1,5 @@
+import {defaultAppearance} from './defaultAppearance';
+import {appHistory} from './appHistory';
 import AnalyticsSettings from './AnalyticsSettings';
 import HomeOverviewSettings from './HomeOverviewSettings';
 import TabControls from './TabAppearance';
@@ -32,7 +34,7 @@ export default function Customization({initial,close,sectionStyle,chooseSection,
  <header><h1 id="customise-title">Customise</h1><div className="customise-history"><HistoryButtons/><button className="icon-button" aria-label="Close customisation" onClick={dismiss}><X size={20}/></button></div></header>
  <div className="customise-layout"><nav aria-label="Customisation sections">{tabs.map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={16}/>{label}</button>)}</nav>
  <div className="customise-content" data-tab={tab} key={tab}><h2>{tabs.find(([id])=>id===tab)![1]}</h2>
- {tab==='branding'&&<BrandingControls/>}
+ {tab==='branding'&&<><BrandingControls/><div className="studio-default-look"><h3>Studio default look</h3><p>Restore the saved studio colours, buttons, tabs, layouts and spacing.</p><button className="custom-action" onClick={()=>{const before=Object.fromEntries(Object.keys(defaultAppearance).map(key=>[key,appHistory.read(key,()=>{try{return JSON.parse(localStorage.getItem(key)??'null');}catch{return null;}})]));appHistory.commit('Apply studio default look',before,{...defaultAppearance});}}>Apply studio default look</button><small>You can undo this change.</small></div></>}
  {tab==='analytics'&&<AnalyticsSettings/>}
  {tab==='buttons'&&<CtaControls/>}
  {tab==='tabs'&&<TabControls/>}
