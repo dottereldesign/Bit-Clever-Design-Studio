@@ -18,6 +18,7 @@ mod project_files;
 mod project_overview;
 mod client_records;
 mod studio;
+mod lead_close;
 mod clients;
 mod branding;
 mod calendar_sync;

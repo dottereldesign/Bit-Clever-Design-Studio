@@ -11,6 +11,7 @@ export type StudioEntry = {
     contacts: string[];
     projects: number[];
     handover_project?: number | null;
+    closed_at?: number | null;
     campaign: string | null;
     parent: string | null;
     files: number[];

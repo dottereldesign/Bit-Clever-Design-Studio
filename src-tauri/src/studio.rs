@@ -19,6 +19,7 @@ pub struct Entry {
     pub contacts: Vec<String>,
     pub projects: Vec<i64>,
     pub handover_project: Option<i64>,
+    pub closed_at: Option<i64>,
     pub campaign: Option<String>,
     pub parent: Option<String>,
     pub files: Vec<i64>,
@@ -391,6 +392,7 @@ pub fn change(db: &Connection, input: &str) -> Result<()> {
         if ["id", "created", "updated"].contains(&k.as_str()) || (k == "kind" && old.is_some()) {
             return Err("Record identity cannot change.".into());
         }
+        if k=="closed_at" {return Err("Close or reopen the lead to change its close date.".into());}
         if k=="handover_project" {return Err("Use project handover to change action ownership.".into());}
         data[k] = if let Some(base)=v["base"].get(k) { merge_edit(base,value,&data[k])? } else { value.clone() };
     }
@@ -400,6 +402,9 @@ pub fn change(db: &Connection, input: &str) -> Result<()> {
         e.created = db::now();
     }
     e.updated = db::now();
+    if e.kind=="lead" && old.as_ref().is_none_or(|o|o.status!=e.status) {
+        e.closed_at=if ["won","lost"].contains(&e.status.as_str()){Some(db::now())}else{None};
+    }
     if e.handover_project.is_some_and(|id|!e.projects.contains(&id)){return Err("Keep the handover project linked while it owns the work.".into());}
     validate_refs(db, &e)?;
     if e.kind == "pipeline" {

@@ -48,6 +48,7 @@ pub fn seed(db:&Connection)->Result<()> {
 }
 fn normal(s:&str)->String{s.to_lowercase().replace('ō',"o").split_whitespace().collect::<Vec<_>>().join(" ")}
 pub fn lead_client(db:&Connection,lead:&crate::studio::Entry,target:Option<i64>)->Result<String>{
+ if let Some(id)=&lead.organization {if let Some(org)=crate::studio::get(db,id)? {if ["client","organization"].contains(&org.kind.as_str())&&!org.archived{return Ok(id.clone());}}}
  let target=target.or_else(||if lead.projects.len()==1{lead.projects.first().copied()}else{None}).or_else(||db.query_row("SELECT id FROM projects WHERE lower(trim(name))=lower(trim(?))",[&lead.name],|r|r.get::<_,i64>(0)).ok());
  let clients=crate::studio::load(db)?.into_iter().filter(|c|(c.kind=="client"||c.kind=="organization")&&!c.archived).collect::<Vec<_>>();
  let matches=clients.iter().filter(|c|lead.organization.as_deref()==Some(c.id.as_str())||target.is_some_and(|p|c.projects.contains(&p))||(!lead.organization.is_none()&&c.organization==lead.organization)||normal(&c.name)==normal(&lead.name)).collect::<Vec<_>>();

@@ -493,6 +493,7 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
     match c.action.as_str() {
         "setup_clients" => crate::clients::seed(&tx)?,
         "update_studio" => crate::studio::change(&tx,c.value.as_deref().unwrap_or(""))?,
+        "close_studio_lead" => crate::lead_close::close(&tx,c.value.as_deref().unwrap_or(""))?,
         "win_studio_lead" => crate::studio::win(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
         "convert_studio_lead" => crate::studio::convert(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
         "update_client_records" => crate::client_records::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
