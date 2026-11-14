@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod diagnostics;
+mod business;
 mod browser;
 mod website_capture;
 mod storage;
@@ -85,6 +86,10 @@ async fn website_thumbnail(id:i64,state:tauri::State<'_,State>)->Result<String>{
 fn open_website_screenshot(id:i64,state:tauri::State<'_,State>)->Result<()>{let db=db::connect(&state.db)?;let path:String=db.query_row("SELECT thumbnail FROM items WHERE id=? AND source='Websites' AND archived=0",[id],|r|r.get(0)).map_err(err)?;tauri_plugin_opener::open_path(path,None::<&str>).map_err(err)}
 #[tauri::command]
 async fn library_overview(state:tauri::State<'_,State>)->Result<managed_library::Overview>{let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::overview(&db)).await.map_err(err)?}
+#[tauri::command]
+async fn business_load(location:tauri::State<'_,LibraryLocation>)->Result<business::Snapshot>{let folder=location.config.clone();tauri::async_runtime::spawn_blocking(move||business::load(&folder)).await.map_err(err)?}
+#[tauri::command]
+async fn business_save(revision:i64,data:serde_json::Value,location:tauri::State<'_,LibraryLocation>)->Result<business::Snapshot>{let folder=location.config.clone();tauri::async_runtime::spawn_blocking(move||business::save(&folder,revision,data)).await.map_err(err)?}
 #[tauri::command]
 async fn library_preferences(app:tauri::AppHandle)->Result<Option<serde_json::Value>>{if let Some(error)=&app.state::<LibraryLocation>().error{return Err(error.clone());}let db=app.state::<State>().db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::preferences(&db)).await.map_err(err)?}
 #[tauri::command]
@@ -703,6 +708,8 @@ fn main() {
             client_feed,
             client_meeting_pack,
             library_overview,
+            business_load,
+            business_save,
             library_preferences,
             save_library_preferences,
             prepare_library,

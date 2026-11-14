@@ -33,3 +33,6 @@ tsconfig.tsbuildinfo
 **/links.html
 **/INCOMPLETE.txt
 Design Backup*/
+
+# Private business bootstrap (never ship personal setup data)
+my-business-seed.json

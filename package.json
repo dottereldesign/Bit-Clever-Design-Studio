@@ -10,7 +10,7 @@
     "package": "node scripts/desktop.mjs build",
     "prepare:downloader": "node scripts/prepare-downloader.mjs",
     "prepare:media": "node scripts/prepare-media.mjs",
-    "test": "tsx --test src/defaultAppearance.test.ts src/analyticsData.test.ts src/homeOverviewData.test.ts src/tabAppearance.test.ts src/clientActivity.test.ts src/model.test.ts src/zoom.test.ts src/videoQueue.test.ts src/masonry.test.ts src/mediaQueue.test.ts src/homeLayout.test.ts src/sidebarSpace.test.ts src/appHistory.test.ts src/diagnosticContext.test.ts src/diagnosticEvidence.test.ts src/studio.test.ts src/calendarImport.test.ts",
+    "test": "tsx --test src/businessData.test.ts src/defaultAppearance.test.ts src/analyticsData.test.ts src/homeOverviewData.test.ts src/tabAppearance.test.ts src/clientActivity.test.ts src/model.test.ts src/zoom.test.ts src/videoQueue.test.ts src/masonry.test.ts src/mediaQueue.test.ts src/homeLayout.test.ts src/sidebarSpace.test.ts src/appHistory.test.ts src/diagnosticContext.test.ts src/diagnosticEvidence.test.ts src/studio.test.ts src/calendarImport.test.ts",
     "audit:diagnostics": "node scripts/audit-diagnostics.mjs",
     "diagnose:performance": "node scripts/check-grid-return.mjs performance",
     "diagnose:processes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/monitor-performance.ps1",
