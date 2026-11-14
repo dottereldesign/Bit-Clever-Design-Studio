@@ -1,0 +1,42 @@
+import googleCalendarLogo from './assets/google-calendar.ico';
+import {useEffect,useState,useSyncExternalStore} from 'react';
+import {invoke,record,recordError} from './diagnostics';
+import {openUrl} from './api';
+import {selectedMeetings,calendarCandidates,type CalendarCandidate,type CalendarStatus} from './calendarImport';
+type Snapshot={status:CalendarStatus|null;busy:boolean;error:string};
+let snapshot:Snapshot={status:null,busy:false,error:''};const listeners=new Set<()=>void>();let inFlight:Promise<void>|null=null;
+const publish=(next:Partial<Snapshot>)=>{snapshot={...snapshot,...next};listeners.forEach(fn=>fn());};
+const subscribe=(fn:()=>void)=>{listeners.add(fn);return()=>{listeners.delete(fn);};};
+export function syncCalendar(){
+ if(inFlight)return inFlight;
+ if(snapshot.status?.connected&&!snapshot.status.meetings.length)return Promise.resolve();
+ publish({busy:true,error:''});
+ inFlight=(async()=>{try{const feed=await invoke<{text:string;rules:CalendarStatus['meetings'];generation:string}>('calendar_feed');const meetings=selectedMeetings(feed.text,feed.rules);publish({status:await invoke<CalendarStatus>('calendar_apply',{meetings,generation:feed.generation})});}catch(error){recordError('calendar.sync',error,{error_code:'calendar_sync'});publish({error:String(error).replace(/^Error: /,'')});}finally{publish({busy:false});inFlight=null;}})();return inFlight;
+}
+export function useCalendarSync(ready:boolean,refresh:()=>Promise<unknown>){
+ useEffect(()=>{if(!ready)return;let disposed=false;let timer:ReturnType<typeof setInterval>|undefined;
+ void invoke<CalendarStatus & {initialised?:boolean}>('calendar_initialise').then(async status=>{if(disposed||!status)return;publish({status});if(status.initialised)await refresh();if(status.connected)await syncCalendar();if(!disposed)timer=setInterval(()=>{if(snapshot.status?.connected)void syncCalendar();},15*60*1000);}).catch(()=>{if(!disposed)publish({error:'Calendar setup could not be loaded.'});});
+ const online=()=>{if(snapshot.status?.connected)void syncCalendar();};window.addEventListener('online',online);
+ return()=>{disposed=true;clearInterval(timer);window.removeEventListener('online',online);};
+ },[ready,refresh]);
+}
+function calendarError(error:unknown){return String(error).replace(/^Error: /,'').replace(/https?:\/\/[^\s]+/gi,'[calendar address]')||'Calendar connection failed. Try again.';}
+function MeetingPicker({close}:{close:()=>void}){
+ const [choices,setChoices]=useState<CalendarCandidate[]>([]),[projects,setProjects]=useState<{id:number;name:string}[]>([]),[generation,setGeneration]=useState(''),[selection,setSelection]=useState<Record<string,string>>({}),[search,setSearch]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[retry,setRetry]=useState(0);
+ useEffect(()=>{let disposed=false;setLoading(true);setError('');void Promise.all([invoke<{text:string;rules:CalendarStatus['meetings'];generation:string}>('calendar_feed'),invoke<{projects:{id:number;name:string}[]}>('get_library')]).then(([feed,lib])=>{if(disposed)return;const selected=new Set(feed.rules.map(m=>m.uid));setChoices(calendarCandidates(feed.text).filter(m=>!selected.has(m.uid)).sort((a,b)=>Math.abs(Date.parse(a.start)-Date.now())-Math.abs(Date.parse(b.start)-Date.now())));setProjects(lib.projects);setGeneration(feed.generation);setSelection({});}).catch(error=>{if(!disposed)setError(calendarError(error));}).finally(()=>{if(!disposed)setLoading(false);});return()=>{disposed=true;};},[retry]);
+ const matches=choices.filter(m=>`${m.name} ${m.location} ${m.start}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())),chosen=choices.filter(m=>selection[m.uid]&&!m.unavailable);
+ const save=async()=>{setSaving(true);setError('');try{const status=await invoke<CalendarStatus>('calendar_select',{meetings:chosen.map(({unavailable,...m})=>({...m,project_name:selection[m.uid]})),generation});publish({status,error:''});close();}catch(error){setError(calendarError(error));}finally{setSaving(false);}};
+ return <div className="calendar-meeting-picker"><h3>Choose meetings to sync</h3><p>Assign a project to the meetings you want. Everything else stays out of Studio.</p>{loading?<p role="status">Loading calendar meetings…</p>:<><input type="search" aria-label="Find calendar meetings" placeholder="Find a meeting or date" value={search} onChange={e=>setSearch(e.target.value)}/>{!projects.length&&<p>Create a project before assigning meetings.</p>}<div className="calendar-meeting-options">{matches.slice(0,60).map((m,i)=><label className="calendar-meeting-option" key={m.uid+':'+i}><span><strong>{m.name}</strong><small>{new Date(m.start).toLocaleString()}{m.location?` · ${m.location}`:''}</small>{m.unavailable&&<small>{m.unavailable}</small>}</span><select aria-label={`Project for ${m.name}`} value={selection[m.uid]??''} disabled={saving||!!m.unavailable} onChange={e=>setSelection({...selection,[m.uid]:e.target.value})}><option value="">Don’t sync</option>{projects.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></label>)}</div>{!matches.length&&<p>No matching unselected meetings.</p>}{matches.length>60&&<small>Showing 60 of {matches.length}. Search to narrow the list.</small>}<button disabled={saving||!chosen.length} onClick={()=>void save()}>{saving?'Saving…':`Sync selected meetings (${chosen.length})`}</button><button disabled={saving} onClick={close}>Close</button></>}{error&&<p role="alert">{error}<button disabled={saving||loading} onClick={()=>setRetry(n=>n+1)}>Retry loading meetings</button></p>}</div>;
+}
+export default function CalendarConnection(){
+ const {status,busy,error}=useSyncExternalStore(subscribe,()=>snapshot);const [url,setUrl]=useState(''),[choosing,setChoosing]=useState(false);
+ const connect=async()=>{publish({busy:true,error:''});try{const status=await invoke<CalendarStatus>('calendar_connect',{url});setUrl('');publish({status,busy:false});if(status.meetings.length)await syncCalendar();else setChoosing(true);}catch(error){publish({busy:false,error:calendarError(error)});}};
+ return <section className="calendar-connection"><h2 className="calendar-brand"><img src={googleCalendarLogo} alt=""/>Google Calendar</h2><p>Read-only sync for the selected project meetings. Updates every 15 minutes while Studio is open.</p>
+ {status?.meetings.map(m=><div key={m.source_id}>{m.project_name} · {m.name}</div>)}
+ <p>{status?.connected?(status.meetings.length?'Connected': 'Connected · no meetings selected'): 'Not connected'}{status?.last_sync?` · Last synced ${new Date(status.last_sync*1000).toLocaleString()}`:''}</p>
+ {!status?.connected?<><label>Secret address in iCal format<input aria-label="Private calendar feed" type="password" autoComplete="off" value={url} onChange={e=>setUrl(e.target.value)} placeholder="Paste the private feed address here"/></label><button disabled={busy||!url.trim()} onClick={()=>void connect()}>Connect calendar</button><button onClick={()=>void openUrl('https://calendar.google.com/calendar/u/0/r/settings')}>Open Google Calendar settings</button><small>Choose your calendar → Integrate calendar → Secret address in iCal format. The address is protected by Windows and excluded from backups. It can read the source calendar; Studio stores only the selected meetings.</small></>:<><button disabled={busy} onClick={()=>setChoosing(true)}>Choose meetings</button><button disabled={busy||!status.meetings.length} onClick={()=>void syncCalendar()}>{busy?'Syncing…':'Sync now'}</button><button disabled={busy} onClick={()=>{void invoke<CalendarStatus>('calendar_disconnect').then(status=>{setChoosing(false);publish({status,error:''});}).catch(()=>publish({error:'Could not disconnect. Try again.'}));}}>Disconnect</button></>}
+ {choosing&&status?.connected&&<MeetingPicker close={()=>setChoosing(false)}/>}
+ {error&&<p role="alert">{error}</p>}</section>;
+}
+
+export function CalendarSyncStatus(){const {status,busy,error}=useSyncExternalStore(subscribe,()=>snapshot);return <p className="calendar-sync-status" role={error?'alert':'status'}>{error|| (busy?'Syncing calendar...':status?.connected&&!status.meetings.length?'Calendar connected. Open Calendar connection and choose meetings to sync.':status?.connected?`Google Calendar connected${status.last_sync?' - Last synced '+new Date(status.last_sync*1000).toLocaleTimeString():''}`:'Google Calendar is not connected. Connect it in Settings to keep meetings updated.')}</p>;}

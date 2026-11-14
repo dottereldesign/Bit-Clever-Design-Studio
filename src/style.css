@@ -27,7 +27,7 @@ button {
   padding: 0;
 }
 button:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.5;
 }
 button,
@@ -126,8 +126,8 @@ kbd {
   letter-spacing: -0.3px;
 }
 .brand-logo {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -450,6 +450,14 @@ main {
   scrollbar-width: thin;
   position: relative;
 }
+/* Keep page width steady between empty and overflowing collections. Native
+   scrollbars leave only the muted track when there is nothing to scroll. */
+.content,
+.settings-page-shell {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-color: #a4aa9e #eff0ec;
+}
 .media-grid {
   position: relative;
   width: 100%;
@@ -488,7 +496,7 @@ main {
   pointer-events: none;
   opacity: 0;
   background: transparent;
-  transition: opacity .12s ease;
+  transition: opacity var(--motion-quick) ease;
 }
 .card .hover-preview.is-ready { opacity: 1; }
 .card video {
@@ -497,7 +505,7 @@ main {
   pointer-events: none;
 }
 .card img {
-  transition: opacity 0.16s;
+  transition: opacity var(--motion-quick);
 }
 .card:hover img:not(.hover-preview) {
   opacity: 1;
@@ -524,7 +532,7 @@ main {
   inset: 0;
   background: linear-gradient(transparent 55%, #0009);
   opacity: 0;
-  transition: opacity 0.16s;
+  transition: opacity var(--motion-quick);
 }
 .card:hover .card-shade,
 .card:focus-within .card-shade {
@@ -1323,7 +1331,7 @@ main {
   border-radius: 6px;
   color: #555b51;
   font-size: 12px;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--motion-quick) ease, color var(--motion-quick) ease;
 }
 .resource-favourites > button:hover {
   background: #eeeee9;
@@ -1467,6 +1475,8 @@ main {
   text-align: left;
   border-radius: 4px;
 }
+.item-context-menu .link-rating { display:flex; padding:0 3px; }
+.item-context-menu .link-rating button { width:auto; flex:0 0 auto; padding:6px; }
 .item-context-menu button > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-context-menu button:hover, .item-context-menu button:focus-visible { background: #edf0e6; outline: none; }
 .item-context-menu button:disabled { opacity: .45; }
@@ -1688,7 +1698,7 @@ main {
   min-width: 0;
   position: relative;
   isolation: isolate;
-  animation: preview-slide-in 560ms cubic-bezier(.22,1,.36,1) both;
+  animation: preview-slide-in var(--motion-panel) var(--motion-ease) both;
 }
 @keyframes preview-slide-in {
   from { transform: translateX(100%); opacity: 0; }
@@ -1775,7 +1785,7 @@ main {
   scrollbar-width: thin;
 }
 .sidebar-scroll .sidebar-heading { margin: 12px 4px 3px; }
-.sidebar-scroll > .sidebar-section:is([data-section="General"], [data-section="Projects"]) > .sidebar-heading { margin-top:4px; }
+/* All core sections share heading spacing, including when collapsed. */
 .sidebar-scroll .projects { max-height: none; overflow: visible; }
 .sidebar-scroll .source-list { padding-bottom: 0; }
 .section-toggle {
@@ -1794,7 +1804,10 @@ main {
 .sidebar-heading.drop-target { background:#e3ecdc; outline:2px solid #738669; border-radius:5px; }
 
 .sidebar-footer > button { display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap; }
-.sidebar-footer { padding:13px 0;gap:5px; }
+.sidebar-footer { padding:10px 4px;gap:14px; }
+.sidebar-footer > button { min-height:34px; padding:4px; border-radius:5px; }
+.sidebar-footer > button:hover { background:var(--section-tint,#e5ede4); }
+.sidebar-footer > button > svg { flex-shrink:0; }
 
 .app[data-sidebar-compact="true"] .sidebar-footer > button:nth-child(2) > span { display:none; }
 
@@ -1880,3 +1893,32 @@ main {
 .project-colour-status { font-size:11px;color:#526449;flex-shrink:0;max-width:220px; }
 @media(max-width:1100px) { .project-colours { padding-inline:16px;flex-wrap:wrap;gap:6px 10px; } .project-colour-list { flex:1; } .project-colour-status:not(:empty) { flex-basis:100%;max-width:none; } }
 @media(prefers-reduced-motion:reduce) { .project-colour { transition:none; } }
+
+.links-table .link-category-column { width:160px;min-width:110px;white-space:normal;overflow-wrap:anywhere; }
+
+.settings-page-shell { flex:1;min-height:0;overflow-x:auto;overflow-y:scroll;padding:28px;scrollbar-width:thin; }
+.settings-page { width:100%;min-width:0; }
+.settings-page .modal-heading { margin-bottom:28px; }
+.settings-page .modal-heading h2 { font-size:22px; }
+.settings-page .settings-content { width:100%;gap:28px; }
+.settings-page .setting-block { width:100%; }
+.settings-page .shortcuts { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));width:100%;gap:10px 28px; }
+.settings-page .diagnostic-events { max-height:none;overflow:visible; }
+@media(max-width:800px){.settings-page-shell{padding:20px}.settings-page .shortcuts{grid-template-columns:1fr}}
+
+.app .sidebar-scroll > .section-feature > .sidebar-heading { margin-top:12px; margin-bottom:7px; }
+
+:root { --motion-quick:220ms; --motion-standard:380ms; --motion-panel:640ms; --motion-ease:cubic-bezier(.32,0,.2,1); }
+
+/* Section reordering never repurposes folder/media drop targets. */
+.sidebar-scroll > .sidebar-section > .sidebar-heading .section-toggle { cursor:grab; touch-action:pan-x; }
+body.reordering-sidebar, body.reordering-sidebar * { cursor:grabbing !important; user-select:none !important; }
+.sidebar-scroll[data-reordering] > .sidebar-drag-source { opacity:.35; }
+.sidebar-order-overlay { position:fixed;inset:0;pointer-events:none;z-index:10000; }
+.sidebar-order-line { position:absolute;height:3px;background:#476c9b;border-radius:2px;box-shadow:0 0 0 1px #fff; }
+.sidebar-order-line::before { content:'';position:absolute;left:-3px;top:-3px;width:9px;height:9px;border:2px solid #476c9b;border-radius:50%;background:#fff; }
+.sidebar-order-ghost { position:absolute;padding:10px 16px;background:var(--panel,#fff);color:#203247;border:1px solid #b8c3cc;box-shadow:0 8px 28px #172b4d26;font-size:13px;font-weight:600;border-radius:5px; }
+.sidebar-order-announcement { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%); }
+.sidebar-reorder-actions { display:flex;gap:8px;margin-bottom:12px; }
+
+.brand[data-home-drop-active="true"] { outline:2px solid var(--accent,#557160);outline-offset:-2px;background:#dfe8dc; }

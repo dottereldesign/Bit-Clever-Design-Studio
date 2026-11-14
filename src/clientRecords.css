@@ -1,0 +1,55 @@
+.project-section-nav { display:flex;align-items:center;gap:8px;margin-bottom:24px;position:sticky;top:0;background:var(--bg,#f7f8f4);z-index:8;padding:10px 0; }
+.project-section-nav button { padding:9px 13px;border-radius:6px; }
+.project-section-nav button[aria-current=page] { background:#e3e9db;color:#334d2a;font-weight:600; }
+.project-section-nav .project-history { padding:7px; }
+.project-pane[hidden] { display:none!important; }
+.client-records { max-width:1400px; }
+.client-contacts-bar,.client-record-toolbar,.client-editor-heading { display:flex;align-items:center;gap:16px;margin-bottom:18px; }
+.client-contacts-bar>div { flex:1; }
+.client-contacts-bar span { display:block;color:#798171;font-size:12px;margin-top:4px; }
+.client-records button { display:inline-flex;align-items:center;gap:6px; }
+.client-contact-list { display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px; }
+.client-contact-list button { padding:10px;background:#eef1e9;border-radius:6px; }
+.client-contact-list small { color:#6d7b60; }
+.client-record-toolbar input { flex:1;max-width:420px; }
+.client-records :is(input:not([type=checkbox]),textarea,select) { font:inherit;color:inherit;padding:9px 10px;background:#eef0e9;border:1px solid transparent;border-radius:6px;min-width:0;box-sizing:border-box; }
+.client-records :is(input,textarea,select):focus-visible { outline:2px solid #859977;outline-offset:2px; }
+.client-split { display:grid;grid-template-columns:minmax(210px,30%) minmax(0,1fr);gap:28px; }
+.client-record-list { align-self:start;max-height:65vh;overflow:auto;scrollbar-width:thin; }
+.client-record-filters { display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px; }
+.client-record-filters button { padding:7px;font-size:12px;border-radius:5px; }
+.client-record-filters [aria-pressed=true] { background:#e4ebdb; }
+.client-record-row { width:100%;display:flex!important;flex-direction:column;align-items:flex-start!important;text-align:left;gap:6px;padding:13px 10px;border-radius:6px; }
+.client-record-row[aria-current=true] { background:#e4ebdc; }
+.client-record-row strong { font-size:13px;font-weight:500;overflow-wrap:anywhere; }
+.client-record-row span { color:#77836e;font-size:11px;text-transform:capitalize; }
+.client-editor { min-width:0; }
+.client-editor-heading { justify-content:space-between; }
+.client-editor h2 { font-size:16px;font-weight:600;margin:0; }
+.client-field { display:flex;flex-direction:column;gap:7px;margin-bottom:15px;min-width:0; }
+.client-field>span { font-size:12px;color:#727d69; }
+.client-field input,.client-field textarea,.client-field select { width:100%; }
+.client-field textarea { resize:vertical;min-height:160px;line-height:1.6; }
+.client-field [role=alert],.client-records>[role=alert] { color:#a54135; }
+.client-form-grid { display:grid;grid-template-columns:1fr 1fr;gap:0 18px; }
+.client-check { display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px; }
+.client-check input { accent-color:#627852; }
+.client-associations { margin:12px 0; }
+.client-associations summary { font-size:12px;color:#596a4b;cursor:pointer;padding:5px 0; }
+.client-associations[open] { max-height:220px;overflow:auto;scrollbar-width:thin; }
+.client-links { display:flex;gap:8px;flex-wrap:wrap;align-items:center; }
+.client-links button { background:#eef0e9;border-radius:5px;padding:6px;font-size:12px; }
+.client-links details { width:100%; }
+.client-follow-up { margin-top:16px;background:#e4ebdc;border-radius:6px;padding:9px 12px; }
+.client-note { display:block;margin-top:14px;color:#7b8274; }
+.client-empty { color:#7a8471;font-size:13px;padding:20px 0; }
+.client-back { display:none!important; }
+@media(max-width:1050px){.client-split{grid-template-columns:1fr}.client-records.has-selection .client-record-list{display:none}.client-records:not(.has-selection) .client-editor{display:none}.client-back{display:inline-flex!important;margin-bottom:18px}.client-contacts-bar{flex-wrap:wrap}.client-contacts-bar>div{min-width:180px}}
+@media(prefers-reduced-motion:no-preference){.project-section-nav button{transition:background .15s,color .15s}}
+
+.client-record-scroll { height:60vh;overflow:auto;scrollbar-width:thin; }
+.client-record-list { overflow:visible;max-height:none; }
+.client-record-row strong { max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.client-unsaved { color:#7d7154;font-size:11px; }
+
+.project-pane>.toolbar { margin:0 0 20px;padding:0 0 14px; }

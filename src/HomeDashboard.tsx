@@ -1,7 +1,8 @@
+import {recordError} from './diagnostics';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "./diagnostics";
 import { createPortal } from "react-dom";
-import { ArrowUpRight, Grip, Palette, Plus, SlidersHorizontal, X, Folder, Layers, LayoutGrid } from "lucide-react";
+import { ArrowUpRight, Grip, Plus, SlidersHorizontal, X, Folder, Layers, LayoutGrid } from "lucide-react";
 import "./homeDashboard.css";
 import { appHistory } from "./appHistory";
 import { useHistoryState, HistoryButtons } from "./useAppHistory";
@@ -12,7 +13,7 @@ import { homeLayout, moveDivider, type HomePlan, type Divider } from "./homeLayo
 export { homeLayout } from "./homeLayout";
 const loadPlan=():HomePlan|null=>{try{return JSON.parse(localStorage.getItem("home-plan")??"null");}catch{return null;}};
 
-export type HomeDestination={id:string;label:string;kind:"category"|"collection"|"project"|"group";value:string;group:string;count?:number};
+export type HomeDestination={preview?:ReactNode;id:string;label:string;kind:"category"|"collection"|"project"|"group"|"studio";value:string;group:string;count?:number};
 export type HomeCover={path:string;width:number;height:number};
 export type HomeTile={id:string;span?:number;height:number;radius:number;cover?:HomeCover;autoImageSize?:boolean};
 export const homeMime="application/design-home-destination";
@@ -40,7 +41,7 @@ export const homeStyles=[
   ["Ember","Dark warm surfaces with a glowing edge."],
 ];
 const loadTiles=():HomeTile[]=>{try {const rows=JSON.parse(localStorage.getItem("home-tiles")??"[]");if(!Array.isArray(rows))return [];const seen=new Set<string>();return rows.filter(t=>t&&typeof t.id==="string"&&!seen.has(t.id)&&seen.add(t.id)).slice(0,100).map(t=>({id:t.id,span:Number.isFinite(t.span)?Math.max(2,Math.min(12,t.span)):undefined,height:Number.isFinite(t.height)?Math.max(128,Math.min(512,t.height)):224,radius:Number.isFinite(t.radius)?Math.max(0,Math.min(48,t.radius)):18,cover:t.cover&&typeof t.cover.path==="string"&&Number.isFinite(t.cover.width)&&t.cover.width>0&&Number.isFinite(t.cover.height)&&t.cover.height>0?t.cover:undefined,autoImageSize:t.autoImageSize===true}));}catch{return [];}};
-export default function HomeDashboard({destinations,open,incoming,received,dragging=false,style,appearance,customize,icons,headerActions}:{headerActions?:ReactNode;icons:IconPreferences;style:number;appearance:HomeAppearance;customize:()=>void;destinations:HomeDestination[];open:(d:HomeDestination)=>void;incoming?:string|null;received?:()=>void;dragging?:boolean}){
+export default function HomeDashboard({destinations,open,incoming,received,dragging=false,style,appearance,icons,headerActions,summary,summaryShare=50}:{summary?:ReactNode;summaryShare?:number;headerActions?:ReactNode;icons:IconPreferences;style:number;appearance:HomeAppearance;destinations:HomeDestination[];open:(d:HomeDestination)=>void;incoming?:string|null;received?:()=>void;dragging?:boolean}){
   const [reorderGhost,setReorderGhost]=useState<{id:string;x:number;y:number}|null>(null);
   const [dropTarget,setDropTarget]=useState<string|null>(null),[plan,,setPlan]=useHistoryState<HomePlan|null>("home-plan",loadPlan,"Home layout");
   const suppressTileClick=useRef(false);
@@ -69,9 +70,9 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
       const node=[...board.current?.querySelectorAll<HTMLElement>('[data-home-tile]')??[]].find(n=>n.dataset.homeTile===tile.id);
       if(!node)return;node.getAnimations().forEach(a=>a.cancel());
       if(reduced||resizing)return;
-      if(old&&(Math.abs(old.left-rect.left)>1||Math.abs(old.top-rect.top)>1||Math.abs(old.width-rect.width)>1||Math.abs(old.height-rect.height)>1)){
-        node.animate([{transform: `translate(${old.left-rect.left}px,${old.top-rect.top}px) scale(${old.width/rect.width},${old.height/rect.height})`},{transform:'none'}],{duration:240,easing:'cubic-bezier(.2,.8,.2,1)'});
-      }else if(!old){node.animate([{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.2,.8,.2,1)'});}
+      if(old&&old.width>0&&old.height>0&&(Math.abs(old.left-rect.left)>1||Math.abs(old.top-rect.top)>1||Math.abs(old.width-rect.width)>1||Math.abs(old.height-rect.height)>1)){
+        node.animate([{transform: `translate(${old.left-rect.left}px,${old.top-rect.top}px) scale(${old.width/rect.width},${old.height/rect.height})`},{transform:'none'}],{duration:380,easing:'cubic-bezier(.32,0,.2,1)'});
+      }
     });previous.current=next;
   },[layout,resizing,tiles]);
   const change=(next:HomeTile[],rebalance=false)=>{
@@ -97,7 +98,7 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
       const next=rows.map(t=>t.id===id?{...t,cover,autoImageSize:true,span:t.span??span}:t);
       if(!mounted.current){change(next);return;}
       change(next);setMessage("Tile image updated. The layout has adapted to the image.");setOptions(null);
-    }catch(error){setMessage(`Could not use that image. ${error instanceof Error?error.message:String(error)}`);}
+    }catch(error){recordError('home.cover',error);setMessage(`Could not use that image. ${error instanceof Error?error.message:String(error)}`);}
     finally{pendingCovers.current.delete(id);if(mounted.current)setCoverBusy([...pendingCovers.current]);}
   };
   const drop=(event:React.DragEvent,index?:number)=>{event.preventDefault();event.stopPropagation();setOver(false);if(event.dataTransfer.files.length){if(index===undefined){setMessage("Drop the image onto an existing tile to replace its cover.");return;}if(event.dataTransfer.files.length!==1){setMessage("Drop one image at a time onto a tile.");return;}void setCover(current.current[index].id,event.dataTransfer.files[0]);return;}const id=event.dataTransfer.getData(homeMime);if(id){add(id);return;}const moving=event.dataTransfer.getData(tileMime);if(moving){const next=[...current.current],from=next.findIndex(t=>t.id===moving);if(from<0)return;const [tile]=next.splice(from,1);next.splice(index??next.length,0,tile);change(next);}};
@@ -134,15 +135,16 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
   useEffect(()=>{if(modal){returnFocus.current=document.activeElement as HTMLElement;modalRef.current?.focus();}else{returnFocus.current?.focus();returnFocus.current=null;}},[modal]);
   const close=()=>{setAddPicker(false);setGroup(null);};
   return <div onClickCapture={e=>{if(suppressTileClick.current){e.preventDefault();e.stopPropagation();suppressTileClick.current=false;}}} data-drag-anywhere={appearance.dragAnywhere} className={`home-dashboard home-style-${style} ${appearance.labels?"has-label-overlays":""}`} style={{"--home-overlay":appearance.darkness/100,"--home-label-size":`${appearance.textSize}px`} as React.CSSProperties} onDragOver={e=>{if(e.dataTransfer.types.includes(homeMime)||e.dataTransfer.types.includes(tileMime)||e.dataTransfer.types.includes("Files")){e.preventDefault();e.dataTransfer.dropEffect=e.dataTransfer.types.includes(tileMime)?"move":"copy";setOver(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))setOver(false);}} onDrop={e=>drop(e)}>
-    <div className="home-toolbar"><h1>Home</h1><div>{headerActions}<button onClick={()=>setAddPicker(true)} title="Add a sidebar destination"><Plus size={15}/>Add tile</button><button aria-pressed={editing} onClick={()=>{setEditing(!editing);setOptions(null);}}><LayoutGrid size={14}/>{editing?"Done":"Arrange"}</button><HistoryButtons home/><button onClick={customize} title="Customise Home"><Palette size={15}/>Customise</button></div></div>
+    <div className="home-toolbar"><h1>Home</h1><div>{headerActions}<button onClick={()=>setAddPicker(true)} title="Add a sidebar destination"><Plus size={15}/>Add tile</button><button aria-pressed={editing} onClick={()=>{setEditing(!editing);setOptions(null);}}><LayoutGrid size={14}/>{editing?"Done":"Arrange"}</button><HistoryButtons home/></div></div>
+    <div className="home-body" data-overview={!!summary} style={{"--overview-share":`${summaryShare}fr`,"--tiles-share":`${100-summaryShare}fr`} as React.CSSProperties}>{summary}
     <div className="home-scroll"><div ref={board} className={`home-canvas ${editing||over||dragging?"show-grid":""} ${over?"is-over":""}`} style={{"--grid-unit":`${layout.unit+layout.gap}px`} as React.CSSProperties}>
       {!tiles.length&&<div className="home-empty"><span className="home-empty-mark" aria-hidden="true"><Plus size={22}/></span><p>{over?"Drop to make it yours":"Drag a destination here from the sidebar"}</p><small>Start with just one. Your space will grow with you.</small></div>}
-      {tiles.map((tile,index)=>{const destination=byId.get(tile.id),position=layout.positions[index];return <article key={tile.id} data-home-tile={tile.id} data-home-edges={[position.top<1?"top":"",position.left<1?"left":"",position.left+position.width>=width-1?"right":"",position.top+position.height>=height-1?"bottom":""].filter(Boolean).join(" ")} data-tile-group={destination?.group??"design"} className={`home-tile ${tile.cover?"has-cover":""} ${coverBusy.includes(tile.id)?"cover-busy":""} ${editing?"is-editing":""} ${reorderGhost?.id===tile.id?"is-lifted":""} ${dropTarget===tile.id?"is-swap-target":""}`} id={`home-slot-${index}`} style={{...position,"--tile-radius":`${tile.radius}px`} as React.CSSProperties} onDragOver={e=>{if(e.dataTransfer.types.includes(tileMime)||e.dataTransfer.types.includes('Files')){e.preventDefault();e.currentTarget.classList.add('tile-drop-target');}}} onDragLeave={e=>e.currentTarget.classList.remove('tile-drop-target')} onDrop={e=>{e.currentTarget.classList.remove('tile-drop-target');drop(e,index);}}>
+      {tiles.map((tile,index)=>{const destination=byId.get(tile.id),position=layout.positions[index];return <article key={tile.id} data-home-tile={tile.id} data-report-tile={!!destination?.preview&&!tile.cover} data-home-edges={[position.top<1?"top":"",position.left<1?"left":"",position.left+position.width>=width-1?"right":"",position.top+position.height>=height-1?"bottom":""].filter(Boolean).join(" ")} data-tile-group={destination?.group??"design"} className={`home-tile ${tile.cover?"has-cover":""} ${coverBusy.includes(tile.id)?"cover-busy":""} ${editing?"is-editing":""} ${reorderGhost?.id===tile.id?"is-lifted":""} ${dropTarget===tile.id?"is-swap-target":""}`} id={`home-slot-${index}`} style={{...position,"--tile-radius":`${tile.radius}px`} as React.CSSProperties} onDragOver={e=>{if(e.dataTransfer.types.includes(tileMime)||e.dataTransfer.types.includes('Files')){e.preventDefault();e.currentTarget.classList.add('tile-drop-target');}}} onDragLeave={e=>e.currentTarget.classList.remove('tile-drop-target')} onDrop={e=>{e.currentTarget.classList.remove('tile-drop-target');drop(e,index);}}>
         <button className="home-tile-open" onPointerDown={e=>{if(appearance.dragAnywhere)reorder(e,tile);}} disabled={!destination} onClick={()=>destination&&activate(destination)} aria-label={`Open ${destination?.label??"unavailable destination"}`}>
-          {tile.cover?<img className="home-tile-cover" src={convertFileSrc(tile.cover.path)} alt={destination?.label??"Tile image"} draggable={false}/>:<>
+          {!tile.cover&&destination?.preview?destination.preview:tile.cover?<img className="home-tile-cover" src={convertFileSrc(tile.cover.path)} alt={destination?.label??"Tile image"} draggable={false}/>:<>
           <span className="home-tile-top"><span>{destination?.group??"Unavailable"}</span><ArrowUpRight size={18}/></span><span className="home-tile-art" aria-hidden="true"><i/><i/><i/></span><span className="home-tile-index" aria-hidden="true">{String(index+1).padStart(2,"0")}</span><span className="home-tile-icon" aria-hidden="true"><AppIcon size={27} value={icons.overrides[tile.id]??(tile.id==='category:All Components'?icons.overrides.components:undefined)} fallback={destination?.kind==="project"?<Folder size={27}/>:destination?.group==="components"?<Layers size={27}/>:<LayoutGrid size={27}/>}/></span>
           <span className="home-tile-title">{destination?.label??"Destination unavailable"}</span><span className="home-tile-count">{destination?.count!==undefined?`${destination.count.toLocaleString()} references`:destination?"Open collection":"Remove this tile or restore its destination"}</span></>}
-          {appearance.labels&&<><span className="home-tile-scrim" aria-hidden="true"/><HomeTileLabel label={destination?.label??"Destination unavailable"} scale={appearance.textSize/32}/></>}
+          {appearance.labels&&(!destination?.preview||tile.cover)&&<><span className="home-tile-scrim" aria-hidden="true"/><HomeTileLabel label={destination?.label??"Destination unavailable"} scale={appearance.textSize/32}/></>}
         </button>
         {coverBusy.includes(tile.id)&&<span className="home-cover-status" role="status">Preparing image…</span>}
         <div className="home-tile-tools"><button draggable={false} onPointerDown={e=>reorder(e,tile)} onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData(tileMime,tile.id);e.dataTransfer.effectAllowed="move";setEditing(true);}} aria-label={`Rearrange ${destination?.label??"tile"}`} title="Drag to rearrange; use arrow keys to reorder" onKeyDown={e=>{if(['ArrowLeft','ArrowUp','ArrowRight','ArrowDown'].includes(e.key)){e.preventDefault();const next=[...tiles],to=Math.max(0,Math.min(tiles.length-1,index+(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1)));next.splice(index,1);next.splice(to,0,tile);change(next);}}}><Grip size={14}/></button><button aria-label={`Shape and size ${destination?.label??"tile"}`} onClick={()=>setOptions(options===tile.id?null:tile.id)}><SlidersHorizontal size={14}/></button><button className="home-remove" aria-label={`Remove ${destination?.label??"tile"} from Home`} onClick={e=>{removeTrigger.current=e.currentTarget;setRemovePending(tile.id);setOptions(null);}}><X size={14}/></button></div>
@@ -156,6 +158,7 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
         <button className="confirm-remove" onClick={()=>{change(current.current.filter(t=>t.id!==removePending));setRemovePending(null);requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('[aria-label="Undo Home layout change"]')?.focus());}}>Remove</button>
         <button autoFocus onClick={cancelRemoval}>Cancel</button>
       </div>}
+    </div>
     </div>
     {reorderGhost&&createPortal(<div className="home-drag-ghost home-tile-ghost" style={{left:reorderGhost.x+14,top:reorderGhost.y+16}}><Grip size={14}/>{byId.get(reorderGhost.id)?.label}<small>{dropTarget?"Release to swap":"Move over another tile"}</small>{current.current.find(t=>t.id===reorderGhost.id)?.cover&&<img src={convertFileSrc(current.current.find(t=>t.id===reorderGhost.id)!.cover!.path)} alt=""/>}</div>,document.body)}
     {modal&&createPortal(<div className="home-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close();}}><div ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Choose a destination" className="home-picker" onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape')close();if(e.key==='Tab'){const buttons=[...e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')],first=buttons[0],last=buttons.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===modalRef.current)){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}><header><div><h2>{group?group==="projects"?"Your projects":"General":"Add to Home"}</h2></div><button aria-label="Close Home chooser" onClick={close}><X size={20}/></button></header>

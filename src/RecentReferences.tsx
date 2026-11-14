@@ -7,7 +7,7 @@ function RecentRow({ item, open }: { item: Item; open: () => void }) {
   useEffect(() => {
     const abort = new AbortController();
     setImage("");
-    if (!item.missing && (item.kind !== "link" || item.thumbnail))
+    if (item.kind !== "file" && !item.missing && (item.kind !== "link" || item.thumbnail))
       void media(item, "thumbnail", abort.signal)
         .then((url) => {
           if (!abort.signal.aborted) setImage(url);

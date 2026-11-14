@@ -38,10 +38,15 @@ test('queued library changes cannot be overtaken by Undo and a failed save relea
  const h=new AppHistory();let finish:()=>void=()=>{},undos=0;const order:string[]=[];
  h.record({label:'Earlier',undo:()=>{undos++;},redo:()=>{}});
  const first=h.perform(async()=>{order.push('start');await new Promise<void>(r=>finish=r);throw Error('save failed');});
- const second=h.perform(async()=>{order.push('second');return 42;});await Promise.resolve();await h.undo();assert.equal(undos,0);finish();
- await assert.rejects(first);assert.equal(await second,42);assert.deepEqual(order,['start','second']);assert.equal(h.busy,false);
- await h.undo();assert.equal(undos,1);
+ const second=h.perform(async()=>{order.push('second');return 42;});await Promise.resolve();const waitingUndo=h.undo();assert.equal(undos,0);finish();
+ await assert.rejects(first);assert.equal(await second,42);assert.deepEqual(order,['start','second']);await waitingUndo;assert.equal(h.busy,false);assert.equal(undos,1);
 });
 test('Undo cancels a live gesture before touching the previous committed edit',async()=>{
  const h=new AppHistory();h.commit('Earlier',{size:1},{size:2});let cancelled=false;h.cancelGesture=()=>{cancelled=true;};await h.undo();assert.equal(cancelled,true);assert.equal(h.past.length,1);await h.undo();assert.equal(h.read('size',()=>0),1);
+});
+
+test('Undo requested while an archive is saving restores it after the save',async()=>{
+ const h=new AppHistory();let finish:()=>void=()=>{},archived=false;
+ const save=h.perform(async()=>{await new Promise<void>(resolve=>finish=resolve);archived=true;h.record({label:'Archive contact',kind:'library',undo:()=>{archived=false;},redo:()=>{archived=true;}});});
+ await Promise.resolve();const undo=h.undo();finish();await save;await undo;assert.equal(archived,false);await h.redo();assert.equal(archived,true);
 });

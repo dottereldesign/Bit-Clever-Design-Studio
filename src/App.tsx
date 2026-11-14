@@ -1,3 +1,34 @@
+import {useAppTheme} from './AppTheme';
+import MyBusiness, {BusinessNavigation} from './MyBusiness';
+import SidebarTools from './SidebarTools';
+import AddContactDialog from './AddContactDialog';
+import type {WorkTarget} from './workNavigation';
+import SettingsHub from './SettingsHub';
+import AnalyticsTile from './AnalyticsTile';
+import {analyticsPages} from './AnalyticsSettings';
+import Analytics, {InsightNavigation,AnalyticsNavigation} from './Analytics';
+import HomeOverview from './HomeOverview';
+import {useHomeOverview} from './HomeOverviewSettings';
+import {useTabAppearance} from './TabAppearance';
+import {useCtaAppearance} from './CtaAppearance';
+import {isOrganisation} from './studio';
+import ClientSidebar from './ClientSidebar';
+import { useAppBranding } from "./AppBranding";
+import ClientsWorkspace from "./ClientsWorkspace";
+import ResearchWorkspace, {researchPages} from "./ResearchWorkspace";
+import {OnboardingSettings} from "./LeadsTour";
+import CalendarConnection,{useCalendarSync} from './CalendarConnection';
+import {setDiagnosticContext,setDiagnosticRecords,opaqueId} from './diagnosticContext';
+import StudioWorkspace from "./StudioWorkspace";
+import type {StudioRoute} from "./studio";
+import ProjectWorkspace, {ProjectFilePreview} from "./ProjectWorkspace";
+import {useThumbnailReadiness} from './useThumbnailReadiness';
+import Diagnostics from './DiagnosticsPanel';
+import {record as recordDiagnostic,recordError,errorCode} from './diagnostics';
+import {useVirtualizer} from '@tanstack/react-virtual';
+import {ProjectTree, OrganiseProjectFolders, type FolderScope} from './ProjectFolders';
+import LinkRating from './LinkRating';
+import {useSelectionAppearance} from './SelectionStyles';
 import ColourPicker, {ProjectColours} from './ColourPicker';
 import HoverPreview from "./HoverPreview";
 import {stageFiles} from "./captureImport";
@@ -12,6 +43,7 @@ import {applyBackupPreferences,trackLibraryPreferences} from './backupPreference
 import FolderRename from './FolderRename';
 import { readFolderLabels } from './model';
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,12 +52,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "./diagnostics";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { open, save } from "./nativeUi";
+import { revealItemInDir } from "./nativeUi";
 import { openUrl } from "./api";
-import appLogo from "./assets/app-logo.png";
+import appLogo from "./assets/app-logo.svg";
 import { arrangeMasonry } from "./masonry";
 import {
   Star,
@@ -46,7 +78,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings2,
+  Settings,
+  Paintbrush,
   SlidersHorizontal,
   Tag,
   Trash2,
@@ -60,7 +93,7 @@ import {
   Undo2,
   Redo2,
 } from "lucide-react";
-import { changeLibrary, loadLibrary, media, forgetMedia, type Change } from "./api";
+import { changeLibrary, loadLibrary, media, cachedMedia, prioritizeThumbnail, forgetMedia, type Change } from "./api";
 import ThumbnailProgress from "./ThumbnailProgress";
 import { canCopyImage, isResource, isBoardLink, isCollectionLink, boardNames, isBoardDestination, type BoardKey, type LinkDestination, filterItems, type Item, type Label, type Library } from "./model";
 import ContactSheet from "./ContactSheet";
@@ -98,9 +131,9 @@ import type { GeneralDraft,GeneralOption } from './GeneralEditor';
 import CollectionView from './CollectionView';
 import { appHistory } from "./appHistory";
 import { useHistoryState, useHistory, HistoryButtons } from "./useAppHistory";
-import { allComponents, componentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
+import { allComponents, componentFolders as builtInComponentFolders, componentInbox, filingCategory, isComponent } from "./componentsLibrary";
 import CategoryPicker from "./CategoryPicker";
-import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink} from "./model";
+import {designFoldersOf, componentFoldersOf, categoryOf, categoryLabel, libraryCategories, isTableCollection, isTableLink, createMembershipIndex} from "./model";
 
 const empty: Library = {
   items: [],
@@ -111,6 +144,7 @@ const empty: Library = {
   scanning: false,
 };
 type Modal = {
+  componentFolder?: boolean;
   kind:
     | "project"
     | "renameProject"
@@ -240,6 +274,12 @@ function Popover({
 }
 
 export default function App({startOnHome}:{startOnHome?:boolean}={}) {
+ useAppTheme();
+ const branding=useAppBranding();
+  useSelectionAppearance();
+  useCtaAppearance();
+  const [homeOverviewPrefs]=useHomeOverview();
+  useTabAppearance();
   const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
   const savedView=savedSession?.view;
   const [homeView,setHomeView]=useState(savedView?.homeView??startOnHome??true);
@@ -262,6 +302,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
     [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
+  const [studioView,setStudioView]=useState<StudioRoute|null>(()=>savedView?.studioView??null);
+  const [projectSection,setProjectSection]=useState<"overview"|"files"|"client"|"moodboard">(savedView?.projectSection??(savedView?.projectFolder!=null?"files":"overview"));
+  const [projectFolder,setProjectFolder]=useState<FolderScope>(savedView?.projectFolder??null);
+  const [ratingFilter,setRatingFilter]=useState(savedView?.ratingFilter??'');
+  const [folderMembers,setFolderMembers]=useState<number[]|null>(null);
   const [project, setProject] = useState<number | null>(savedView?.project??null),
     [linksOnly, setLinksOnly] = useState(savedView?.linksOnly??false);
   const [search, setSearch] = useState(savedView?.search??""),
@@ -315,7 +360,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const libRef=useRef(lib);libRef.current=lib;
   const historyReady=useRef(false);
   const pasteBusy=useRef(false);
-  const [hoverId, setHoverId] = useState<number | null>(null);
+  const stopHoverRef=useRef<()=>void>(()=>{});
+  const setHoverId=useCallback((_id:null)=>stopHoverRef.current(),[]);
   const [category,setCategory] = useState<string|null>(savedView?.category??null);
   const [categoryUndo,setCategoryUndo] = useState<[number,string][]|null>(null);
   const categoryUndoNotice = useRef("");
@@ -370,7 +416,15 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setReady(true);
     return next;
   }, []);
-  const report = useCallback((e: unknown) => setError(tidyError(e)), []);
+  const clientInitialisation=useRef<{root:string;pending:Promise<unknown>}|null>(null);
+  const initialiseClients=useCallback(()=>{
+    const root=libRef.current.root;
+    if(clientInitialisation.current?.root===root)return clientInitialisation.current.pending;
+    const pending=invoke<boolean>('clients_initialise').then(changed=>changed?refresh():undefined).catch(error=>{clientInitialisation.current=null;throw error;});
+    clientInitialisation.current={root,pending};return pending;
+  },[refresh]);
+  useCalendarSync(ready,refresh);
+  const report = useCallback((e: unknown) => {recordError('ui.error',e);setError(tidyError(e));}, []);
   useEffect(()=>trackLibraryPreferences(report),[report]);
   const videoQueue = useVideoQueue(ready && isTauri(), refresh, report);
   useEffect(() => {
@@ -423,12 +477,23 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   useEffect(()=>{const id=quickPreview??viewer;
     const item=id===null?null:lib.items.find(i=>i.id===id);if(item)track(item);
   },[lib.items,quickPreview,viewer,track]);
-  const sheetItems=useMemo(()=>lib.items.filter(i=>project!==null&&i.projects.includes(project)),[lib.items,project]);
+  useEffect(()=>{if(project!==null&&typeof projectFolder==='number'&&lib.items.length&&!(lib.project_folders??[]).some(f=>f.id===projectFolder&&f.project_id===project))setProjectFolder(null);},[project,projectFolder,lib.project_folders,lib.items.length]);
+  const membershipIndex=useMemo(()=>{
+    const start=performance.now(),index=createMembershipIndex(lib.items);
+    recordDiagnostic('library.membership_index','success',performance.now()-start,{items:lib.items.length});
+    return index;
+  },[lib.items]);
+  const enlargementItems=useMemo(()=>lib.items.filter(item=>item.kind!=="file"),[lib.items]);
+  const sheetItems=useMemo(()=>project!==null?membershipIndex.projects.get(project)??[]:[],[membershipIndex,project]);
   const linkDestination: LinkDestination = boardView ?? (resourcesView ? "resources" : "links");
   const allCategoriesView = category === null && !project && !recent && !boardView && !videoView && !linksOnly && !resourcesView && !source;
   const filtered = useMemo(
     () => {
+      if(studioView)return [];
+      const start=performance.now();
       const matches=filterItems(lib.items, {
+        designsOnly:allCategoriesView,
+        projectFolder:project!==null?projectFolder:null,projectFolderIds:(lib.project_folders??[]).filter(f=>f.project_id===project).map(f=>f.id),rating:ratingFilter,
         tagMode, includeCollections:!!recent||resourcesView||generalEntry?.target?.kind==='project',
         category,
         collection: boardView ? boardNames[boardView] : undefined,
@@ -439,14 +504,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         project,
         linksOnly,
         sort:recent?"recent":sort, seed,
-      });
-      if(generalMissing)return [];
-      if(allCategoriesView)return matches.filter(i=>designFoldersOf(i).length>0);
+      },membershipIndex);
+      recordDiagnostic('library.filter','success',performance.now()-start,{items:lib.items.length,count:matches.length});
+      if(generalMissing || (project!==null&&!generalEntry&&projectSection!=="files") || (project!==null && !generalEntry && projectFolder===null && !search && type==="all" && !tags.length && !ratingFilter))return [];
       if(recent!=="viewed")return matches;
       const byId=new Map(matches.map(i=>[i.id,i]));
       return viewedOrder.flatMap(id=>byId.get(id)??[]);
     },
-    [lib.items, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
+    [studioView,lib.items, membershipIndex, lib.project_folders, projectSection, projectFolder, ratingFilter, search, type, tags, source, project, linksOnly, sort, seed, boardView, videoView,category,tagMode,recent,viewedOrder,allCategoriesView,generalEntry,generalMissing,resourcesView],
   );
   useEffect(()=>{if(quickPreview===null)setReceiptBrowse([]);},[quickPreview]);
   const boardItems = boardView ? filtered : [];
@@ -462,7 +527,15 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     () => filtered.filter((i) => i.kind === "link" && (componentFoldersOf(i).length>0 || !isBoardLink(i) || isTableLink(i))),
     [filtered],
   );
-  const viewState=useMemo<ViewState>(()=>({homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  const navigationStart=useRef<number|null>(null);
+  useLayoutEffect(()=>{
+    setDiagnosticRecords(lib.studio??[]);
+    const section=modal?.kind==='settings'?'settings':studioView?.section??(homeView?'home':project!==null&&!generalEntry?'projects':generalEntry||boardView||linksOnly||resourcesView||videoView||recent?'general':category&&isComponent(category)?'components':'designs');
+    const item=studioView?.id?(lib.studio??[]).find(e=>e.id===studioView.id):undefined;
+    setDiagnosticContext({section,...(studioView?{page:studioView.page,tab:studioView.tab??(item?.kind==='lead'?'overview':item?.kind==='campaign'?'plan':'details'),...(item?{record_kind:item.kind,record_id:opaqueId(item.id)}:{})}:section==='projects'?{tab:projectSection,project:project!}:{} )});
+  },[lib.studio,studioView,homeView,project,projectSection,generalEntry,boardView,linksOnly,resourcesView,videoView,recent,category,modal?.kind]);
+  const viewState=useMemo<ViewState>(()=>({studioView,projectSection,projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer}),[studioView,projectSection,projectFolder,ratingFilter,homeView,generalKey,project,category,linksOnly,resourcesView,boardView,videoView,recent,search,type,tags,tagMode,source,sort,seed,viewer]);
+  useLayoutEffect(()=>{const start=navigationStart.current??performance.now();navigationStart.current=null;const operation=crypto.randomUUID();const fields={view:modal?.kind==='settings'?'settings':studioView?studioView.section:homeView?'home':project!==null?'project':category!==null?'folder':boardView??(resourcesView?'resources':recent??(linksOnly?'links':videoView?'videos':'designs')),project,folder:typeof projectFolder==='number'?projectFolder:category!==null?'category-'+Array.from(category).reduce((hash,char)=>(Math.imul(hash,31)+char.charCodeAt(0))>>>0,0).toString(16):null,items:filtered.length};recordDiagnostic('navigation','started',0,fields,operation);let second=0,finished=false;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>{finished=true;recordDiagnostic('navigation','success',performance.now()-start,fields,operation);});});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);if(!finished)recordDiagnostic('navigation','cancelled',performance.now()-start,fields,operation);};},[studioView,projectSection,homeView,project,projectFolder,category,boardView,linksOnly,resourcesView,recent,videoView,modal?.kind]);
   useViewSession({state:viewState,initial:savedSession,ready,enabled:startOnHome===undefined,restoring:gridReturn!==null,scroller:scrollRef});
   useEffect(()=>{if(ready&&gridReturn?.offset!==undefined&&(!images.some(item=>item.id===gridReturn.id)||homeView||boardView||resourcesView||recent||customCollection))setGridReturn(null);},[ready,gridReturn,images,homeView,boardView,resourcesView,recent,customCollection]);
   const activeItem = lib.items.find((i) => i.id === viewer);
@@ -477,14 +550,17 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       : linksOnly
         ? "Links"
         : category !== null ? categoryLabel(category) : source ? source.split("/").pop()! : "All Designs");
-  const activeFilters = !!(search || type !== "all" || tags.length);
+  const activeFilters = !!(search || type !== "all" || tags.length || ratingFilter);
   const clearFilters = () => {
+    setRatingFilter('');
     setSearch("");
     setType("all");
     setTags([]);
     setSource("");
   };
+  useEffect(()=>{const replay=()=>{setModal(null);setHomeView(false);setStudioView({section:'leads',page:'pipeline'});};window.addEventListener('replay-leads-tour',replay);return()=>window.removeEventListener('replay-leads-tour',replay);},[]);
   const navigate = (id: number | null, onlyLinks = false) => {
+    setStudioView(null);
     setHomeView(false);
     setGeneralKey(null);
     setQuickPreview(null);
@@ -494,7 +570,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setBoardView(null);
     setVideoView(false);
     setCategory(null);
-    setProject(id);
+    setProject(id);setProjectSection("overview");setProjectFolder(null);setRatingFilter('');
+    if(id===null&&!onlyLinks&&sort.startsWith('rating-'))setSort('recent');
     setLinksOnly(onlyLinks);
     setSelected(new Set());
     setViewer(null);
@@ -509,48 +586,55 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const recordCapture=useCallback((result:CaptureResult)=>{if(libRef.current.undo_entries)return;for(const label of result.history_labels??(result.move_label?[result.move_label]:[])){appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}},[runLibraryHistory]);
   const mutate = useCallback((c:Change)=>appHistory.perform(async()=>{
     const before=libRef.current;await changeLibrary(c);const next=await refresh();
-    const tracked=new Set(['set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
-    const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
-    if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label&&recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
+    const tracked=new Set(['close_studio_lead','win_studio_lead','update_studio','convert_studio_lead','update_client_records','update_project_overview','rate_links','unfile_project_folder','create_project_folder','rename_project_folder','move_project_folder','delete_project_folder','reorder_project_folders','add_project_folder','remove_project_folder','set_category','remove_design_folder','remove_component_folder','add_project','remove_project','add_tag','remove_tag','pin_project','unpin_project','remove_items','restore_items','create_link','edit_link','set_link_destination','set_source_url','rename_project','rename_tag','delete_project','delete_tag','create_project','create_tag','create_category']);
+    if(!next.undo_entries&&tracked.has(c.action)&&next.undo_label){
+      const recorded=typeof next.undo_count==='number'&&typeof before.undo_count==='number'?next.undo_count>before.undo_count||(next.undo_count===100&&JSON.stringify(next)!==JSON.stringify(before)):JSON.stringify(next)!==JSON.stringify(before);
+      if(recorded){const label=next.undo_label;appHistory.record({label,kind:'library',undo:()=>runLibraryHistory(false,label),redo:()=>runLibraryHistory(true)});}
+    }
     return next;
   }),[refresh,runLibraryHistory]);
   const undoLast=useCallback(async(expected?:string)=>{if(expected&&appHistory.undoLabel!==expected){setNotice("A newer change took place. Use the header Undo action.");return;}await appHistory.undo();},[]);
   const redoLast=useCallback(async()=>{await appHistory.redo();},[]);
   useEffect(()=>{
     const gesture=()=>crypto.randomUUID();
-    const typing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!target.closest('textarea,[contenteditable=true],input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button])');
+    const typing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!target.closest('textarea,[contenteditable=true],input:not([type=range]):not([type=color]):not([type=number]):not([type=checkbox]):not([type=radio]):not([type=button])');
     const key=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&!e.altKey&&!typing(e.target)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();e.stopImmediatePropagation();void ((e.key.toLowerCase()==='y'||e.shiftKey)?appHistory.redo():appHistory.undo());return;}if(e.target instanceof HTMLElement&&e.target.matches('input[type=range]')&&e.key.startsWith('Arrow'))appHistory.beginGesture(`key-${gesture()}`);};
     const down=(e:PointerEvent)=>{if(e.target instanceof HTMLElement&&e.target.closest('input[type=range],.sidebar-resize'))appHistory.beginGesture(`pointer-${gesture()}`);};
     const end=()=>appHistory.endGesture();
     document.addEventListener('keydown',key,true);document.addEventListener('keyup',end,true);document.addEventListener('pointerdown',down,true);document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);window.addEventListener('blur',end);
     return ()=>{document.removeEventListener('keydown',key,true);document.removeEventListener('keyup',end,true);document.removeEventListener('pointerdown',down,true);document.removeEventListener('pointerup',end);document.removeEventListener('pointercancel',end);window.removeEventListener('blur',end);};
   },[]);
+  const componentFolders=useMemo(()=>[...new Set([...builtInComponentFolders,...(lib.categories??[]).filter(isComponent),...lib.items.flatMap(componentFoldersOf)])],[lib]);
   const categories = useMemo(()=>libraryCategories(lib),[lib]);
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of lib.items) {
-      if (item.kind === "link" && !componentFoldersOf(item).length) continue;
-      for (const folder of [...componentFoldersOf(item),...designFoldersOf(item)]) counts.set(folder, (counts.get(folder) ?? 0) + 1);
-      if (componentFoldersOf(item).length) counts.set(allComponents, (counts.get(allComponents) ?? 0) + 1);
-    }
-    return counts;
-  }, [lib.items]);
-  const homeDestinations:HomeDestination[]=[
+  const categoryCounts = useMemo(() => new Map([...membershipIndex.categories].map(([name,items])=>[name,items.length])), [membershipIndex]);
+  const generalCounts=useMemo(()=>{const counts=new Map<string,number>();for(const item of lib.items){counts.set(item.source,(counts.get(item.source)??0)+1);if(item.kind==='link'&&!isCollectionLink(item))counts.set('__links',(counts.get('__links')??0)+1);if(item.kind==='video'&&(item.source==='Videos'||item.source.startsWith('Videos/')))counts.set('__videos',(counts.get('__videos')??0)+1);}return counts;},[lib.items]);
+  const studioShortcuts: {id:string;label:string;route:StudioRoute}[]=[
+    ...analyticsPages.map(page=>({id:`studio:analytics:${page.id}`,label:page.id==='overview'?'Analytics overview':page.label,route:{section:'analytics' as const,page:page.id}})),
+    ...['campaigns','ideas','calendar'].map(page=>({id:`studio:marketing:${page}`,label:page[0].toUpperCase()+page.slice(1),route:{section:'marketing' as const,page}})),
+    ...['pipeline','follow-ups','contacts'].map(page=>({id:`studio:leads:${page}`,label:page[0].toUpperCase()+page.slice(1),route:{section:'leads' as const,page}})),
+    ...researchPages.map(([page,label])=>({id:`studio:research:${page}`,label,route:{section:'research' as const,page}})),
+    {id:'studio:clients:dashboard',label:'Organisations Dashboard',route:{section:'clients',page:'today'}},
+    ...(lib.studio??[]).filter(e=>isOrganisation(e)&&!e.archived).map(e=>({id:`studio:client:${e.id}`,label:e.name,route:{section:'clients' as const,page:'today',id:e.id,tab:'feed'}})),
+  ];
+  const homeDestinations=useMemo<HomeDestination[]>(()=>[
+    ...studioShortcuts.map(s=>({id:s.id,label:s.label,kind:'studio' as const,value:JSON.stringify(s.route),group:s.route.section,preview:s.route.section==='analytics'?<AnalyticsTile lib={lib} page={s.route.page}/>:undefined})),
     {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&designFoldersOf(i).length>0).length},
     {id:"group:general",label:"General",kind:"group",value:"general",group:"general"},
     {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
     ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
     ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?categoryLabel(name).slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
-  ];
-  const generalOptions:GeneralOption[]=[
+  ],[lib,lib.items,lib.projects,lib.studio,collectionPrefs,categories,folderLabels,categoryCounts,componentFolders]);
+  const generalOptions=useMemo<GeneralOption[]>(()=>[
     ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
     {label:'Design Inspo / All',target:{kind:'category',value:'__all__'}},{label:'App Components / All',target:{kind:'category',value:allComponents}},
     ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
     ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
-  ];
-  const iconTargets=[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
-    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))];
+  ],[lib.projects,categories,folderLabels,componentFolders]);
+  const iconTargets=useMemo(()=>[{id:'section:My Business',label:'My Business section'},{id:'section:Analytics',label:'Analytics section'},{id:'section:Code',label:'Code section'},{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:Marketing',label:'Marketing section'},{id:'section:Leads',label:'Leads section'},{id:'section:Clients',label:'Organisations section'},{id:'section:Research',label:'Research section'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
+    ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))],[collectionPrefs,sitePrefs,lib.projects,categories,folderLabels,componentFolders]);
+  const designRows=useMemo(()=>sortedFolders([...categories,''],'design'),[categories,folderOrder,folderLabels]);
+  const componentRows=useMemo(()=>sortedFolders(componentFolders,'components'),[folderOrder,folderLabels,componentFolders]);
   const saveGeneral=async(draft:GeneralDraft,key?:string)=>{
     if(!draft.name)throw Error('Enter a name for the entry.');
     let target:GeneralTarget;
@@ -571,6 +655,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   };
   useEffect(()=>{if(!generalEntry)return;const target=generalEntry.target??{kind:'view',value:generalEntry.key};if(generalRoute.current!==JSON.stringify([generalEntry.key,target])){if(target.kind==='website')setGeneralKey(null);else openGeneral(generalEntry);}},[generalKey,generalEntry?.target?.kind,generalEntry?.target?.value]);
   const openHomeDestination=(destination:HomeDestination)=>{
+    if(destination.kind==='studio'){openStudio(JSON.parse(destination.value));return;}
     if(destination.kind==='collection'){const entry=collectionPrefs.find(s=>s.key===destination.value);if(entry)openGeneral(entry);return;}
     if(destination.kind==="project"){navigate(Number(destination.value));return;}
     navigate(null,destination.value==="links");
@@ -581,7 +666,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     if(key==="facebook"){setVideoView(true);setSource("Videos");}
     if(key==="added"||key==="viewed"){setRecent(key);if(key==="viewed"){const byId=new Map(lib.items.map(i=>[i.id,i.path]));setViewedOrder(history.filter(h=>byId.get(h.id)===h.path).map(h=>h.id));}}
   };
-  const homeShortcutDrag=useHomeShortcutDrag(()=>{setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop,(id,target,after)=>{const from=id.slice(9),to=target.slice(9),group=isComponent(from)?'components':'design';if(isComponent(from)!==isComponent(to)||from===to)return;const rows=sortedFolders(group==='components'?componentFolders:[...categories,''],group).filter(name=>name!==from),index=rows.indexOf(to);if(index<0)return;rows.splice(index+(after?1:0),0,from);setFolderOrder(previous=>({...previous,[group]:rows}));});
+  const homeShortcutDrag=useHomeShortcutDrag(()=>{navigate(null);setHomeView(true);setViewer(null);setSelected(new Set());},setHomeDrop,(id,target,after)=>{const from=id.slice(9),to=target.slice(9),group=isComponent(from)?'components':'design';if(isComponent(from)!==isComponent(to)||from===to)return;const rows=sortedFolders(group==='components'?componentFolders:[...categories,''],group).filter(name=>name!==from),index=rows.indexOf(to);if(index<0)return;rows.splice(index+(after?1:0),0,from);setFolderOrder(previous=>({...previous,[group]:rows}));});
   const homeDrag=(id:string)=>homeShortcutDrag.props(id,homeDestinations.find(d=>d.id===id)?.label??"Destination");
   const changeCategory = async (ids:number[],name:string) => {
     const items=lib.items.filter(i=>ids.includes(i.id)&&(i.kind!=="link"||isComponent(name)||componentFoldersOf(i).length>0));
@@ -594,6 +679,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     setNotice(categoryUndoNotice.current);
   };
   const removeFromComponentFolder = async (item:Item) => {
+    if(project!==null&&typeof projectFolder==='number'){await perform({action:'remove_project_folder',target:projectFolder,ids:[item.id]});return;}
     if(!category||category===allComponents||category===componentInbox)return;
     const folder=category;
     try {
@@ -613,7 +699,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     <button
       className={`nav-item source-item ${s===allComponents?"source-parent":""} ${!homeView && !generalKey && category === s ? "source-active" : ""} ${categoryDrop===s?"drop-target":""}`}
       {...homeDrag(`category:${s}`)}
-      onContextMenu={e=>{if(s===allComponents||s===componentInbox||!s)return;e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
+      onContextMenu={e=>{e.preventDefault();e.stopPropagation();setFolderMenu({name:s,x:e.clientX,y:e.clientY});}}
       data-folder-order={s===allComponents?undefined:isComponent(s)?'components':'design'}
       data-category={s}
       {...categoryDropProps(s)}
@@ -658,6 +744,10 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       select(item.id, e.shiftKey);
       return;
     }
+    // Gallery clicks only focus the thumbnail for Space preview. Keep explicit
+    // link actions and modifier-key selection available.
+    if(item.kind!=="link"&&(project!==null||category!==null||allCategoriesView)){setSelected(new Set([item.id]));anchor.current=item.id;return;}
+    if(item.kind==="file"){setQuickPreview(item.id);return;}
     if (item.kind === "link" && !(item.source === "Websites" && item.thumbnail)) {
       void openUrl(item.path).then(()=>track(item)).catch(report);
     } else {
@@ -696,6 +786,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   );
   useLayoutEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if(document.querySelector('.project-dialog-backdrop')||(e.target as HTMLElement)?.closest('.link-rating'))return;
       const typing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable=true]",
       );
@@ -732,6 +823,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         if(id!==null&&filtered.some(i=>i.id===id)){e.preventDefault();setHoverId(null);setQuickPreview(id);return;}
       }
       if(!inViewer && !e.ctrlKey && !e.metaKey && e.key.toLowerCase()==="c" && filtered.some(i=>selected.has(i.id)&&i.kind!=="link")) {e.preventDefault();setModal({kind:"category",ids:[...selected]});return;}
+      if(document.querySelector('.project-dialog-backdrop')||(e.target as HTMLElement)?.closest('.link-rating,.project-folder-dialog'))return;
       if (e.key === "Delete" && (inViewer || selected.size)) {
         e.preventDefault();
         void removeItems(inViewer ? [viewer!] : [...selected]);
@@ -764,25 +856,28 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{
       if(e.altKey||modal||capture||videoDialog||duplicatesOpen||removedOpen||libraryExportOpen||storageOpen||extraDialog||customTab||quickPreview!==null||itemMenu||viewer!==null)return;
+      if(document.querySelector('.project-dialog-backdrop')||(e.target as HTMLElement)?.closest('.link-rating,.project-folder-dialog'))return;
       const typing=(e.target as HTMLElement)?.closest("input,textarea,select,[contenteditable=true]");
       const command=e.ctrlKey||e.metaKey;
       if(command&&e.key===","&&!typing){e.preventDefault();setSearchOpen(false);setModal({kind:"settings"});return;}
       if((command&&["f","k"].includes(e.key.toLowerCase()))||(!typing&&!command&&e.key==="/")){
-        e.preventDefault();if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
+        e.preventDefault();if(studioView){window.dispatchEvent(new Event("studio-search"));return;}if(project!==null&&!generalEntry&&projectSection==='client'){window.dispatchEvent(new Event('client-search'));return;}if(project!==null&&!generalEntry)setProjectSection('files');if(homeView)navigate(null);setSearchOpen(true);searchRef.current?.focus();searchRef.current?.select();
       }
     };
     window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);
-  },[modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView]);
-  const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null)=>{
+  },[studioView,modal,capture,videoDialog,duplicatesOpen,removedOpen,libraryExportOpen,storageOpen,extraDialog,customTab,quickPreview,itemMenu,viewer,homeView,project,projectSection,generalEntry]);
+  const showCaptureReceipt=useCallback((result:CaptureResult, next:Library, targetCategory:string|null, targetProject?:{project:number;folder:number|null})=>{
     const saved=next.items.filter(i=>result.ids.includes(i.id));
     if(!saved.length)return;
     const item=saved[0];
-    const destination=targetCategory!==null?categoryLabel(targetCategory):result.destination==="links"?"Links":result.destination==="resources"?"Resources":
+    const projectDestination=targetProject?[next.projects.find(p=>p.id===targetProject.project)?.name,targetProject.folder?next.project_folders?.find(f=>f.id===targetProject.folder)?.name:undefined].filter(Boolean).join(' / '):null;
+    const destination=projectDestination||(targetCategory!==null?categoryLabel(targetCategory):result.destination==="links"?"Links":result.destination==="resources"?"Resources":
       result.destination&&isBoardDestination(result.destination)?boardNames[result.destination]:
-      item.source;
+      item.source||'library');
     const prior=new Map(lib.items.map(i=>[i.id,i]));
     const already=result.reused>0&&!result.added&&saved.every(i=>{
       const previous=prior.get(i.id);
+      if(targetProject)return !!previous&&(targetProject.folder?previous.project_folders?.includes(targetProject.folder):previous.projects.includes(targetProject.project));
       return targetCategory===null||!!previous&&(isComponent(filingCategory(targetCategory))?componentFoldersOf(previous).includes(filingCategory(targetCategory)):designFoldersOf(previous).includes(filingCategory(targetCategory)));
     });
     const message=result.moved_from?`Moved from ${result.moved_from} to ${destination}`:
@@ -793,14 +888,23 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   },[lib.items]);
   const [importProgress,setImportProgress]=useState<ImportProgress|null>(null);
   const dropQueue = useRef(Promise.resolve());
-  const queueImageDrop = useCallback((data:DataTransfer, destination:string|null) => {
+  const [pendingImports,setPendingImports]=useState(0);
+  const enqueueImport=useCallback((operation:()=>Promise<void>)=>{
+    const queuedAt=performance.now();const operationId=crypto.randomUUID();recordDiagnostic('import.queue','started',0,{},operationId);
+    setPendingImports(count=>count+1);
+    dropQueue.current=dropQueue.current.then(async()=>{
+      setReadingCapture(true);setImportProgress(null);
+      try{recordDiagnostic('import.queue','success',performance.now()-queuedAt,{},operationId);await operation();recordDiagnostic('import.workflow','success',performance.now()-queuedAt,{},operationId);}catch(error){recordDiagnostic('import.workflow','error',performance.now()-queuedAt,{error_code:errorCode(error)},operationId);report(error);}
+      finally{setPendingImports(count=>count-1);setReadingCapture(false);setImportProgress(null);}
+    });
+  },[report]);
+  const queueImageDrop = useCallback((data:DataTransfer, destination:string|null, projectTarget?:{project:number;folder:number|null}) => {
+    setDropActive(false);
     // Read immediately: browser drag data is unavailable after the drop event returns.
     const payload = readWebDrop(data);
-    dropQueue.current = dropQueue.current.then(async () => {
+    enqueueImport(async () => {
       let files:CaptureDraft['files'] = [];
       try {
-        setReadingCapture(true);
-        setImportProgress(null);
         if(payload.files.length) files = (await stageFiles(payload.files,setImportProgress)).files;
         else if(payload.imageUrl) files = [await invoke('stage_web_image',{url:payload.imageUrl})];
         else if(!payload.sourceUrl) throw new Error('Drag the image itself, or copy and paste it into this folder.');
@@ -808,44 +912,54 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
         const result = await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
           files,url:files.length?'':payload.sourceUrl,name:files.length===1?files[0].name.replace(/\.[^.]+$/,''):'',
-          source:destination==='Photography'?'Photography':'Design',projects:[],tags:[],source_url:payload.sourceUrl,resource:false,
+          source:destination==='Photography'?'Photography':'Design',project_only:!!projectTarget,projects:projectTarget?[projectTarget.project]:[],tags:[],source_url:payload.sourceUrl,resource:false,
         }}));
         setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
         recordCapture(result);
-        if(destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
-        showCaptureReceipt(result,await refresh(),destination);
+        if(projectTarget?.folder&&result.ids.length)await mutate({action:'add_project_folder',target:projectTarget.folder,ids:result.ids});
+        if(!projectTarget&&destination!==null&&result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+        showCaptureReceipt(result,await refresh(),destination,projectTarget);
       } catch(error){report(error);}
       finally {
         await invoke('discard_capture',{paths:files.map(file=>file.path)}).catch(report);
-        setReadingCapture(false);setImportProgress(null);
       }
     });
-  },[mutate,recordCapture,refresh,report,showCaptureReceipt]);
-  const pasteCapture = useCallback(async () => {
+  },[mutate,recordCapture,refresh,report,showCaptureReceipt,enqueueImport]);
+  const pasteCapture = useCallback(async (target?:{category:string|null;project:number|null;folder:number|null}) => {
+    if(target||((category!==null||project!==null)&&!resourcesView&&!boardView&&!videoView&&!linksOnly)){
+      // Read now, not when the import reaches the front of the queue. The clipboard
+      // helper still orders native reads behind preceding app copy operations.
+      const snapshot=readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error}));
+      const targetProject=target?target.project:project;const destination=targetProject!==null?null:target?target.category:category;const targetFolder=target?target.folder:typeof projectFolder==='number'?projectFolder:null;
+      enqueueImport(async()=>{
+        const {draft,error}=await snapshot;
+        if(!draft)throw error;
+        try{
+          if(!draft.files.length&&!(draft.url&&(targetProject!==null||(destination!==null&&isComponent(destination))||destination===allComponents))){
+            if(target)throw Error('Copy an image or file to paste into a Design Inspo folder. Links can be pasted into projects or App Components.');
+            setCapture({...draft,destination:linkDestination});return;
+          }
+          const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+          setImportProgress({phase:'waiting',checked:0,total:0,current:'',elapsed_ms:0,remaining_seconds:null});
+          const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{
+            files:draft.files,url:draft.files.length?'':draft.url,name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/,''):'',
+            source:destination==='Photography'?'Photography':'Design',project_only:targetProject!==null,projects:targetProject!==null?[targetProject]:[],tags:[],source_url:'',resource:false,
+          }}));
+          recordCapture(result);
+          setImportProgress({phase:'finishing',checked:0,total:0,current:'Updating folders and thumbnails',elapsed_ms:0,remaining_seconds:null});
+          if(result.ids.length&&destination!==null)await mutate({action:'set_category',ids:result.ids,value:filingCategory(destination)});
+          if(result.ids.length&&targetFolder!==null)await mutate({action:'add_project_folder',ids:result.ids,target:targetFolder});
+          showCaptureReceipt(result,await refresh(),destination,targetProject!==null?{project:targetProject,folder:targetFolder}:undefined);
+        }finally{await invoke('discard_capture',{paths:draft.files.map(file=>file.path)}).catch(report);}
+      });
+      return;
+    }
     if(pasteBusy.current)return;
     pasteBusy.current=true;
     try {
       setReadingCapture(true);
       const draft = await readClipboard<CaptureDraft>();
-      if(category!==null && (isComponent(category)||category===allComponents) && draft.url && !draft.files.length){
-        const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items',{input:{files:[],url:draft.url,name:'',source:'Design',projects:[],tags:[],source_url:'',resource:false}}));
-        recordCapture(result);
-        if(result.ids.length)await mutate({action:'set_category',ids:result.ids,value:filingCategory(category)});
-        showCaptureReceipt(result,await refresh(),filingCategory(category));return;
-      }
       if(videoView && draft.url){setVideoDialog({url:draft.url});return;}
-      if(category!==null && draft.files.length && !resourcesView && !boardView && !videoView && !linksOnly){
-        try {
-          const result=await appHistory.perform(()=>invoke<CaptureResult>("capture_items",{input:{
-            files:draft.files,url:"",name:draft.files.length===1?draft.files[0].name.replace(/\.[^.]+$/, ""):"",
-            source:category==="Photography"?"Photography":"Design",projects:[],tags:[],source_url:"",resource:false,
-          }}));
-          recordCapture(result);
-          if(result.ids.length)await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
-          showCaptureReceipt(result,await refresh(),category);
-        } finally {await invoke("discard_capture",{paths:draft.files.map(file=>file.path)}).catch(report);}
-        return;
-      }
       setCapture(boardView ? { ...draft, files: [], thumbnail: draft.files[0], destination: linkDestination } : { ...draft, destination: linkDestination });
     } catch (e) {
       report(e);
@@ -853,8 +967,44 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       pasteBusy.current=false;
       setReadingCapture(false);
     }
-  }, [report, resourcesView, boardView, linkDestination, videoView, category, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture]);
+  }, [report, resourcesView, boardView, linkDestination, videoView, category, project, projectFolder, linksOnly, refresh,showCaptureReceipt,mutate,recordCapture,enqueueImport]);
+  const openStudio=(route:StudioRoute)=>{navigate(null);setStudioView(route);};
+  const [addSectionRequest,setAddSectionRequest]=useState(0);
+  const [quickContact,setQuickContact]=useState(false);
+  const openWork=(target:WorkTarget)=>{setModal(null);if(target.kind==='project'){navigate(Number(target.id));return;}if(target.kind==='item'){const item=lib.items.find(i=>String(i.id)===target.id);if(item){if(item.kind==='link')void openUrl(item.path).then(()=>track(item)).catch(report);else setQuickPreview(item.id);}return;}const entry=lib.studio?.find(e=>e.id===target.id);if(entry)openStudio({section:isOrganisation(entry)?'clients':entry.kind==='campaign'?'marketing':entry.kind==='research'?'research':'leads',page:isOrganisation(entry)?'today':entry.kind==='campaign'?'campaigns':entry.kind==='research'?'all':entry.kind==='contact'?'contacts':'pipeline',id:entry.id});};
+  const startSectionAdd=(section:'marketing'|'leads'|'research'|'clients')=>{openStudio({section,page:section==='marketing'?'campaigns':section==='leads'?'pipeline':section==='clients'?'today':'all'});setAddSectionRequest(n=>n+1);};
+  useEffect(()=>{if(!addSectionRequest)return;const input=document.querySelector<HTMLInputElement>('.studio-quick-add input[aria-label="New record name"],.research-add input,.clients-add input');input?.focus();input?.scrollIntoView({block:'nearest'});},[addSectionRequest]);
+
+  const importStudio=(id:string,mode:'paste'|'files'|'drop',data?:DataTransfer)=>{
+    const payload=data?readWebDrop(data):null;
+    const snapshot=mode==='paste'?readClipboard<CaptureDraft>().then(draft=>({draft,error:null}),error=>({draft:null,error})):null;
+    const selected=mode==='files'?open({multiple:true,title:'Add studio files'}).then(paths=>({paths,error:null}),error=>({paths:null,error})):null;
+    enqueueImport(async()=>{
+      let files:CaptureDraft['files']=[];
+      try{
+        let url='';
+        if(snapshot){const result=await snapshot;if(!result.draft)throw result.error;files=result.draft.files;url=result.draft.url;}
+        else if(selected){const result=await selected;if(result.error)throw result.error;if(!result.paths)return;files=(Array.isArray(result.paths)?result.paths:[result.paths]).map(path=>({path,name:path.replace(/\\/g,'/').split('/').pop()!}));}
+        else if(payload){if(payload.files.length)files=(await stageFiles(payload.files,setImportProgress)).files;else if(payload.imageUrl)files=[await invoke('stage_web_image',{url:payload.imageUrl})];url=payload.sourceUrl;}
+        if(!files.length&&!url)throw Error('Copy a file, image or URL first.');
+        const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+        const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{studio:id,files,url:files.length?'':url,name:'',source:'Design',projects:[],tags:[],resource:false}}));
+        recordCapture(result);await refresh();setNotice(`Saved ${result.ids.length} reference${result.ids.length===1?'':'s'}`);
+      }finally{await invoke('discard_capture',{paths:files.map(f=>f.path)}).catch(report);}
+    });
+  };
   const chooseCaptureFiles = async () => {
+    if(project!==null){
+      const target=project,folder=typeof projectFolder==='number'?projectFolder:null;
+      try{const paths=await open({multiple:true,title:'Add project files'});if(!paths)return;
+        const files=(Array.isArray(paths)?paths:[paths]).map(path=>({path,name:path.replace(/\\/g,'/').split('/').pop()!}));
+        enqueueImport(async()=>{const onProgress=new Channel<ImportProgress>();onProgress.onmessage=setImportProgress;
+          const result=await appHistory.perform(()=>invoke<CaptureResult>('capture_items_progress',{onProgress,input:{files,source:'Design',projects:[target],project_only:true,tags:[],url:'',name:'',source_url:'',resource:false}}));
+          recordCapture(result);if(folder!==null&&result.ids.length)await mutate({action:'add_project_folder',target:folder,ids:result.ids});
+          showCaptureReceipt(result,await refresh(),null,{project:target,folder});
+        });
+      }catch(error){report(error);}return;
+    }
     try {
       const paths = await open({
         multiple: true,
@@ -896,9 +1046,10 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   };
   useEffect(() => {
     const paste = (e: KeyboardEvent) => {
+      if(studioView||document.querySelector('.project-dialog-backdrop'))return;
       if (
         (e.ctrlKey || e.metaKey) &&
-        e.key.toLowerCase() === "v" &&
+        e.key.toLowerCase() === "v" && !e.repeat &&
         !(e.target as HTMLElement).closest(
           "input,textarea,select,[contenteditable=true]",
         ) &&
@@ -913,7 +1064,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       }
     };
     const over = (e: DragEvent) => {
-      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop")){setDropActive(false);return;}
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop,.studio-workspace")){setDropActive(false);return;}
       if (!extraDialog && !storageOpen && e.dataTransfer && acceptsExternalDrop(e.dataTransfer)) {
         e.preventDefault();
         setDropActive(true);
@@ -924,11 +1075,11 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     };
     const drop = (e: DragEvent) => {
       setDropActive(false);
-      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop"))return;
+      if((e.target as HTMLElement)?.closest(".home-dashboard,.customise-backdrop,.studio-workspace"))return;
       if(extraDialog||storageOpen)return;
       if(e.dataTransfer && acceptsExternalDrop(e.dataTransfer) && !resourcesView && !boardView && !videoView && !linksOnly){
         e.preventDefault();
-        queueImageDrop(e.dataTransfer,category);
+        queueImageDrop(e.dataTransfer,category,project!==null?{project,folder:typeof projectFolder==='number'?projectFolder:null}:undefined);
         return;
       }
       const files = Array.from(e.dataTransfer?.files || []);
@@ -958,23 +1109,24 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,boardView,linksOnly,storageOpen]);
+  }, [studioView,pasteCapture, report, capture, duplicatesOpen, removedOpen, modal, resourcesView, linkDestination, videoView, videoDialog,quickPreview,libraryExportOpen,extraDialog,queueImageDrop,category,project,projectFolder,boardView,linksOnly,storageOpen]);
   const captured = async (result: CaptureResult) => {
     recordCapture(result);
-    if(category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    if(project===null&&category!==null && (capture?.files.length || isComponent(category) || category===allComponents) && result.ids.length) await mutate({action:"set_category",ids:result.ids,value:filingCategory(category)});
+    if(project!==null&&typeof projectFolder==='number'&&result.ids.length)await mutate({action:'add_project_folder',target:projectFolder,ids:result.ids});
     const next=await refresh();
     if (capture)
       await invoke("discard_capture", {
         paths: capture.files.map((f) => f.path),
       }).catch(report);
     setCapture(null);
-    if (result.destination) {
+    if (result.destination && project===null) {
       navigate(null, result.destination === "links");
       setResourcesView(result.destination === "resources");
       if (result.destination && isBoardDestination(result.destination)) setBoardView(result.destination);
       if (result.destination === "resources") setResourceVersion(version => version + 1);
     }
-    showCaptureReceipt(result,next,result.destination?null:category);
+    showCaptureReceipt(result,next,result.destination?null:category,project!==null?{project,folder:typeof projectFolder==='number'?projectFolder:null}:undefined);
   };
   useEffect(() => {
     setSelected((prev) => {
@@ -1057,7 +1209,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
-  const linkTable = (items: Item[]) => <LinksTable items={items} selected={selected} select={select} openItem={openItem}
+  const linkTable = (items: Item[]) => <LinksTable onFolders={id=>setFolderMembers([id])} onRate={(id,value)=>void perform({action:'rate_links',ids:[id],value:value===null?'':String(value)})} showCategories={linksOnly||items.some(item=>!isCollectionLink(item))} items={items} selected={selected} select={select} openItem={openItem}
     onEdit={id=>setModal({kind:"editLink",id})} onProjects={id=>setModal({kind:"projects",ids:[id]})}
     onTags={id=>setModal({kind:"tags",ids:[id]})} onDelete={id=>void removeItems([id])} project={project}
     onPin={item=>project&&void perform({action:item.favourites?.includes(project)?"unpin_project":"pin_project",target:project,ids:[item.id]})}/>;
@@ -1066,216 +1218,37 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     ids:id=>selected.has(id)?[...selected]:[id],
     category:(ids,name)=>void changeCategory(ids,name).catch(report),
     project:(ids,target)=>void mutate({action:"add_project",ids,target}).then(()=>{setUndoIds([]);setNotice("Added to project");}).catch(report),
+    projectFolder:(ids,target)=>void mutate({action:'add_project_folder',ids,target}).then(()=>{setUndoIds([]);setNotice('Added to folder');}).catch(report),
+    unfileProject:(ids,target)=>void mutate({action:'unfile_project_folder',ids,target}).then(()=>{setUndoIds([]);setNotice('Moved to Unfiled');}).catch(report),
     started:()=>setHoverId(null),
   });
-  return (
-    <div
-      className="app" data-sidebar-layout={sidebarLayout} data-sidebar-brand={navLayout.brand} data-sidebar-counts={navLayout.counts!==false} data-sidebar-compact={sidebarWidth<200}
-      onClickCapture={homeShortcutDrag.captureClick}
-      onDragStart={itemDrag.start}
-      onPointerDown={itemDrag.pointerDown}
-      onPointerOver={e=>{const target=(e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");previewCandidate.current=target?Number(target.dataset.itemId):null;}}
-      onDragEnd={()=>setCategoryDrop(null)}
-      onContextMenu={(e) => {
-        if (modal || capture || duplicatesOpen || removedOpen || folderMenu) return;
-        const target = (e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");
-        if (!target) return;
-        const id = Number(target.dataset.itemId);
-        e.preventDefault(); e.stopPropagation();
-        setHoverId(null);
-        setItemMenu({ x: e.clientX, y: e.clientY, ids: (viewer === null || widePreview) && selected.has(id) ? [...selected] : [id] });
-      }}
-      style={{ "--sidebar-width": `${sidebarWidth}px`,"--nav-row":`${navLayout.row}px`,"--nav-inset":`${navLayout.inset}px`,"--nav-radius":`${navLayout.radius}px`,"--nav-indent":navLayout.indent===undefined?undefined:`${navLayout.indent}px` } as React.CSSProperties}
-    >
-      <aside
-        className="sidebar"
-        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
-      >
-        <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} onDragEnter={e=>{if(e.dataTransfer.types.includes(homeMime))setHomeView(true);}}>
-          <img src={appLogo} alt="" className="brand-logo" />
-          <span className="brand-name"><span>Bit Clever</span><span>Design Studio</span></span>
-        </button>
-        <SidebarNavigation order={navLayout.order}>
-        <SidebarSection name="General" icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
-        <nav aria-label="Library">
-          {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
-            const {key,name,pinned}=entry,target=entry.target??{kind:'view',value:key},view=target.kind==='view'?target.value:'',board=isBoardDestination(view);
-            const count=target.kind==='project'?lib.projects.find(p=>String(p.id)===target.value)?.count:target.kind==='category'?categoryCounts.get(target.value):view==='links'?lib.items.filter(i=>i.kind==='link'&&!isCollectionLink(i)).length:board?lib.items.filter(i=>i.source===boardNames[view]).length:view==='facebook'?lib.items.filter(i=>i.kind==='video'&&(i.source==='Videos'||i.source.startsWith('Videos/'))).length:0;
-            const folder=target.kind==='category'?(target.value==='__all__'?'':target.value===allComponents?componentInbox:target.value):undefined;
-            const projectProps=target.kind==='project'?{'data-project-id':Number(target.value),'data-project-name':name,onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes('application/design-items')){e.preventDefault();e.currentTarget.classList.add('drop-target');}},onDragLeave:(e:React.DragEvent)=>e.currentTarget.classList.remove('drop-target'),onDrop:(e:React.DragEvent)=>drop(e,Number(target.value))}:{};
-            return <button className={`nav-item general-nav ${!homeView&&generalKey===key?'active':''}`} key={key} {...homeDrag(`collection:${key}`)} {...projectProps} {...(folder!==undefined?{'data-category':folder,...categoryDropProps(folder)}:{})} onClick={()=>openGeneral(entry)} title={name}><GeneralEntryIcon entry={entry} preferences={icons}/><span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||''}</small></button>;
-          })}
-        </nav>
-        </SidebarSection>
-        <SidebarSection name="Projects" icon={icons.overrides["section:Projects"]&&<AppIcon value={icons.overrides["section:Projects"]}/>} dropProps={homeDrag("group:projects")} action={
-          <IconButton
-            title="New project"
-            onClick={() => setModal({ kind: "project" })}
-          >
-            <Plus size={15} />
-          </IconButton>}>
-        <div className="projects">
-          <nav aria-label="Projects">
-            {lib.projects.map((p) => (
-              <div
-                className={`project-row ${!homeView && !generalKey && project === p.id ? "active" : ""}`}
-                data-project-id={p.id}
-                data-project-name={p.name}
-                key={p.id}
-                onDragOver={(e) => {
-                  if (
-                    e.dataTransfer.types.includes("application/design-items")
-                  ) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect="copy";
-                    e.currentTarget.classList.add("drop-target");
-                  }
-                }}
-                onDragLeave={(e) => {
-                  if(!(e.relatedTarget instanceof Node)||!e.currentTarget.contains(e.relatedTarget))e.currentTarget.classList.remove("drop-target");
-                }}
-                onDrop={(e) => drop(e, p.id)}
-              >
-                <button className="nav-item" {...homeDrag(`project:${p.id}`)} onClick={() => navigate(p.id)}>
-                  <FolderIcon preferences={icons} id={`project:${p.id}`}/>
-                  <span>{p.name}</span>
-                  <small>{p.count || ""}</small>
-                </button>
-                <Popover label="" icon={<MoreHorizontal size={15} />}>
-                  <button
-                    onClick={() =>
-                      setModal({ kind: "renameProject", id: p.id })
-                    }
-                  >
-                    Rename
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() =>
-                      setModal({ kind: "deleteProject", id: p.id })
-                    }
-                  >
-                    Delete project
-                  </button>
-                </Popover>
-              </div>
-            ))}
-          </nav>
-          {!lib.projects.length && (
-            <button
-              className="empty-project"
-              onClick={() => setModal({ kind: "project" })}
-            >
-              <Plus size={13} /> New project
-            </button>
-          )}
-        </div>
-        </SidebarSection>
-        <SidebarSection name="Categories" label="Design Inspo" identity="design" icon={icons.overrides.design&&<AppIcon value={icons.overrides.design} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag("design"),...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
-          <IconButton
-            title="New category"
-            onClick={() => setModal({kind:"category",ids:[]})}
-          >
-            <Plus size={15} />
-          </IconButton>}>
-        <nav className="source-list" aria-label="Design Inspo">
-          <button
-            className={`nav-item ${!homeView&&!generalKey&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
-            {...homeDrag("design")}
-            onClick={() => navigate(null)}
-          >
-            <FolderIcon preferences={icons} id="design:all" size={14}/>
-            <span>
-              All Designs
-            </span>
-          </button>
-          {sortedFolders([...categories, ''],'design').map(folderRow)}
-        </nav>
-        </SidebarSection>
-        <SidebarSection name="Components" label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
-          <nav aria-label="App Components">
-            {folderRow(allComponents)}
-            {sortedFolders(componentFolders,'components').map(folderRow)}
-          </nav>
-        </SidebarSection>
-        </SidebarNavigation>
-        <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('sidebar')}><SlidersHorizontal size={15}/><span>Customise</span></button>
-          <button title="Settings" aria-label="Settings" onClick={() => setModal({ kind: "settings" })}>
-            <Settings2 size={15} />
-            <span>Settings</span>
-          </button>
-          <IconButton
-            title="Rescan library"
-            onClick={() => void invoke("rescan").catch(report)}
-          >
-            <RefreshCw size={14} className={lib.scanning ? "spin" : ""} />
-          </IconButton>
-        </div>
-        <div
-          className="sidebar-resize"
-          onPointerDown={resizeSidebar}
-          role="separator"
-          aria-label="Resize sidebar"
-          aria-orientation="vertical"
+  const libraryDialog = modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
+        <Dialog
+          modal={modal}
+          projectFolder={projectFolder}
+          lib={lib}
+          close={() => setModal(null)}
+          mutate={mutate}
+          busy={busy}
+          setBusy={setBusy}
+          report={report}
+          project={project}
+          chooseRoot={chooseRoot}
+          customize={tab=>{setModal(null);setCustomTab(tab);}}
+          exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
+          backup={backup}
+          duplicates={() => {
+            setModal(null);
+            setDuplicatesOpen(true);
+          }}
+          removed={() => { setModal(null); setRemovedOpen(true); }}
+          setModal={setModal}
+          onDeleteProject={(id) => {
+            if (project === id) navigate(null);
+          }}
         />
-      </aside>
-      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
-        {homeView?<><HomeDashboard headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("home")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
-        <header className="topbar">
-          <div className="view-title">
-            <h1>{title}</h1>
-            <span>
-              {boardView ? boardItems.length : resourcesView
-                ? filtered.filter(isResource).length
-                : filtered.length.toLocaleString()}
-            </span>
-            {lib.scanning && (
-              <LoaderCircle className="spin" size={13} aria-label="Scanning" />
-            )}
-          </div>
-          <div className="header-actions">
-            <ThumbnailProgress />
-            <ColourPicker projects={lib.projects}/>
-            {project!==null&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
-            <button className="icon-button" aria-label="Undo organisation change" disabled={!historyActions.undoLabel||undoing} title={historyActions.undoLabel?`Undo: ${historyActions.undoLabel} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
-            <button className="icon-button" aria-label="Redo organisation change" disabled={!historyActions.redoLabel||undoing} title={historyActions.redoLabel?`Redo: ${historyActions.redoLabel} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
-            <StorageBar revision={lib} onOpen={()=>setStorageOpen(true)}/>
-            {search&&!searchOpen&&<button className="subtle-button search-active" title="Clear search" onClick={()=>setSearch("")}>“{search}” <X size={12}/></button>}
-            <label className="search search-popup" hidden={!searchOpen}>
-              <Search size={15} />
-              <input
-                ref={searchRef}
-                placeholder="Search"
-                aria-label="Search library"
-                onKeyDown={e=>{if(e.key==="Escape"||e.key==="Enter"){e.preventDefault();e.stopPropagation();setSearchOpen(false);searchRef.current?.blur();}}}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              {search ? (
-                <IconButton title="Clear search" onClick={() => setSearch("")}>
-                  <X size={12} />
-                </IconButton>
-              ) : (
-                <kbd>/</kbd>
-              )}
-            </label>
-            {(videoQueue.jobs.length>0||videoView)&&<button className="subtle-button" aria-label="Show downloads" onClick={()=>setQueueOpen(open=>!open)}><Download size={14}/> Downloads{videoQueue.pending?` · ${videoQueue.pending}`:""}</button>}
-            {videoView && <button className="subtle-button" onClick={()=>setVideoDialog({url:""})}><Download size={14}/> Video link</button>}
-            <Popover label="Add" icon={<Plus size={14} />}>
-              <button onClick={() => void chooseCaptureFiles()}>
-                <Files size={14} /> Files
-              </button>
-              <button onClick={() => void pasteCapture()}>
-                <ClipboardPaste size={14} /> Paste
-              </button>
-              <button onClick={() => videoView ? setVideoDialog({url:""}) : setCapture({ files: [], url: "", destination: linkDestination })}>
-                <Link2 size={14} /> Link
-              </button>
-            </Popover>
-          </div>
-        </header>
-        {!originalResources && (
-          <div className="toolbar">
+      );
+  const viewToolbar=(<div className="toolbar">
             <div className="filters">
               {!boardView && !videoView && <select
                 aria-label="Filter by type"
@@ -1289,7 +1262,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                 <option value="image">Images</option>
                 <option value="video">Videos</option>
                 <option value="animation">Animations</option>
-                <option value="link">Links</option>
+                <option value="link">Links</option>{project!==null&&<option value="file">Files</option>}
               </select>}
               <Popover
                 label={tags.length ? `Tags · ${tags.length}` : "Tags"}
@@ -1319,7 +1292,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                 </button>
               </Popover>
               {lib.tags.length>0&&<select aria-label="Tag matching" value={tagMode} onChange={e=>setTagMode(e.target.value==="all"?"all":"any")}><option value="any">Any tag</option><option value="all">All tags</option></select>}
-              {!boardView && !videoView && <select
+              {project===null && !boardView && !videoView && <select
                 aria-label="Filter by category"
                 value={category??"__all__"}
                 onChange={(e) => setCategory(e.target.value==="__all__"?null:e.target.value)}
@@ -1331,6 +1304,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                   </option>
                 ))}
               </select>}
+              {(linksOnly||project!==null)&&<select aria-label="Filter by rating" value={ratingFilter} onChange={e=>setRatingFilter(e.target.value)}><option value="">All ratings</option><option value="unrated">Unrated</option><option value="4+">4 stars & up</option>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n} stars</option>)}</select>}
               {activeFilters && (
                 <button className="clear-filters" onClick={clearFilters}>
                   <X size={12} /> Clear
@@ -1349,7 +1323,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
               >
                 <option value="recent">Recently added</option>
                 <option value="name">Name</option>
-                <option value="shuffle">Shuffle</option>
+                <option value="shuffle">Shuffle</option>{(linksOnly||project!==null)&&<><option value="rating-high">Highest rating</option><option value="rating-low">Lowest rating</option></>}
               </select>
               {sort === "shuffle" && (
                 <IconButton
@@ -1371,67 +1345,189 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                 onChange={(e) => setSize(Number(e.target.value))}
               /></>}
             </div>}
+          </div>);
+  return (
+    <div
+      className="app" data-sidebar-layout={sidebarLayout} data-sidebar-brand={navLayout.brand} data-sidebar-counts={navLayout.counts!==false} data-sidebar-compact={sidebarWidth<200}
+      onClickCapture={homeShortcutDrag.captureClick}
+      onDragStart={itemDrag.start}
+      onPointerDown={itemDrag.pointerDown}
+      onPointerOver={e=>{const target=(e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");previewCandidate.current=target?Number(target.dataset.itemId):null;}}
+      onDragEnd={()=>setCategoryDrop(null)}
+      onContextMenu={(e) => {
+        if (modal || capture || duplicatesOpen || removedOpen || folderMenu) return;
+        const target = (e.target as HTMLElement).closest<HTMLElement>("[data-item-id]");
+        if (!target) return;
+        const id = Number(target.dataset.itemId);
+        e.preventDefault(); e.stopPropagation();
+        setHoverId(null);
+        setItemMenu({ x: e.clientX, y: e.clientY, ids: (viewer === null || widePreview) && selected.has(id) ? [...selected] : [id] });
+      }}
+      style={{ "--sidebar-width": `${sidebarWidth}px`,"--nav-row":`${navLayout.row}px`,"--nav-inset":`${navLayout.inset}px`,"--nav-radius":`${navLayout.radius}px`,"--nav-indent":navLayout.indent===undefined?undefined:`${navLayout.indent}px` } as React.CSSProperties}
+    >
+      <aside
+        className="sidebar"
+        onClickCapture={e=>{if((e.target as HTMLElement).closest('.nav-item,.brand,[aria-label=Settings]')){const stamp=performance.now();navigationStart.current=stamp;setTimeout(()=>{if(navigationStart.current===stamp)navigationStart.current=null;},0);}if(modal?.kind==='settings'&&(e.target as HTMLElement).closest('.nav-item,.brand'))setModal(null);}}
+        inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
+      >
+        <button className="brand" aria-label="Go to Home" onClick={()=>{navigate(null);setHomeView(true);}} data-home-shortcut-drop="true" onDragOver={e=>{if(e.dataTransfer.types.includes(homeMime)){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';e.currentTarget.dataset.homeDropActive='true';}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))delete e.currentTarget.dataset.homeDropActive;}} onDrop={e=>{delete e.currentTarget.dataset.homeDropActive;const id=e.dataTransfer.getData(homeMime);if(!id)return;e.preventDefault();e.stopPropagation();if(homeDestinations.some(d=>d.id===id)){navigate(null);setHomeView(true);setHomeDrop(id);}}}>
+          <img src={branding.logo || appLogo} alt="" className="brand-logo" style={{width:branding.size,height:branding.size,maxWidth:"45%"}} />
+          <span className="brand-name"><span>{branding.name}</span><span>{branding.slogan}</span></span>
+        </button>
+        <SidebarTools lib={lib} current={quickPreview!==null||viewer!==null?{kind:'item',id:String(quickPreview??viewer)}:studioView?.id?{kind:'studio',id:studioView.id}:!homeView&&!studioView&&project!==null?{kind:'project',id:String(project)}:null} open={openWork} add={kind=>{setModal(null);if(kind==='Project')setModal({kind:'project'});else if(kind==='Contact')setQuickContact(true);else startSectionAdd(kind==='Lead'?'leads':'clients');}}/>
+        <SidebarNavigation order={navLayout.order}>
+        <SidebarSection name="Marketing" action={<IconButton title="Add campaign" onClick={()=>startSectionAdd('marketing')}><Plus size={14}/></IconButton>} identity="marketing" styleId={sectionStyle} icon={icons.overrides['section:Marketing']&&<AppIcon value={icons.overrides['section:Marketing']}/>}><nav>{['campaigns','ideas','calendar'].map(page=><button key={page} className={`nav-item ${studioView?.section==='marketing'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='marketing'&&studioView.page===page?'page':undefined} {...homeDrag(`studio:marketing:${page}`)} onClick={()=>openStudio({section:'marketing',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
+        <SidebarSection name="Leads" action={<IconButton title="Add lead" onClick={()=>startSectionAdd('leads')}><Plus size={14}/></IconButton>} identity="leads" styleId={sectionStyle} icon={icons.overrides['section:Leads']&&<AppIcon value={icons.overrides['section:Leads']}/>}><nav>{['pipeline','follow-ups','contacts'].map(page=><button key={page} className={`nav-item ${studioView?.section==='leads'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='leads'&&studioView.page===page?'page':undefined} {...homeDrag(`studio:leads:${page}`)} onClick={()=>openStudio({section:'leads',page})}>{page[0].toUpperCase()+page.slice(1)}</button>)}</nav></SidebarSection>
+        <SidebarSection name="Clients" label="Organisations" identity="clients" styleId={sectionStyle} icon={icons.overrides['section:Clients']&&<AppIcon value={icons.overrides['section:Clients']}/>} action={<IconButton title="Add organisation" onClick={()=>startSectionAdd('clients')}><Plus size={14}/></IconButton>}><nav><button className={`nav-item ${studioView?.section==='clients'&&!studioView.id?'active':''}`} {...homeDrag('studio:clients:dashboard')} onClick={()=>openStudio({section:'clients',page:'today'})}>Dashboard</button><ClientSidebar addToHome={id=>{navigate(null);setHomeView(true);setHomeDrop(`studio:client:${id}`);}} clients={(lib.studio??[]).filter(e=>isOrganisation(e)&&!e.archived)} order={folderOrder['clients:'+lib.root]??[]} save={ids=>setFolderOrder(previous=>({...previous,['clients:'+lib.root]:ids}))} selected={studioView?.id} open={id=>openStudio({section:'clients',page:'today',id,tab:'feed'})}/></nav></SidebarSection>
+        <SidebarSection name="General" identity="general" styleId={sectionStyle} icon={icons.overrides["section:General"]&&<AppIcon value={icons.overrides["section:General"]}/>} dropProps={homeDrag("group:general")} action={<IconButton title="Add General entry" onClick={()=>setCustomTab("general")}><Plus size={14}/></IconButton>}>
+        <nav aria-label="Library">
+          {ordered(collectionPrefs).filter(s=>!s.hidden).map(entry=>{
+            const {key,name,pinned}=entry,target=entry.target??{kind:'view',value:key},view=target.kind==='view'?target.value:'',board=isBoardDestination(view);
+            const count=target.kind==='project'?lib.projects.find(p=>String(p.id)===target.value)?.count:target.kind==='category'?categoryCounts.get(target.value):view==='links'?generalCounts.get('__links')??0:board?generalCounts.get(boardNames[view])??0:view==='facebook'?generalCounts.get('__videos')??0:0;
+            const folder=target.kind==='category'?(target.value==='__all__'?'':target.value===allComponents?componentInbox:target.value):undefined;
+            const projectProps=target.kind==='project'?{'data-project-id':Number(target.value),'data-project-name':name,onDragOver:(e:React.DragEvent)=>{if(e.dataTransfer.types.includes('application/design-items')){e.preventDefault();e.currentTarget.classList.add('drop-target');}},onDragLeave:(e:React.DragEvent)=>e.currentTarget.classList.remove('drop-target'),onDrop:(e:React.DragEvent)=>drop(e,Number(target.value))}:{};
+            return <button className={`nav-item general-nav ${!homeView&&generalKey===key?'active':''}`} key={key} {...homeDrag(`collection:${key}`)} {...projectProps} {...(folder!==undefined?{'data-category':folder,...categoryDropProps(folder)}:{})} onClick={()=>openGeneral(entry)} title={name}><GeneralEntryIcon entry={entry} preferences={icons}/><span>{name}</span>{pinned&&<Pin size={11}/>}<small>{count||''}</small></button>;
+          })}
+        </nav>
+        </SidebarSection>
+        <SidebarSection name="Projects" identity="projects" styleId={sectionStyle} icon={icons.overrides["section:Projects"]&&<AppIcon value={icons.overrides["section:Projects"]}/>} dropProps={homeDrag("group:projects")} action={
+          <IconButton
+            title="New project"
+            onClick={() => setModal({ kind: "project" })}
+          >
+            <Plus size={15} />
+          </IconButton>}>
+        <div className="projects">
+          <nav aria-label="Projects">
+            {lib.projects.map(p=><ProjectTree key={p.id} project={p} folders={lib.project_folders??[]} items={lib.items}
+              active={!homeView&&!generalKey&&project===p.id} overviewActive={projectSection==='overview'} scope={projectSection==='files'?projectFolder:null} open={scope=>{navigate(p.id);setProjectFolder(scope);setProjectSection(scope===null?"overview":"files");}}
+              icon={<FolderIcon preferences={icons} id={`project:${p.id}`}/>} mutate={mutate} report={report}
+              paste={folder=>void pasteCapture({category:null,project:p.id,folder})} rename={()=>setModal({kind:'renameProject',id:p.id})} remove={()=>setModal({kind:'deleteProject',id:p.id})}
+              homeProps={homeDrag(`project:${p.id}`)} externalDrop={(data,folder)=>queueImageDrop(data,null,{project:p.id,folder})}/>)}
+          </nav>
+          {!lib.projects.length && (
+            <button
+              className="empty-project"
+              onClick={() => setModal({ kind: "project" })}
+            >
+              <Plus size={13} /> New project
+            </button>
+          )}
+        </div>
+        </SidebarSection>
+        <SidebarSection name="Categories" label="Design Inspo" identity="design" icon={icons.overrides.design&&<AppIcon value={icons.overrides.design} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag("design"),...categoryDropProps(""),"data-category":"","data-section-label":"Design Inspo",className:categoryDrop===""?"drop-target":""}} action={
+          <IconButton
+            title="New category"
+            onClick={() => setModal({kind:"category",ids:[]})}
+          >
+            <Plus size={15} />
+          </IconButton>}>
+        <nav className="source-list" aria-label="Design Inspo">
+          <button
+            className={`nav-item ${!studioView&&!homeView&&!generalKey&&category===null&&!source&&!recent&&!project&&!boardView&&!linksOnly&&!resourcesView ? "source-active" : ""}`}
+            {...homeDrag("design")}
+            onClick={() => navigate(null)}
+          >
+            <FolderIcon preferences={icons} id="design:all" size={14}/>
+            <span>
+              All Designs
+            </span>
+          </button>
+          {designRows.map(folderRow)}
+        </nav>
+        </SidebarSection>
+        <SidebarSection name="Components" action={<IconButton title="New component folder" onClick={()=>setModal({kind:"category",ids:[],componentFolder:true})}><Plus size={14}/></IconButton>} label="App Components" identity="components" icon={icons.overrides.components&&<AppIcon value={icons.overrides.components} size={17}/>} styleId={sectionStyle} dropProps={{...homeDrag(`category:${allComponents}`),...categoryDropProps(componentInbox),"data-category":componentInbox,"data-section-label":"App Components",className:categoryDrop===componentInbox?"drop-target":""}}>
+          <nav aria-label="App Components">
+            {folderRow(allComponents)}
+            {componentRows.map(folderRow)}
+          </nav>
+        </SidebarSection>
+        <InsightNavigation styleId={sectionStyle} icon={icons.overrides['section:Code']} name="Code"/>
+        <BusinessNavigation styleId={sectionStyle} icon={icons.overrides['section:My Business']} name="My Business" route={studioView} open={page=>openStudio({section:'business',page})}/>
+        <AnalyticsNavigation styleId={sectionStyle} icon={icons.overrides['section:Analytics']} name="Analytics" route={studioView} open={page=>openStudio({section:'analytics',page})} homeProps={homeDrag}/>
+        <SidebarSection name="Research" action={<IconButton title="Add research" onClick={()=>startSectionAdd('research')}><Plus size={14}/></IconButton>} identity="research" styleId={sectionStyle} icon={icons.overrides['section:Research']&&<AppIcon value={icons.overrides['section:Research']}/>}><nav>{researchPages.map(([page,label])=><button key={page} className={`nav-item ${studioView?.section==='research'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='research'&&studioView.page===page?'page':undefined} {...homeDrag(`studio:research:${page}`)} onClick={()=>openStudio({section:'research',page})}>{label}</button>)}</nav></SidebarSection>
+        </SidebarNavigation>
+        <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('branding')}><Paintbrush size={16}/><span>Customise</span></button>
+          <button title="Settings" aria-label="Settings" onClick={() => setModal({ kind: "settings" })}>
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+          <IconButton
+            title="Rescan library"
+            onClick={() => void invoke("rescan").catch(report)}
+          >
+            <RefreshCw size={14} className={lib.scanning ? "spin" : ""} />
+          </IconButton>
+        </div>
+        <div
+          className="sidebar-resize"
+          onPointerDown={resizeSidebar}
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+        />
+      </aside>
+      <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
+        {modal?.kind==='settings'?libraryDialog:<>{studioView?.section==='business'?<MyBusiness page={studioView.page} open={page=>openStudio({section:'business',page})}/>:studioView?.section==='analytics'?<Analytics lib={lib} page={studioView.page} open={openStudio} openProject={navigate} customize={()=>setCustomTab('analytics')}/>:studioView?.section==='clients'?<ClientsWorkspace initialise={initialiseClients} lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} openProject={id=>navigate(id)}/>:studioView?.section==='research'?<ResearchWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else {setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:studioView?<StudioWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else{setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:homeView?<><HomeDashboard summaryShare={homeOverviewPrefs.share} summary={homeOverviewPrefs.enabled&&(homeOverviewPrefs.events||homeOverviewPrefs.projects||homeOverviewPrefs.revenue)?<HomeOverview lib={lib} prefs={homeOverviewPrefs} openProject={id=>{navigate(id);setProjectSection("overview");}} openStudio={openStudio}/>:undefined} headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
+        <header className="topbar">
+          <div className="view-title">
+            <h1>{title}</h1>
+            <span>
+              {project!==null&&!generalEntry&&projectSection!=="files"?"":project!==null&&!generalEntry&&projectFolder===null&&!activeFilters?sheetItems.length.toLocaleString():boardView ? boardItems.length : resourcesView
+                ? filtered.filter(isResource).length
+                : filtered.length.toLocaleString()}
+            </span>
+            {lib.scanning && (
+              <LoaderCircle className="spin" size={13} aria-label="Scanning" />
+            )}
           </div>
-        )}
+          <div className="header-actions">
+            <ThumbnailProgress />
+            <ColourPicker projects={lib.projects}/>
+            {project!==null&&projectSection==="files"&&<button className="subtle-button" onClick={()=>setExtraDialog("sheet")}><Grid2X2 size={14}/>Contact sheet</button>}
+            <button className="icon-button" aria-label="Undo organisation change" disabled={!historyActions.undoLabel||undoing} title={historyActions.undoLabel?`Undo: ${historyActions.undoLabel} (Ctrl+Z)`:"Nothing to undo"} onClick={()=>void undoLast()}><Undo2 size={16}/></button>
+            <button className="icon-button" aria-label="Redo organisation change" disabled={!historyActions.redoLabel||undoing} title={historyActions.redoLabel?`Redo: ${historyActions.redoLabel} (Ctrl+Shift+Z / Ctrl+Y)`:"Nothing to redo"} onClick={()=>void redoLast()}><Redo2 size={16}/></button>
+            <StorageBar revision={lib} onOpen={()=>setStorageOpen(true)}/>
+            {search&&!searchOpen&&<button className="subtle-button search-active" title="Clear search" onClick={()=>setSearch("")}>“{search}” <X size={12}/></button>}
+            <label className="search search-popup" hidden={!searchOpen}>
+              <Search size={15} />
+              <input
+                ref={searchRef}
+                placeholder="Search"
+                aria-label="Search library"
+                onKeyDown={e=>{if(e.key==="Escape"||e.key==="Enter"){e.preventDefault();e.stopPropagation();setSearchOpen(false);searchRef.current?.blur();}}}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {search ? (
+                <IconButton title="Clear search" onClick={() => setSearch("")}>
+                  <X size={12} />
+                </IconButton>
+              ) : (
+                <kbd>/</kbd>
+              )}
+            </label>
+            {(videoQueue.jobs.length>0||videoView)&&<button className="subtle-button" aria-label="Show downloads" onClick={()=>setQueueOpen(open=>!open)}><Download size={14}/> Downloads{videoQueue.pending?` · ${videoQueue.pending}`:""}</button>}
+            {videoView && <button className="subtle-button" onClick={()=>setVideoDialog({url:""})}><Download size={14}/> Video link</button>}
+            {(project===null||!!generalEntry||projectSection==="files")&&<Popover label="Add" icon={<Plus size={14} />}>
+              <button onClick={() => void chooseCaptureFiles()}>
+                <Files size={14} /> Files
+              </button>
+              <button onClick={() => void pasteCapture()}>
+                <ClipboardPaste size={14} /> Paste
+              </button>
+              <button onClick={() => videoView ? setVideoDialog({url:""}) : setCapture({ files: [], url: "", destination: linkDestination })}>
+                <Link2 size={14} /> Link
+              </button>
+            </Popover>}
+          </div>
+        </header>
+        {!originalResources&&(project===null||!!generalEntry)&&viewToolbar}
+
         {project!==null&&<ProjectColours key={project} project={project}/>}
-        {readingCapture && (
+        {(readingCapture||pendingImports>0) && (
           <div className="capture-reading">
-            <CaptureProgress progress={importProgress}/>
-          </div>
-        )}
-        {selected.size > 0 && !originalResources && (
-          <div className="selection-bar">
-            <IconButton
-              title="Clear selection"
-              onClick={() => setSelected(new Set())}
-            >
-              <X size={14} />
-            </IconButton>
-            <span>{selected.size} selected</span>
-            {[...selected].some(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))&&<button title="Organise folders (C)" onClick={()=>setModal({kind:"category",ids:[...selected]})}><Folder size={14}/> Organise folders</button>}
-            <button
-              onClick={() => setModal({ kind: "projects", ids: [...selected] })}
-            >
-              <FolderPlus size={14} /> Add to project
-            </button>
-            <button
-              onClick={() => setModal({ kind: "tags", ids: [...selected] })}
-            >
-              <Tag size={14} /> Tags
-            </button>
-            {project && (
-              <button
-                onClick={() =>
-                  void perform({
-                    action: "pin_project",
-                    target: project,
-                    ids: [...selected],
-                  })
-                }
-              >
-                <Pin size={14} /> Pin
-              </button>
-            )}
-            {project && (
-              <button
-                onClick={() =>
-                  void perform({
-                    action: "remove_project",
-                    target: project,
-                    ids: [...selected],
-                  }).then(() => setSelected(new Set()))
-                }
-              >
-                Remove from project
-              </button>
-            )}
-            <button
-              className="select-all"
-              onClick={() => setSelected(new Set(filtered.map((i) => i.id)))}
-            >
-              Select all
-            </button>
-            <button onClick={() => void removeItems([...selected])}><Trash2 size={14} /> Remove from library</button>
+            <CaptureProgress progress={importProgress} queued={Math.max(0,pendingImports-1)}/>
           </div>
         )}
         {error && (
@@ -1447,7 +1543,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           ref={scrollRef}
           onScroll={() => setHoverId(null)}
         >
-          {generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
+          {project!==null&&!generalEntry&&!generalMissing&&lib.projects.some(p=>p.id===project)?<ProjectWorkspace relatedStudio={<div className="studio-project-links">{(lib.studio??[]).filter(e=>["lead","campaign","client","organization"].includes(e.kind)&&e.projects.includes(project)).map(e=><button key={e.id} onClick={()=>openStudio({section:isOrganisation(e)?"clients":e.kind==="lead"?"leads":"marketing",page:isOrganisation(e)?"today":e.kind==="lead"?"pipeline":"campaigns",id:e.id})}>{isOrganisation(e)?"Organisation":e.kind==="lead"?"Lead":"Campaign"}: {e.name} <ArrowRight size={13}/></button>)}</div>} fileToolbar={viewToolbar} section={projectSection} changeSection={setProjectSection} clients={lib.client_records} overview={lib.project_overviews?.find(o=>o.project_id===project)} key={project} project={lib.projects.find(p=>p.id===project)!} folders={lib.project_folders??[]} items={filtered} allItems={sheetItems} scope={projectFolder} navigate={scope=>{setProjectSection("files");setProjectFolder(scope);setSelected(new Set());}} mutate={mutate} report={report} addFiles={()=>void chooseCaptureFiles()} paste={folder=>void pasteCapture({category:null,project,folder})} drop={(data,folder)=>queueImageDrop(data,null,{project,folder})} selected={selected} select={(item,event)=>{if(event.ctrlKey||event.metaKey||event.shiftKey)select(item.id,event.shiftKey);else setSelected(new Set([item.id]));}} menu={(item,event)=>setItemMenu({ids:selected.has(item.id)?[...selected]:[item.id],x:event.clientX,y:event.clientY})} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} size={size} order={sort} search={search||(activeFilters?'filters':'')} scroller={scrollRef}/>:generalMissing?<div className="empty-state"><span>This collection is unavailable</span><button onClick={()=>setCustomTab('general')}>Choose another destination</button></div>:generalEntry?.layout&&generalEntry.layout!=='auto'?<CollectionView items={filtered} layout={generalEntry.layout} size={size} selected={selected} select={select} open={openItem} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>videoView?setVideoDialog({url:''}):generalEntry.content==='link'||boardView||resourcesView||linksOnly?setCapture({files:[],url:'',destination:linkDestination}):void chooseCaptureFiles()}/>:recent?<RecentReferences key={recent} items={filtered} added={recent==="added"} open={openItem}/>:tableBoard ? <div className={`collection-table ${boardView}-table`}>
             {linkTable(boardItems)}
             {!boardItems.length && <div className="empty-state"><span>{activeFilters?"No matches":boardView==="fonts"?"No fonts yet":"No brand guidelines yet"}</span><button onClick={()=>activeFilters?clearFilters():setCapture({files:[],url:"",destination:boardView??"links"})}>{activeFilters?"Clear filters":"Add link"}</button></div>}
           </div> : boardView ? <LinkBoard selected={selected} openItem={openItem} items={boardItems} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} add={()=>setCapture({files:[],url:"",destination:boardView})} /> : resourcesView ? (
@@ -1490,7 +1586,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             <>
               {images.length > 0 && (
                 <MediaGrid
-                  removeFolder={category&&category!==allComponents&&category!==componentInbox?categoryLabel(category).replace(/^Components \/ /,""):undefined}
+                  removeFolder={project!==null&&typeof projectFolder==='number'?(lib.project_folders??[]).find(f=>f.id===projectFolder)?.name:category&&category!==allComponents&&category!==componentInbox?categoryLabel(category).replace(/^Components \/ /,""):undefined}
                   onRemoveFolder={removeFromComponentFolder}
                   masonry={true}
                   copy={copyImage}
@@ -1516,8 +1612,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
                       ids: [item.id],
                     })
                   }
-                  hoverId={hoverId}
-                  setHoverId={setHoverId}
+                  stopHoverRef={stopHoverRef}
                 />
               )}
               {filtered.some(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length) && <LinkBoard selected={selected} openItem={openItem} items={filtered.filter(i=>isBoardLink(i)&&!isTableLink(i)&&!componentFoldersOf(i).length)} size={size} report={report} menu={(id,event)=>{const rect=event.currentTarget.getBoundingClientRect();setItemMenu({ids:[id],x:rect.left,y:rect.bottom});}} />}
@@ -1528,16 +1623,17 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           )}
         </div>
         </>}
+      </>}
       </main>
-      <ThumbnailEnlargement items={lib.items} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
+      <ThumbnailEnlargement items={enlargementItems} reducedMotion={reducedMotion} onActiveChange={setThumbnailEnlarged}
         enabled={!homeView&&!customTab&&(viewer===null||widePreview)&&quickPreview===null&&!modal&&!capture&&!videoDialog&&!duplicatesOpen&&!removedOpen&&!itemMenu&&!folderMenu&&!libraryExportOpen&&!extraDialog}/>
-      {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>}
+      {quickPreview!==null&&lib.items.find(i=>i.id===quickPreview)&&(lib.items.find(i=>i.id===quickPreview)!.kind==="file"?<ProjectFilePreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>:<QuickPreview item={lib.items.find(i=>i.id===quickPreview)!} close={()=>setQuickPreview(null)}/>)}
       {activeItem && (
         <div className={dockedPreview ? "preview-shell preview-shell-docked" : "preview-shell"}>
         <Viewer
           key={activeItem.id}
           docked={dockedPreview}
-          blocked={thumbnailEnlarged || quickPreview !== null || !!modal || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
+          blocked={thumbnailEnlarged || quickPreview !== null || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}
           item={activeItem}
           items={previewItems}
           tags={lib.tags}
@@ -1569,35 +1665,13 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         </div>
       )}
       {modal?.kind === "thumbnail" && lib.items.find(i=>i.id===modal.id) && <ThumbnailEditor item={lib.items.find(i=>i.id===modal.id)!} close={()=>setModal(null)} complete={async()=>{const next=await refresh();if(!next.undo_entries)appHistory.record({label:'Change thumbnail',kind:'library',undo:()=>runLibraryHistory(false,'Change thumbnail'),redo:()=>runLibraryHistory(true)});setModal(null);setNotice("Thumbnail updated");}}/>}
-      {modal?.kind==="category"&&<CategoryPicker categories={modal.ids?.length ? [...categories,...componentFolders] : categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
+      {modal?.kind==="category"&&<CategoryPicker creatingComponents={modal.componentFolder} categories={modal.ids?.length ? [...categories,...componentFolders] : modal.componentFolder?componentFolders:categories} componentItems={lib.items.filter(i=>modal.ids?.includes(i.id)&&i.kind!=="link")} toggleComponent={async(name,remove)=>{
         const ids=modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link"))??[];
         await mutate({action:remove?(isComponent(name)?"remove_component_folder":"remove_design_folder"):"set_category",ids,value:name});
         setCategoryUndo(null);setUndoIds([]);setNotice(remove?"Removed from folder":"Added to folder");
-      }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
-      {modal && modal.kind !== "thumbnail" && modal.kind !== "category" && (
-        <Dialog
-          modal={modal}
-          lib={lib}
-          close={() => setModal(null)}
-          mutate={mutate}
-          busy={busy}
-          setBusy={setBusy}
-          report={report}
-          project={project}
-          chooseRoot={chooseRoot}
-          exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
-          backup={backup}
-          duplicates={() => {
-            setModal(null);
-            setDuplicatesOpen(true);
-          }}
-          removed={() => { setModal(null); setRemovedOpen(true); }}
-          setModal={setModal}
-          onDeleteProject={(id) => {
-            if (project === id) navigate(null);
-          }}
-        />
-      )}
+      }} count={modal.ids?.filter(id=>lib.items.some(i=>i.id===id&&i.kind!=="link")).length||0} close={()=>setModal(null)} choose={async name=>{if(modal.componentFolder)name=`Components / ${name}`;if(modal.ids?.length)await changeCategory(modal.ids,name);else{await mutate({action:"create_category",name});setUndoIds([]);setCategoryUndo(null);setNotice(`Created ${name}`);}setModal(null);}}/>}
+      {folderMembers&&<OrganiseProjectFolders folders={lib.project_folders??[]} projects={lib.projects} items={lib.items.filter(i=>folderMembers.includes(i.id))} mutate={mutate} close={()=>setFolderMembers(null)}/>}
+      {modal?.kind!=='settings'&&libraryDialog}
       {queueOpen && !videoDialog && !capture && !modal && viewer===null && !duplicatesOpen && !removedOpen && <VideoDownloadQueue queue={videoQueue} project={project} close={()=>setQueueOpen(false)}/>}
       {videoDialog && <VideoDownloadDialog initialUrl={videoDialog.url} lib={lib} project={project} close={()=>setVideoDialog(null)} add={(text,projects,tags)=>{
         const result=videoQueue.add(text,projects,tags);setVideoDialog(null);setQueueOpen(true);setNotice(result.added?`${result.added} queued`:"Already queued");
@@ -1636,9 +1710,18 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
       )}
       {removedOpen && <RemovedDialog revision={lib} close={() => setRemovedOpen(false)} restore={(ids) => mutate({ action: "restore_items", ids })} />}
       {homeShortcutDrag.ghost&&<div className="home-drag-ghost" style={{left:homeShortcutDrag.ghost.x+14,top:homeShortcutDrag.ghost.y+16}}><Plus size={14}/>{homeShortcutDrag.ghost.label}<small>Reorder folders or drop on Home</small></div>}
-      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
+      {folderMenu&&<FolderRename key={folderMenu.name} target={folderMenu} canRename={!!folderMenu.name&&folderMenu.name!==allComponents&&folderMenu.name!==componentInbox} paste={()=>void pasteCapture({category:folderMenu.name,project:null,folder:null})} close={()=>setFolderMenu(null)} appearance={isComponent(folderMenu.name)?{...folderAppearance[folderMenu.name],icon:icons.overrides[`category:${folderMenu.name}`],setColor:color=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],color}})),toggleStar:()=>setFolderAppearance(previous=>({...previous,[folderMenu.name]:{...previous[folderMenu.name],starred:!previous[folderMenu.name]?.starred}})),setIcon:icon=>setIcons(previous=>{const overrides={...previous.overrides};if(icon)overrides[`category:${folderMenu.name}`]=icon;else delete overrides[`category:${folderMenu.name}`];return {...previous,overrides};})}:undefined} save={name=>{const list=isComponent(folderMenu.name)?componentFolders:categories;if(list.some(key=>key!==folderMenu.name&&categoryLabel(key).replace(/^Components \/ /,'').toLocaleLowerCase()===name.toLocaleLowerCase()))throw Error('A folder with that name already exists.');setFolderLabels({...folderLabels,[folderMenu.name]:name});}}/>}
+      {quickContact&&<AddContactDialog entries={lib.studio??[]} mutate={mutate} close={()=>setQuickContact(false)} added={id=>{setQuickContact(false);openStudio({section:'leads',page:'contacts',id});}}/>}
       {customTab&&<Customization initial={customTab} close={()=>setCustomTab(null)} sectionStyle={sectionStyle} chooseSection={setSectionStyle} sidebarLayout={sidebarLayout} chooseLayout={setSidebarLayout} icons={icons} changeIcons={setIcons} iconTargets={iconTargets} generalOptions={generalOptions} saveGeneral={saveGeneral} homeStyle={homeStyle} chooseHome={setHomeStyle} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} tileSize={size} setTileSize={setSize} collections={collectionPrefs} setCollections={setCollectionPrefs} sites={sitePrefs} setSites={setSitePrefs} reduced={reducedMotion} setReduced={setReducedMotion} home={homeAppearance} changeHome={setHomeAppearance} manageLibrary={()=>{setCustomTab(null);setModal({kind:'settings'});}}/>}
       {itemMenu && <ItemMenu target={itemMenu} lib={lib} close={closeItemMenu} report={report}
+        organisationActions={<>
+          <button role="menuitem" onClick={()=>{setFolderMembers(itemMenu.ids);closeItemMenu();}}><FolderPlus size={13}/>Project folders</button>
+          {project!==null&&typeof projectFolder==='number'&&<button role="menuitem" onClick={()=>{void perform({action:'remove_project_folder',target:projectFolder,ids:itemMenu.ids});closeItemMenu();}}>Remove from folder</button>}
+          {project!==null&&<><button role="menuitem" onClick={()=>{void perform({action:'pin_project',target:project,ids:itemMenu.ids});closeItemMenu();}}><Pin size={13}/>Pin in project</button><button role="menuitem" onClick={()=>{void perform({action:'remove_project',target:project,ids:itemMenu.ids}).then(()=>setSelected(new Set()));closeItemMenu();}}>Remove from project</button></>}
+          {itemMenu.ids.some(id=>lib.items.some(i=>i.id===id&&i.kind==='link'))&&<><div className="context-section">Rate links</div><LinkRating onChange={value=>{void perform({action:'rate_links',ids:itemMenu.ids,value:value===null?'':String(value)});closeItemMenu();}}/><button role="menuitem" onClick={()=>{void perform({action:'rate_links',ids:itemMenu.ids,value:''});closeItemMenu();}}>Clear rating</button></>}
+          <button role="menuitem" onClick={()=>{setSelected(new Set(filtered.map(i=>i.id)));closeItemMenu();}}>Select all</button>
+          {selected.size>0&&<button role="menuitem" onClick={()=>{setSelected(new Set());closeItemMenu();}}>Clear selection</button>}
+        </>}
         category={()=>setModal({kind:"category",ids:itemMenu.ids})}
         sendToSection={(ids,components)=>void changeCategory(ids,components?componentInbox:"").catch(report)}
         copy={(id) => void copyImage(id)} copying={copying !== null}
@@ -1683,8 +1766,7 @@ function MediaGrid({
   select,
   openItem,
   onMenu,
-  hoverId,
-  setHoverId,
+  stopHoverRef,
 }: {
   removeFolder?: string;
   onRemoveFolder: (item:Item)=>Promise<void>;
@@ -1703,9 +1785,13 @@ function MediaGrid({
   select: (id: number, range?: boolean) => void;
   openItem: (item: Item, e: React.MouseEvent) => void;
   onMenu: (id: number) => void;
-  hoverId: number | null;
-  setHoverId: (id: number | null) => void;
+  stopHoverRef:React.RefObject<()=>void>;
 }) {
+  const [hoverId,setHoverId]=useState<number|null>(null);
+  useLayoutEffect(()=>{stopHoverRef.current=()=>setHoverId(null);return()=>{stopHoverRef.current=()=>{};};},[stopHoverRef]);
+  const itemsById=useMemo(()=>new Map(items.map(item=>[item.id,item])),[items]);
+  const latest=useRef({copy,onRemoveFolder,onPin,select,openItem,onMenu,selected,itemsById});latest.current={copy,onRemoveFolder,onPin,select,openItem,onMenu,selected,itemsById};
+  const handlers=useRef(new Map<number,{copy:()=>void;remove:()=>Promise<void>;pin:()=>void;select:(range:boolean)=>void;open:(e:React.MouseEvent)=>void;menu:()=>void;hover:(value:boolean)=>void;drag:(e:React.DragEvent)=>void}>());
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
   const [viewport, setViewport] = useState({ top: 0, height: 1000 });
@@ -1713,6 +1799,8 @@ function MediaGrid({
   const [highlighted, setHighlighted] = useState<typeof returnTo>(null);
   const ratioFrame = useRef(0);
   const interruptedReturn = useRef<typeof returnTo>(null);
+  useThumbnailReadiness(items,ref,parent);
+  useEffect(()=>{for(const id of handlers.current.keys())if(!itemsById.has(id))handlers.current.delete(id);},[itemsById]);
   useLayoutEffect(() => {
     // On Home -> library, the child layout effect precedes the parent ref attachment.
     // The DOM ancestor is already present, so always attach the size observer.
@@ -1733,7 +1821,7 @@ function MediaGrid({
     return () => { observer.disconnect(); scroller.removeEventListener("scroll", schedule); cancelAnimationFrame(frame); };
   }, [parent]);
   useEffect(() => () => cancelAnimationFrame(ratioFrame.current), []);
-  const layout = useMemo(() => arrangeMasonry(items.map(item => thumbnailRatios.get(`${item.id}:${item.modified}`) ?? 1 / 1.4), width, size), [items, width, size, revision]);
+  const layout = useMemo(() => {const start=performance.now();const next=arrangeMasonry(items.map(item => thumbnailRatios.get(`${item.id}:${item.modified}`) ?? 1 / 1.4), width, size);const duration=performance.now()-start;if(duration>8)recordDiagnostic('layout.masonry','warning',duration,{items:items.length,width});return next;}, [items, width, size, revision]);
   const visible = layout.tiles.filter(tile => tile.top + tile.height >= viewport.top - viewport.height && tile.top <= viewport.top + viewport.height * 2);
   useLayoutEffect(() => {
     if (!returnTo) return;
@@ -1769,7 +1857,12 @@ function MediaGrid({
     const button = grid.querySelector<HTMLButtonElement>(`[data-item-id="${returnTo.id}"] .card-open`);
     const image = button?.querySelector('img');
     if (button && (returnTo.offset === undefined ? (!image || image.complete) : (image?.complete && image.naturalWidth > 0) || !!button.querySelector(".file-fallback"))) {
-      button.focus({ preventScroll: true }); if(returnTo.offset===undefined)setHighlighted(returnTo); onReturned();
+      // Neighbouring thumbnails can still change the rows above this anchor.
+      // Finish only after the rendered images and layout have settled.
+      const pending=[...grid.querySelectorAll<HTMLImageElement>('img:not(.hover-preview)')].some(img=>!img.complete);
+      if(pending)return;
+      const timer=window.setTimeout(()=>{button.focus({preventScroll:true});if(returnTo.offset===undefined)setHighlighted(returnTo);onReturned();},160);
+      return()=>clearTimeout(timer);
     }
   }, [returnTo, items, layout, parent, onReturned, viewport.top]);
   useEffect(() => {
@@ -1791,40 +1884,39 @@ function MediaGrid({
     }}>
     {visible.map(row => {
       const item = items[row.index];
+      if(!handlers.current.has(item.id)){const id=item.id;handlers.current.set(id,{
+        copy:()=>void latest.current.copy(id),remove:()=>latest.current.onRemoveFolder(latest.current.itemsById.get(id)!),pin:()=>latest.current.onPin(latest.current.itemsById.get(id)!),select:range=>latest.current.select(id,range),open:e=>latest.current.openItem(latest.current.itemsById.get(id)!,e),menu:()=>latest.current.onMenu(id),hover:value=>{const current=latest.current.itemsById.get(id);setHoverId(value&&(current?.kind==='video'||current?.kind==='animation')?id:null);},drag:e=>{const selection=latest.current.selected;e.dataTransfer.setData('application/design-items',JSON.stringify(selection.has(id)?[...selection]:[id]));e.dataTransfer.effectAllowed='copyMove';}
+      });}
+      const actions=handlers.current.get(item.id)!;
       return <div className="masonry-tile" key={`${item.id}:${item.modified}`} data-media-key={`${item.id}:${item.modified}`}
         style={{ transform: `translate(${row.left}px, ${row.top}px)`, width: row.width, height: row.height }}>
               <Card
                 removeFolder={removeFolder}
-                onRemoveFolder={()=>onRemoveFolder(item)}
-                copy={() => void copy(item.id)}
+                onRemoveFolder={actions.remove}
+                copy={actions.copy}
                 copying={copying !== null}
                 previewed={previewId === item.id}
                 returned={highlighted?.id === item.id}
                 canPin={!!project}
                 pinned={!!project && !!item.favourites?.includes(project)}
-                pin={() => onPin(item)}
+                pin={actions.pin}
                 key={`${item.id}:${item.modified}`}
                 item={item}
                 selected={selected.has(item.id)}
-                select={(range) => select(item.id, range)}
-                open={(e) => openItem(item, e)}
-                menu={() => onMenu(item.id)}
+                select={actions.select}
+                open={actions.open}
+                menu={actions.menu}
                 playing={hoverId === item.id}
-                hover={(value) => setHoverId(value && (item.kind === "video" || item.kind === "animation") ? item.id : null)}
-                drag={(e) => {
-                  const ids = selected.has(item.id) ? [...selected] : [item.id];
-                  e.dataTransfer.setData(
-                    "application/design-items",
-                    JSON.stringify(ids),
-                  );
-                  e.dataTransfer.effectAllowed = "copyMove";
-                }}
+                hover={actions.hover}
+                visibleNow={row.top+row.height>=viewport.top&&row.top<=viewport.top+viewport.height}
+                drag={actions.drag}
               />
       </div>;
     })}
   </div>;
 }
-function Card({
+const Card=memo(function Card({
+  visibleNow,
   removeFolder,
   onRemoveFolder,
   previewed,
@@ -1843,6 +1935,7 @@ function Card({
   hover,
   drag,
 }: {
+  visibleNow:boolean;
   removeFolder?: string;
   onRemoveFolder: ()=>Promise<void>;
   copy: () => void;
@@ -1862,7 +1955,7 @@ function Card({
   drag: (e: React.DragEvent) => void;
 }) {
   const [removing,setRemoving]=useState(false);
-  const [thumb, setThumb] = useState(""),
+  const [thumb, setThumb] = useState(()=>cachedMedia(item,"thumbnail")??""),
     [preview, setPreview] = useState(""),
     [failed, setFailed] = useState(false),
     [motionError, setMotionError] = useState(false),
@@ -1870,11 +1963,12 @@ function Card({
   const motion = item.kind === "video" || item.kind === "animation";
   useEffect(() => {
     const abort = new AbortController();
-    setThumb("");
+    if(item.kind==="file"){setFailed(true);return;}
+    setThumb(cachedMedia(item,"thumbnail")??"");
     setFailed(false);
     setPreview("");
     setMotionError(false);
-    media(item, "thumbnail", abort.signal).then(
+    media(item, "thumbnail", abort.signal,visibleNow?0:1).then(
       (url) => {
         if (!abort.signal.aborted) setThumb(url);
       },
@@ -1883,7 +1977,8 @@ function Card({
       },
     );
     return () => abort.abort();
-  }, [item.id, item.modified, item.path, retry]);
+  }, [item.id, item.modified, item.path, item.thumbnail, retry]);
+  useEffect(()=>{prioritizeThumbnail(item,visibleNow);},[item,visibleNow]);
   useEffect(() => {
     if (!playing || !motion || motionError) return;
     const abort = new AbortController();
@@ -1913,8 +2008,8 @@ function Card({
     >
       <button
         className="card-open"
-        title="Open reference · Ctrl + scroll to enlarge · Space to peek"
-        aria-label={`Open ${item.name}`}
+        title="Space to preview · Ctrl + scroll to enlarge"
+        aria-label={`${item.name} · Space to preview`}
         onClick={open}
         onFocus={() => hover(false)}
       >
@@ -1937,7 +2032,7 @@ function Card({
         {playing && preview && !motionError && <HoverPreview key={`${item.id}:${preview}`} src={preview} animation={item.kind==='animation'} onError={()=>setMotionError(true)}/>}
       </button>
       <div className="card-shade" />
-      {failed && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
+      {failed && item.kind!=="file" && !item.missing && <button className="thumbnail-retry" title="Try loading this thumbnail again" onClick={() => { forgetMedia(item, "thumbnail"); setRetry(value => value + 1); }}><RefreshCw size={12} /> Retry</button>}
       {canPin && (
         <button
           className={`card-pin ${pinned ? "pinned" : ""}`}
@@ -1986,8 +2081,10 @@ function Card({
       </div>
     </article>
   );
-}
+});
 function LinksTable({
+  onRate,onFolders,
+  showCategories,
   project,
   onPin,
   items,
@@ -1999,6 +2096,9 @@ function LinksTable({
   onTags,
   onDelete,
 }: {
+  onRate:(id:number,value:number|null)=>void;
+  onFolders:(id:number)=>void;
+  showCategories:boolean;
   project: number | null;
   onPin: (item: Item) => void;
   items: Item[];
@@ -2010,20 +2110,49 @@ function LinksTable({
   onTags: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
+  const table = useRef<HTMLTableElement>(null);
+  const [scrollMargin,setScrollMargin]=useState(0);
+  const virtual=items.length>80;
+  const rows=useVirtualizer<HTMLDivElement,HTMLTableRowElement>({
+    count:virtual?items.length:0,
+    getScrollElement:()=>table.current?.closest<HTMLDivElement>('.content')??null,
+    estimateSize:()=>35,
+    getItemKey:index=>items[index].id,
+    overscan:8,
+    scrollMargin,
+  });
+  useLayoutEffect(()=>{
+    const element=table.current,scroller=element?.closest<HTMLDivElement>('.content');
+    if(!element||!scroller||!virtual)return;
+    const measure=()=>setScrollMargin(element.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop+(element.tHead?.offsetHeight??0));
+    const observer=new ResizeObserver(measure);observer.observe(scroller);observer.observe(element);
+    if(element.previousElementSibling)observer.observe(element.previousElementSibling);
+    measure();return()=>observer.disconnect();
+  },[virtual,items]);
+  const visibleRows=rows.getVirtualItems();
+  const top=visibleRows.length?Math.max(0,visibleRows[0].start-scrollMargin):0;
+  const bottom=visibleRows.length?Math.max(0,rows.getTotalSize()-(visibleRows.at(-1)!.end-scrollMargin)):0;
+  const rendered=virtual?visibleRows.map(row=>({item:items[row.index],index:row.index})):items.map((item,index)=>({item,index}));
+  const spacer=(height:number)=>height>0?<tr aria-hidden="true"><td colSpan={showCategories?6:5} style={{height,padding:0,border:0}}/></tr>:null;
   return (
-    <table className="links-table">
+    <table ref={table} className="links-table" aria-rowcount={items.length+1}>
       <thead>
         <tr>
           <th className="check-col" />
           <th>Name</th>
           <th>Link</th>
+          {showCategories&&<th className="link-category-column">Category</th>}<th className="rating-column">Rating</th>
           <th className="actions-col" />
         </tr>
       </thead>
       <tbody>
-        {items.map((item) => (
+        {virtual&&spacer(top)}
+        {rendered.map(({item,index}) => (
           <tr
             key={item.id}
+            ref={virtual?rows.measureElement:undefined}
+            data-index={index}
+            aria-rowindex={index+2}
             data-item-id={item.id}
             className={selected.has(item.id) ? "selected" : ""}
             draggable
@@ -2061,6 +2190,7 @@ function LinksTable({
                 <ExternalLink size={11} />
               </button>
             </td>
+            {showCategories&&<td className="link-category-column">{item.source.startsWith("Links/")?item.source.slice(6):"—"}</td>}<td className="rating-column"><LinkRating value={item.rating} onChange={value=>onRate(item.id,value)} label={`${item.name} rating`}/></td>
             <td>
               <Popover label="" icon={<MoreHorizontal size={15} />}>
                 {project && (
@@ -2071,6 +2201,7 @@ function LinksTable({
                       : "Pin in project"}
                   </button>
                 )}
+                <button onClick={()=>onFolders(item.id)}><FolderPlus size={13}/>Project folders</button>
                 <button onClick={() => onProjects(item.id)}>
                   <FolderPlus size={13} /> Add to project
                 </button>
@@ -2085,6 +2216,7 @@ function LinksTable({
             </td>
           </tr>
         ))}
+        {virtual&&spacer(bottom)}
       </tbody>
     </table>
   );
@@ -2297,6 +2429,7 @@ function Viewer({
 }
 
 function Dialog({
+  customize,
   duplicates,
   removed,
   modal,
@@ -2306,13 +2439,14 @@ function Dialog({
   busy,
   setBusy,
   report,
-  project,
+  project, projectFolder,
   chooseRoot,
   exportLibrary,
   backup,
   setModal,
   onDeleteProject,
 }: {
+  customize: (tab:CustomTab) => void;
   duplicates: () => void;
   removed: () => void;
   modal: Modal;
@@ -2323,6 +2457,7 @@ function Dialog({
   setBusy: (b: boolean) => void;
   report: (e: unknown) => void;
   project: number | null;
+  projectFolder:FolderScope;
   chooseRoot: () => Promise<void>;
   exportLibrary: () => void;
   backup: (restore: boolean) => Promise<void>;
@@ -2392,6 +2527,7 @@ function Dialog({
         target: kind === "link" ? (project ?? undefined) : id,
         ids,
       });
+      if(kind==='link'&&typeof projectFolder==='number'){const item=next.items.find(i=>i.kind==='link'&&i.path===value.trim());if(item)await mutate({action:'add_project_folder',target:projectFolder,ids:[item.id]});}
       if (ids.length && (kind === "project" || kind === "tag")) {
         const label = (kind === "project" ? next.projects : next.tags).find(
           (l) => l.name === name.trim(),
@@ -2444,23 +2580,23 @@ function Dialog({
   };
   return (
     <div
-      className="modal-backdrop"
+      className={kind==='settings'?'settings-page-shell':'modal-backdrop'}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) close();
+        if (kind!=='settings'&&e.target === e.currentTarget && !busy) close();
       }}
     >
       <div
         ref={dialogRef}
-        className={`modal ${kind === "settings" ? "settings-modal" : ""}`}
-        role="dialog"
-        aria-modal="true"
+        className={kind==='settings'?'settings-page':'modal'}
+        role={kind==='settings'?'region':'dialog'}
+        aria-modal={kind==='settings'?undefined:true}
         aria-labelledby="dialog-title"
-        onKeyDown={trap}
+        onKeyDown={kind==='settings'?undefined:trap}
       >
         <div className="modal-heading">
           <h2 id="dialog-title">{titles[kind]}</h2>
           {kind==="settings"&&<div className="customise-history"><HistoryButtons/></div>}
-          <IconButton title="Close dialog" onClick={close}>
+          <IconButton title={kind==='settings'?'Back to library':'Close dialog'} onClick={close}>
             <X size={17} />
           </IconButton>
         </div>
@@ -2510,15 +2646,8 @@ function Dialog({
             </div>
           </>
         ) : kind === "settings" ? (
-          <div className="settings-content">
-            <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
-              <span className="setting-label">Keyboard shortcuts</span>
-              <div className="shortcuts">
-                {[["Search", "/ · Ctrl F · Ctrl K"],["Settings", "Ctrl ,"],["Undo", "Ctrl Z"],["Redo", "Ctrl Shift Z · Ctrl Y"],["Quick preview", "Space"],["Previous / next preview", "← / →"],["Close / clear selection", "Esc"],["Select all visible items", "Ctrl A"],["Organise selected images", "C"],["Remove selected items", "Delete"],["Copy image in viewer", "Ctrl C"],["Paste files, images or links", "Ctrl V"],["Enlarge hovered thumbnail", "Ctrl + mouse wheel"],["Scroll website screenshot", "Ctrl + mouse wheel"]].map(([label,keys])=><span key={label}>{label}<kbd>{keys}</kbd></span>)}
-              </div>
-              <small>Single-key shortcuts work outside text fields. Selection and preview shortcuts apply while browsing your library.</small>
-            </section>
-            <div className="setting-block">
+          <SettingsHub
+            library={<><div className="setting-block">
               <span className="setting-label">Storage folders</span>
               {lib.source_paths?.length ? lib.source_paths.map(([name, path]) => <div className="storage-source" key={name}>
                 <button className="text-button" onClick={() => void revealItemInDir(path).catch(report)}>{name} <ExternalLink size={12} /></button>
@@ -2532,7 +2661,7 @@ function Dialog({
                 Change Design folder
               </button>
             </div>
-            <div className="setting-block">
+<div className="setting-block">
               <span className="setting-label">Library</span>
               <button className="subtle-button" onClick={duplicates}>
                 <Copy size={13} /> Find duplicates
@@ -2551,7 +2680,8 @@ function Dialog({
                 <Tag size={13} /> Manage tags
               </button>
             </div>
-            <div className="setting-block">
+</>}
+            backup={<><div className="setting-block">
               <span className="setting-label">Backup</span>
               <button className="primary" onClick={exportLibrary}><Download size={14}/> Export full library</button>
               <small>Original media, saved links and organisation in one portable folder.</small>
@@ -2573,7 +2703,17 @@ function Dialog({
                 Projects, tags and links. Imports merge with your library.
               </small>
             </div>
-            <div className="setting-block">
+</>}
+            connections={<CalendarConnection/>}
+            help={<><OnboardingSettings/>            <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
+              <span className="setting-label">Keyboard shortcuts</span>
+              <div className="shortcuts">
+                {[["Search", "/ · Ctrl F · Ctrl K"],["Settings", "Ctrl ,"],["Undo", "Ctrl Z"],["Redo", "Ctrl Shift Z · Ctrl Y"],["Quick preview", "Space"],["Previous / next preview", "← / →"],["Close / clear selection", "Esc"],["Select all visible items", "Ctrl A"],["Organise selected images", "C"],["Remove selected items", "Delete"],["Copy image in viewer", "Ctrl C"],["Paste files, images or links", "Ctrl V"],["Enlarge hovered thumbnail", "Ctrl + mouse wheel"],["Scroll website screenshot", "Ctrl + mouse wheel"]].map(([label,keys])=><span key={label}>{label}<kbd>{keys}</kbd></span>)}
+              </div>
+              <small>Single-key shortcuts work outside text fields. Selection and preview shortcuts apply while browsing your library.</small>
+            </section>
+</>}
+            diagnostics={<><Diagnostics initiallyOpen/><div className="setting-block">
               <button
                 className="text-button"
                 onClick={() =>
@@ -2586,9 +2726,9 @@ function Dialog({
               </button>
               <small>Original files stay in your source folder.</small>
             </div>
-            <AppInfo/>
-
-          </div>
+</>}
+            about={<AppInfo/>}
+          />
         ) : kind === "manageTags" ? (
           <>
             <div className="tag-manager">

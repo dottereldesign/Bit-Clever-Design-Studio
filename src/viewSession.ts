@@ -2,6 +2,9 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { isBoardDestination, type BoardKey } from "./model";
 
 export type ViewState = {
+  studioView?:import("./studio").StudioRoute|null;
+  projectSection?: "overview"|"files"|"client"|"moodboard";
+  projectFolder?:number|"unfiled"|null; ratingFilter?:string;
   homeView: boolean; generalKey: string | null; project: number | null;
   category: string | null; linksOnly: boolean; resourcesView: boolean;
   boardView: BoardKey | null; videoView: boolean; recent: "added" | "viewed" | null;
@@ -27,6 +30,10 @@ export function readViewSession(): ViewSession | null {
       !["any", "all"].includes(v.tagMode) || ![null, "added", "viewed"].includes(v.recent) ||
       (v.boardView !== null && !isBoardDestination(v.boardView)) ||
       !finite(saved.scroll.top) || saved.scroll.top < 0) return null;
+    if(!["overview","files","client","moodboard"].includes(v.projectSection))v.projectSection=v.projectFolder!=null?"files":"overview";
+    if(v.projectFolder!==undefined && v.projectFolder!=="unfiled" && !nullableId(v.projectFolder))v.projectFolder=null;
+    if(!["","unrated","4+","1","2","3","4","5"].includes(v.ratingFilter))v.ratingFilter="";
+    if(v.studioView && (!["business","analytics","marketing","leads","research","clients"].includes(v.studioView.section)||typeof v.studioView.page!=="string"))v.studioView=null;
     const anchor = saved.scroll.anchor;
     if (anchor && (!finite(anchor.id) || !finite(anchor.offset))) delete saved.scroll.anchor;
     return { view: v, scroll: saved.scroll };

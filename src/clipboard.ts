@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./diagnostics";
 
 // Clipboard reads and writes share one OS resource. Keep all app entry points
 // in order without disabling navigation or scrolling while native work runs.

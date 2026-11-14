@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { deepStrictEqual as equal } from "node:assert";
-import { filterItems, orderedProjects, categoryOf, libraryCategories, type Filters, type Item } from "./model";
+import { filterItems, createMembershipIndex, designFoldersOf, orderedProjects, categoryOf, libraryCategories, type Filters, type Item } from "./model";
 const items: Item[] = [
   {
     id: 1,
@@ -246,4 +246,61 @@ it("Websites stays separate from Links and filters by existing tags",()=>{
  equal(filterItems([website],{...defaults,collection:'Websites',tags:[4]}).length,1);
  equal(filterItems([website],{...defaults,collection:'Websites',tags:[5]}).length,0);
  equal(filterItems([website],{...defaults,linksOnly:true}).length,0);
+});
+
+it("project-first media is absent from Design Inspo but remains in its project",()=>{
+ const privateItem:Item={...items[0],source:'Design/Captures',category:null,project_only:true};
+ equal(designFoldersOf(privateItem),[]);
+ equal(filterItems([privateItem],{...defaults,category:''}),[]);
+ equal(filterItems([privateItem],{...defaults,project:7}).map(i=>i.id),[privateItem.id]);
+ equal(designFoldersOf({...privateItem,project_only:false}),['']);
+ equal(designFoldersOf({...privateItem,project_only:false,category:'Illustration'}),['Illustration']);
+});
+
+describe('membership index', () => {
+  const library: Item[] = [
+    {...items[0], id:101, source:'Design/Captures', category:null, project_only:true, project_folders:[11]},
+    {...items[0], id:102, category:'Illustration', design_folders:['Illustration','Logo'], component_folders:['Components / Hero','Components / Headers'], project_folders:[11,12], favourites:[7]},
+    {...items[1], id:103, category:'Web Design', projects:[8], project_folders:[13]},
+    {...items[1], id:104, category:'', source:'Design/Captures'},
+    {...items[0], id:105, category:'Components / Pricing', design_folders:['Logo'], projects:[7,8]},
+    {...items[2], id:106, source:'Fonts', projects:[7], project_folders:[11], rating:5},
+    {...items[2], id:107, source:'', category:'Components / Pricing', design_folders:['Logo'], rating:4},
+    {...items[2], id:108, source:'Resources/Tools', projects:[7]},
+    {...items[0], id:109, category:'Components / Headers', category_added:{'Components / Hero':1000}},
+    {...items[2], id:110, source:'', category:'Logo'},
+  ];
+  it('matches the scan for combined filters, legacy aliases, shared memberships and every sort', () => {
+    const index = createMembershipIndex(library);
+    const folders = [undefined, '', 'Logo', 'Illustration', 'Components / Pricing', 'Components / Hero', 'Components / Headers', 'Components / Uncategorised', 'All Components', 'Absent'];
+    const extra: Partial<Filters>[] = [{}, {designsOnly:true}, {project:7}, {project:8}, {project:999},
+      {project:7,projectFolder:'unfiled',projectFolderIds:[11,12]}, {project:7,projectFolder:11},
+      {project:7,projectFolder:13}, {projectFolder:999}, {collection:'Fonts'}, {includeCollections:true},
+      {tags:[1,2],tagMode:'all'}, {tags:[1,3]}, {linksOnly:true}, {type:'video'}, {search:'calm'},
+      {source:'Resources'}, {rating:'4+'}, {rating:'unrated'}];
+    for (const category of folders) for (const filters of extra) for (const sort of ['recent','name','shuffle','rating-high','rating-low']) {
+      const f = {...defaults,category,sort,...filters};
+      equal(filterItems(library,f,index), filterItems(library,f));
+    }
+    equal(index.categories.get('Components / Headers')?.map(i=>i.id),[102,109]);
+    equal(index.categories.get('Logo')?.map(i=>i.id),[102,105,107]);
+    equal(index.categories.get('')?.some(i=>i.id===101),false);
+  });
+
+  it('rebuilds from import, move, removal, undo/redo and restored snapshots without retaining stale memberships', () => {
+    const moved = library.map(i=>i.id===104?{...i,category:'Components / Pricing'}:i);
+    const imported = [...moved,{...library[0],id:200,project_only:false,category:'Logo'}];
+    const removed = imported.filter(i=>i.id!==102);
+    const snapshots = [library,moved,imported,removed,imported,removed,structuredClone(library)];
+    let previous = createMembershipIndex([]);
+    for (const snapshot of snapshots) {
+      const index = createMembershipIndex(snapshot);
+      for (const category of ['', 'Logo', 'Components / Pricing', 'All Components']) {
+        const f = {...defaults,category};
+        equal(filterItems(snapshot,f,index),filterItems(snapshot,f));
+        equal(filterItems(snapshot,f,previous),filterItems(snapshot,f));
+      }
+      previous = index;
+    }
+  });
 });

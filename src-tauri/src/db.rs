@@ -11,6 +11,12 @@ pub fn err(e: impl std::fmt::Display) -> String {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Item {
+    #[serde(default)]
+    pub project_only: bool,
+    #[serde(default)]
+    pub rating: Option<i64>,
+    #[serde(default)]
+    pub project_folders: Vec<i64>,
     pub id: i64,
     pub path: String,
     pub name: String,
@@ -49,6 +55,14 @@ pub struct HistoryEntry {
 }
 #[derive(Serialize, Deserialize)]
 pub struct Library {
+    #[serde(default)]
+    pub studio: Vec<crate::studio::Entry>,
+    #[serde(default)]
+    pub client_records: crate::client_records::State,
+    #[serde(default)]
+    pub project_overviews: Vec<crate::project_overview::Overview>,
+    #[serde(default)]
+    pub project_folders: Vec<crate::project_folders::Folder>,
     #[serde(default)]
     pub undo_entries:Vec<HistoryEntry>,
     #[serde(default)]
@@ -94,6 +108,8 @@ pub fn init(path: &Path) -> Result<()> {
       CREATE INDEX IF NOT EXISTS idx_projects_label ON item_projects(label_id);
       CREATE INDEX IF NOT EXISTS idx_tags_label ON item_tags(label_id);").map_err(err)?;
     for (table, column, definition) in [
+        ("items", "project_only", "INTEGER NOT NULL DEFAULT 0"),
+        ("items", "rating", "INTEGER CHECK(rating BETWEEN 1 AND 5)"),
         ("items", "thumbnail", "TEXT NOT NULL DEFAULT ''"),
         ("items", "source_url", "TEXT NOT NULL DEFAULT ''"),
         ("items", "archived", "INTEGER NOT NULL DEFAULT 0"),
@@ -120,6 +136,11 @@ pub fn init(path: &Path) -> Result<()> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_component_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS category_arrivals(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS item_design_folders(item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(item_id,name));").map_err(err)?;
+    crate::project_folders::init(&db)?;
+    crate::project_overview::init(&db)?;
+    crate::client_records::init(&db)?;
+    crate::studio::init(&db)?;
+    crate::clients::init(&db)?;
     // Captures is a storage folder, rather than an organisation category.
     db.execute_batch("UPDATE item_categories SET name='' WHERE name='Captures' COLLATE NOCASE; DELETE FROM categories WHERE name='Captures' COLLATE NOCASE;").map_err(err)?;
     // Migrate the former Photography source into normal category assignments once.
@@ -173,11 +194,12 @@ pub fn touch_project(db: &Connection, project: i64) -> Result<()> {
 pub fn load(path: &Path, scanning: bool) -> Result<Library> {
     let db = connect(path)?;
     let mut stmt = db
-        .prepare("SELECT id,path,name,kind,source,modified,added,missing,source_url,thumbnail FROM items WHERE archived=0 ORDER BY id")
+        .prepare("SELECT id,path,name,kind,source,modified,added,missing,source_url,thumbnail,rating,project_only FROM items WHERE archived=0 ORDER BY id")
         .map_err(err)?;
     let mut items = stmt
         .query_map([], |r| {
             Ok(Item {
+                project_only:r.get(11)?, rating: r.get(10)?, project_folders: vec![],
                 id: r.get(0)?,
                 path: r.get(1)?,
                 name: r.get(2)?,
@@ -246,6 +268,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
             if let Some(n)=lookup.get(&id) {items[*n].component_folders.push(name);}
         }
     }
+    for (id,folder) in crate::project_folders::memberships(&db)? {if let Some(n)=lookup.get(&id){items[*n].project_folders.push(folder);}}
     let overrides = {
         let mut stmt = db.prepare("SELECT item_id,name FROM item_categories").map_err(err)?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(err)?;
@@ -262,6 +285,7 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         rows.collect::<std::result::Result<Vec<_>,_>>().map_err(err)?
     };
     for item in &mut items {
+        if item.project_only {continue;}
         if item.kind != "link" || overrides.contains_key(&item.id) {
             let initial = default_category(&item.source);
             if !initial.is_empty() { categories.push(initial.clone()); }
@@ -313,6 +337,10 @@ pub fn load(path: &Path, scanning: bool) -> Result<Library> {
         Ok(rows)
     };
     Ok(Library {
+        studio: crate::studio::load(&db)?,
+        project_folders: crate::project_folders::folders(&db)?,
+        project_overviews: crate::project_overview::load(&db)?,
+        client_records: crate::client_records::load(&db)?,
         undo_entries:{
             let mut stmt=db.prepare("SELECT id,label FROM organisation_history ORDER BY id").map_err(err)?;
             let rows=stmt.query_map([],|r|Ok(HistoryEntry{id:r.get(0)?,label:r.get(1)?})).map_err(err)?;
@@ -354,6 +382,7 @@ fn assign_category(db: &Connection, id: i64, name: &str) -> Result<()> {
     if !exists { return Err("Only references still in your library can change category.".into()); }
     materialize_design_folder(db,id)?;
     materialize_component_folder(db,id)?;
+    db.execute("UPDATE items SET project_only=0 WHERE id=?",[id]).map_err(err)?;
     if name.starts_with("Components / ") {
         if name == "Components / Uncategorised" {db.execute("DELETE FROM item_component_folders WHERE item_id=?",[id]).map_err(err)?;}
         db.execute("INSERT OR IGNORE INTO item_component_folders VALUES(?,?)",params![id,name]).map_err(err)?;
@@ -380,12 +409,15 @@ pub fn design_memberships(db:&Connection,id:i64)->Result<Vec<String>>{
     let mut query=db.prepare("SELECT name FROM item_design_folders WHERE item_id=? ORDER BY name").map_err(err)?;
     let rows=query.query_map([id],|r|r.get(0)).map_err(err)?;rows.collect::<std::result::Result<_,_>>().map_err(err)
 }
+pub fn project_only(db:&Connection,id:i64)->Result<bool>{db.query_row("SELECT project_only FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)}
 fn materialize_design_folder(db:&Connection,id:i64)->Result<()>{
+    if project_only(db,id)?{return Ok(());}
     let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
     let current=assigned.unwrap_or_else(||default_category(&source));
     if is_design_folder(&current)||(current.is_empty()&&design_memberships(db,id)?.is_empty()){db.execute("INSERT OR IGNORE INTO item_design_folders VALUES(?,?)",params![id,current]).map_err(err)?;}Ok(())
 }
 pub fn category_is_new(db:&Connection,id:i64,name:&str)->Result<bool>{
+    if project_only(db,id)?{return Ok(true);}
     let (source,assigned):(String,Option<String>)=db.query_row("SELECT i.source,c.name FROM items i LEFT JOIN item_categories c ON c.item_id=i.id WHERE i.id=?",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(err)?;
     let current=assigned.unwrap_or_else(||default_category(&source));let folders=component_memberships(db,id)?;
     if name.starts_with("Components / ")&&name!="Components / Uncategorised"{return Ok(current!=name&&!folders.iter().any(|f|f==name));}
@@ -443,21 +475,31 @@ pub struct Change {
 pub fn change(path: &Path, c: Change) -> Result<()> {
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
+    crate::clients::begin(&tx,&c.action)?;
     if c.action == "undo_organisation" {
         if let Some(expected) = &c.value {
             let latest: Option<String> = tx.query_row("SELECT label FROM organisation_history ORDER BY id DESC LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?;
             if latest.as_ref() != Some(expected) { return Err("A newer change took place. Review the header Undo action.".into()); }
         }
         crate::history::undo(&tx)?;
-        tx.commit().map_err(err)?;
+        crate::clients::end(&tx)?;tx.commit().map_err(err)?;
         return Ok(());
     }
-    if c.action=="redo_organisation" {crate::history::redo(&tx)?;tx.commit().map_err(err)?;return Ok(());}
+    if c.action=="redo_organisation" {crate::history::redo(&tx)?;crate::clients::end(&tx)?;tx.commit().map_err(err)?;return Ok(());}
     let undo=crate::history::snapshot(&tx,&c)?;
     let target = c.target.unwrap_or(0);
     let name = c.name.as_deref().unwrap_or("");
     let value = c.value.as_deref().unwrap_or("");
     match c.action.as_str() {
+        "setup_clients" => crate::clients::seed(&tx)?,
+        "update_studio" => crate::studio::change(&tx,c.value.as_deref().unwrap_or(""))?,
+        "close_studio_lead" => crate::lead_close::close(&tx,c.value.as_deref().unwrap_or(""))?,
+        "win_studio_lead" => crate::studio::win(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
+        "convert_studio_lead" => crate::studio::convert(&tx,c.value.as_deref().unwrap_or(""),c.target)?,
+        "update_client_records" => crate::client_records::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
+        "update_project_overview" => crate::project_overview::change(&tx,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?,
+        "unfile_project_folder"|"create_project_folder"|"rename_project_folder"|"move_project_folder"|"delete_project_folder"|"reorder_project_folders"|"add_project_folder"|"remove_project_folder" => crate::project_folders::change(&tx,&c)?,
+        "rate_links"=>{let rating=if value.is_empty(){None}else{Some(value.parse::<i64>().map_err(err)?)};if rating.is_some_and(|r|!(1..=5).contains(&r)){return Err("Choose a rating from 1 to 5".into());}for id in c.ids{tx.execute("UPDATE items SET rating=? WHERE id=? AND kind='link'",params![rating,id]).map_err(err)?;}},
         "create_category" => {
             tx.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)",[valid_name(name)?]).map_err(err)?;
         }
@@ -630,8 +672,12 @@ pub fn change(path: &Path, c: Change) -> Result<()> {
         }
         _ => return Err("Unknown change".into()),
     }
-    if let Some((label,patches))=undo {crate::history::record(&tx,&label,patches)?;}
-    tx.commit().map_err(err)?;
+    if c.action=="delete_project"{crate::studio::unlink_project(&tx,target)?;}
+    if let Some((label,patches))=undo {
+        let unchanged=if let Some(crate::history::Patch::ClientEdit(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::client_records::inverse(&tx,before)?).map_err(err)?}else if let Some(crate::history::Patch::ProjectOrganisation(before))=patches.first(){serde_json::to_string(before).map_err(err)?==serde_json::to_string(&crate::project_folders::snapshot(&tx)?).map_err(err)?}else{false};
+        if !unchanged{crate::history::record(&tx,&label,patches)?;}
+    }
+    crate::clients::end(&tx)?;tx.commit().map_err(err)?;
     Ok(())
 }
 
@@ -663,11 +709,14 @@ pub struct Backup {
     #[serde(default)]
     pub portable: bool,
     pub library: Library,
+    #[serde(default)]
+    pub client_events: Vec<crate::clients::Event>,
 }
 pub fn export(path: &Path, destination: PathBuf) -> Result<()> {
     let data = Backup {
         version: 1,
         portable: false,
+        client_events: crate::clients::events(&connect(path)?,None,None,-1)?,
         library: load(path, false)?,
     };
     std::fs::write(destination, serde_json::to_vec_pretty(&data).map_err(err)?).map_err(err)
@@ -691,6 +740,7 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
     if let Some(folder)=crate::managed_library::root(path)?{crate::managed_library::own_import(&folder,&mut backup.library.items)?;}
     let mut db = connect(path)?;
     let tx = db.transaction().map_err(err)?;
+    set_setting(&tx,"client_event_action","import_client_backup")?;
     if backup.portable && setting(&tx,"root").is_none() {
         for (name,path) in &backup.library.source_paths {
             let key=match name.as_str() {"Design"=>"root","Photography"=>"root_photography","Videos"=>"root_videos",_=>continue};
@@ -723,8 +773,22 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             map.insert(label.id, id);
         }
     }
+
+    let mut folder_map=std::collections::HashMap::new();
+    let mut pending=backup.library.project_folders;
+    while !pending.is_empty(){let before=pending.len();let mut rest=vec![];
+        for f in pending{if f.parent_id.is_some_and(|p|!folder_map.contains_key(&p)){rest.push(f);continue;}
+            let project=*projects.get(&f.project_id).ok_or("Missing project in backup")?;
+            let parent=f.parent_id.map(|p|folder_map[&p]);
+            if let Some(parent)=parent{let owner:i64=tx.query_row("SELECT project_id FROM project_folders WHERE id=?",[parent],|r|r.get(0)).map_err(err)?;if owner!=project{return Err("Folder parent belongs to another project in backup".into());}}
+            tx.execute("INSERT OR IGNORE INTO project_folders(project_id,parent_id,name,position) VALUES(?,?,?,?)",params![project,parent,valid_name(&f.name)?,f.position]).map_err(err)?;
+            let id:i64=tx.query_row("SELECT id FROM project_folders WHERE project_id=? AND parent_id IS ? AND name=? COLLATE NOCASE",params![project,parent,f.name],|r|r.get(0)).map_err(err)?;
+            folder_map.insert(f.id,id);
+        }if rest.len()==before{return Err("Invalid folder hierarchy in backup".into());}pending=rest;
+    }
+    let mut item_map=std::collections::HashMap::new();
     for item in backup.library.items {
-        if !["image", "animation", "video", "link"].contains(&item.kind.as_str()) {
+        if !["image", "animation", "video", "link", "file"].contains(&item.kind.as_str()) {
             return Err("Invalid item type in backup".into());
         }
         if item.kind == "link" {
@@ -734,16 +798,17 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
         if !item.source_url.is_empty() {
             valid_url(&item.source_url)?;
         }
-        tx.execute("INSERT OR IGNORE INTO items(path,name,kind,source,modified,added,missing,source_url,thumbnail) VALUES(?,?,?,?,?,?,?,?,?)",params![item.path,item.name,item.kind,item.source,item.modified,item.added,missing,item.source_url,item.thumbnail]).map_err(err)?;
+        tx.execute("INSERT OR IGNORE INTO items(path,name,kind,source,modified,added,missing,source_url,thumbnail,project_only) VALUES(?,?,?,?,?,?,?,?,?,?)",params![item.path,item.name,item.kind,item.source,item.modified,item.added,missing,item.source_url,item.thumbnail,item.project_only]).map_err(err)?;
         let id: i64 = tx
             .query_row("SELECT id FROM items WHERE path=?", [&item.path], |r| {
                 r.get(0)
             })
             .map_err(err)?;
+        item_map.insert(item.id,id);
         if backup.portable {
             // A complete portable restore carries the saved names and link
             // thumbnails, including resources already seeded by a fresh app.
-            tx.execute("UPDATE items SET name=?,source=?,source_url=?,thumbnail=?,archived=0 WHERE id=?",params![item.name,item.source,item.source_url,item.thumbnail,id]).map_err(err)?;
+            tx.execute("UPDATE items SET name=?,source=?,source_url=?,thumbnail=?,project_only=?,archived=0 WHERE id=?",params![item.name,item.source,item.source_url,item.thumbnail,item.project_only,id]).map_err(err)?;
         }
         if item.kind != "link" || item.category.as_deref().is_some_and(|n|n.starts_with("Components / ")) {
             if let Some(category) = &item.category {
@@ -797,6 +862,11 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
                 }
             }
         }
+        if let Some(rating)=item.rating {if item.kind!="link"||!(1..=5).contains(&rating){return Err("Invalid link rating in backup".into());}tx.execute("UPDATE items SET rating=COALESCE(rating,?) WHERE id=?",params![rating,id]).map_err(err)?;}
+        for old in item.project_folders {let folder=*folder_map.get(&old).ok_or("Missing folder in backup")?;
+            tx.execute("INSERT OR IGNORE INTO item_projects(item_id,label_id) SELECT ?,project_id FROM project_folders WHERE id=?",params![id,folder]).map_err(err)?;
+            tx.execute("INSERT OR IGNORE INTO item_project_folders VALUES(?,?)",params![id,folder]).map_err(err)?;
+        }
         for (name,added) in item.category_added {
             tx.execute("INSERT INTO category_arrivals VALUES(?,?,?) ON CONFLICT(item_id,name) DO UPDATE SET added=MAX(category_arrivals.added,excluded.added)",params![id,name,added]).map_err(err)?;
         }
@@ -810,8 +880,14 @@ pub fn import(path: &Path, source: PathBuf) -> Result<()> {
             }
         }
     }
+    for mut overview in backup.library.project_overviews {overview.project_id=*projects.get(&overview.project_id).ok_or("Missing overview project in backup")?;if let Some(nodes)=&mut overview.moodboard{for node in nodes{node.item_id=node.item_id.and_then(|id|item_map.get(&id).copied());}}else{overview.moodboard=crate::project_overview::load(&tx)?.into_iter().find(|o|o.project_id==overview.project_id).and_then(|o|o.moodboard);}crate::project_overview::save(&tx,&overview)?;}
+    crate::studio::import(&tx,backup.library.studio,&projects,&item_map)?;
+    crate::clients::import(&tx,backup.client_events,&projects,&item_map)?;
+    for mut c in backup.library.client_records.contacts {c.project_id=*projects.get(&c.project_id).ok_or("Missing contact project")?;crate::client_records::save_contact(&tx,&c)?;}
+    for mut r in backup.library.client_records.records {r.project_id=*projects.get(&r.project_id).ok_or("Missing record project")?;r.files=r.files.iter().filter_map(|id|item_map.get(id).copied()).collect();crate::client_records::save_record(&tx,&r)?;}
     tx.execute("DELETE FROM organisation_history",[]).map_err(err)?;
     tx.execute("DELETE FROM organisation_redo",[]).map_err(err)?;
+    crate::clients::end(&tx)?;
     tx.commit().map_err(err)?;
     Ok(())
 }

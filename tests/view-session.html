@@ -31,10 +31,10 @@ try{
   assert(Math.abs(card.getBoundingClientRect().top-content.getBoundingClientRect().top-anchor.offset)<2,'Did not restore the same visible thumbnail position');assert(filled(),'Restored grid leaves gap');
   checks.push('A real reload restores the category and visible thumbnail position after asynchronous thumbnail loading');
   const search=document.querySelector('[aria-label="Search library"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(search,'Reference');search.dispatchEvent(new Event('input',{bubbles:true}));const sort=document.querySelector('[aria-label="Sort items"]');sort.value='name';sort.dispatchEvent(new Event('change',{bubbles:true}));await pause(150);
-  const openButton=document.querySelector(".card-open");const viewerId=openButton.closest("[data-item-id]").dataset.itemId;openButton.click();await until(()=>document.querySelector('.viewer'),'Open image');sessionStorage.setItem('viewerId',viewerId);await reload(2);
+  const openButton=document.querySelector(".card-open");openButton.click();await pause(100);assert(!document.querySelector('.viewer'),'Selecting a thumbnail should not open a side viewer');assert(openButton.closest('.card').classList.contains('selected'),'Thumbnail was not selected');await reload(2);
  }else if(phase===2){
-  await until(()=>document.querySelector('.viewer')?.dataset.itemId===sessionStorage.getItem('viewerId'),'Restore open viewer');assert(document.querySelector('[aria-label="Search library"]').value==='Reference'&&document.querySelector('[aria-label="Sort items"]').value==='name','Search or sort was not restored');checks.push('An open reference, search and sort order are restored on relaunch');
-  document.querySelector('[aria-label="Close viewer"]').click();await pause(100);
+  await until(()=>document.querySelector('.topbar h1')?.textContent==='Branding','Restore filtered category');assert(document.querySelector('[aria-label="Search library"]').value==='Reference'&&document.querySelector('[aria-label="Sort items"]').value==='name','Search or sort was not restored');checks.push('Click selects without a side viewer; search and sort order survive relaunch');
+  await pause(100);
   const resources=[...document.querySelectorAll('.sidebar button')].find(b=>b.textContent.trim()==='Resources');resources.click();await until(()=>document.querySelector('.topbar h1')?.textContent==='Resources','Resources page');await reload(3);
  }else if(phase===3){
   await until(()=>document.querySelector('.topbar h1')?.textContent==='Resources','Restore General collection');assert(document.querySelector('.resource-favourites'),'Resources content missing');checks.push('General collections reopen to their own page');

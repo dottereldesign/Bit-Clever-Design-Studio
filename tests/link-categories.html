@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Link category column</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="tan"/></svg>');
+const library={items:[{id:1,name:'Psychodrama reference',path:'https://example.org/psychodrama',kind:'link',source:'Links/Psychodrama',projects:[7],tags:[],modified:1,added:1,missing:false},{id:2,name:'Uncategorised link',path:'https://example.org/other',kind:'link',source:'',projects:[],tags:[],modified:1,added:2,missing:false}],categories:[],projects:[{id:7,name:'AANZPA',count:1}],tags:[],sources:[],root:'C:/mock',scanning:false};
+const history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Change category':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';
+ if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){library.items=history.pop();return;}history.push(structuredClone(library.items));if(c.action==='set_category')for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.category=c.value;else if(c.action==='add_project')for(const i of library.items.filter(i=>c.ids.includes(i.id)))i.projects.push(c.target);else throw Error(c.action);return;}throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+
+createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App,{startOnHome:false})));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>10000)throw Error('Timed out: '+label);await pause(20);}}
+const category=name=>document.querySelector(`[data-category="${name}"]`),checks=[];
+
+try{
+ await until(()=>document.querySelector('.sidebar'),'Startup');
+ [...document.querySelectorAll('.sidebar button')].find(b=>b.querySelector('span')?.textContent==='Links').click();
+ await until(()=>document.querySelectorAll('.links-table tbody tr').length===2,'Both links visible');
+ assert([...document.querySelectorAll('.links-table th')].some(th=>th.textContent==='Category'),'Category heading');
+ assert(document.querySelector('[data-item-id="1"] .link-category-column').textContent==='Psychodrama','Category value');
+ assert(document.querySelector('[data-item-id="2"] .link-category-column').textContent==='—','Uncategorised display');
+ document.querySelector('[data-project-id="7"] .nav-item').click();await until(()=>document.querySelectorAll('.links-table tbody tr').length===1,'Project link filter');
+ assert(document.querySelector('.link-category-column')?.textContent==='Category','Project category heading');
+ assert(document.querySelector('[data-item-id="1"] .link-category-column').textContent==='Psychodrama','Project category value');
+ window.__screenshotReady=true;await pause(700);
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Categorised and uncategorised links stay in Links; Category column displays Psychodrama; project filtering retains category']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error)});}
+</script></body></html>

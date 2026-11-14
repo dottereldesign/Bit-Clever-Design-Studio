@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./diagnostics";
 import { media } from "./api";
 import type { Item } from "./model";
 import { StudioDialog } from "./Shortcuts";
 
 async function poster(item: Item, signal: AbortSignal) {
-  if (item.missing || (item.kind === "link" && !item.thumbnail)) return null;
+  if (item.kind === "file" || item.missing || (item.kind === "link" && !item.thumbnail)) return null;
   const url = await media(item, "thumbnail", signal);
   const image = new Image();
   image.crossOrigin = "anonymous";

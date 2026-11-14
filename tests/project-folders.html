@@ -1,0 +1,83 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Project folders and ratings</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#c5d4c1"/></svg>');
+const item=(id,projects,folders,rating=null)=>({id,name:'Reference '+id,path:'https://example.org/'+id,kind:'link',source:'Links/Psychodrama',projects,project_folders:folders,rating,tags:[],modified:1,added:id,missing:false});
+let lib={items:[item(1,[7],[10]),item(2,[7],[]),item(3,[8],[30],5)],categories:['Illustration','Components / Headers'],projects:[{id:7,name:'AANZPA',count:2},{id:8,name:'Other project',count:1}],project_folders:[{id:10,project_id:7,parent_id:null,name:'Research',position:null},{id:11,project_id:7,parent_id:10,name:'Psychodrama',position:null},{id:12,project_id:7,parent_id:null,name:'Branding',position:null},{id:30,project_id:8,parent_id:null,name:'Inspiration',position:null}],tags:[],sources:[],root:'C:/mock',scanning:false};
+let callback=0,clipboard=null,release=null,hold=false;const calls=[],undo=[],redo=[];
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
+ calls.push({command,args});if(command==='get_library')return structuredClone(lib);if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='save_library_preferences'||command==='discard_capture')return;
+ if(command==='storage_usage')return {bytes:100,data_bytes:10,library_bytes:80,app_bytes:10,partial:false};
+ if(command==='read_clipboard')return structuredClone(clipboard);
+ if(command==='capture_items_progress'){if(hold){hold=false;await new Promise(r=>release=r);}const id=lib.items.length+100;lib.items.push({...item(id,args.input.projects,[]),kind:args.input.files.length?'image':'link',project_only:!!args.input.files.length&&!!args.input.project_only,name:args.input.name||'Pasted link',path:args.input.url||'C:/mock/'+id+'.png',source:''});return {ids:[id],added:1,reused:0,destination:args.input.destination};}
+ if(command==='update'){const c=args.change;if(c.action==='undo_organisation'){redo.push(structuredClone(lib));lib=undo.pop();return;}if(c.action==='redo_organisation'){undo.push(structuredClone(lib));lib=redo.pop();return;}undo.push(structuredClone(lib));redo.length=0;
+   if(c.action==='rate_links')lib.items.filter(i=>c.ids.includes(i.id)&&i.kind==='link').forEach(i=>i.rating=c.value?Number(c.value):null);
+   else if(c.action==='create_project_folder')lib.project_folders.push({id:Math.max(...lib.project_folders.map(f=>f.id))+1,project_id:c.target,parent_id:c.value?Number(c.value):null,name:c.name,position:null});
+   else if(c.action==='rename_project_folder')lib.project_folders.find(f=>f.id===c.target).name=c.name;
+   else if(c.action==='reorder_project_folders')c.ids.forEach((id,n)=>lib.project_folders.find(f=>f.id===id).position=n);
+   else if(c.action==='move_project_folder')lib.project_folders.find(f=>f.id===c.target).parent_id=c.value?Number(c.value):null;
+   else if(c.action==='add_project_folder'||c.action==='remove_project_folder'){for(const i of lib.items.filter(i=>c.ids.includes(i.id))){if(c.action.startsWith('add')){i.project_folders=[...new Set([...i.project_folders,c.target])];i.projects=[...new Set([...i.projects,lib.project_folders.find(f=>f.id===c.target).project_id])];}else i.project_folders=i.project_folders.filter(id=>id!==c.target);}}
+   else if(c.action==='set_category')lib.items.filter(i=>c.ids.includes(i.id)).forEach(i=>{i.category=c.value;i.project_only=false;i.design_folders=c.value.startsWith('Components / ')?[]:[c.value];i.component_folders=c.value.startsWith('Components / ')?[c.value]:[];});
+   else if(c.action==='add_project')lib.items.filter(i=>c.ids.includes(i.id)).forEach(i=>i.projects=[...new Set([...i.projects,c.target])]);
+   else throw Error(c.action);return;
+ }throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+createRoot(document.getElementById('root')).render(React.createElement(App,{startOnHome:false}));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>12000)throw Error('Timed out: '+label);await pause(25);}}
+const project=id=>document.querySelector(`[data-project-id="${id}"] .nav-item`),folder=id=>document.querySelector(`[data-project-folder-id="${id}"]`),rows=()=>[...document.querySelectorAll('.links-table tbody tr')],findButton=(text,root=document)=>[...root.querySelectorAll('button')].find(b=>{const clone=b.cloneNode(true);clone.querySelectorAll('small').forEach(n=>n.remove());return clone.textContent.trim()===text;});
+const setValue=(input,value)=>{Object.getOwnPropertyDescriptor(input.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event(input.tagName==='SELECT'?'change':'input',{bubbles:true}));};
+async function itemMenu(){rows()[0].dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:420,clientY:240}));await until(()=>document.querySelector('.item-context-menu'),'Context menu');return document.querySelector('.item-context-menu');}
+try{
+ await until(()=>project(7),'Startup');project(7).click();await until(()=>folder(11),'Nested folders');assert(rows().length===2,'All project items');
+ const rootFolderNames=[...document.querySelectorAll('[data-project-id="7"]')][0].parentElement.querySelectorAll('[data-project-folder-id]');assert(rootFolderNames[0].textContent.includes('Branding'),'Alphabetical default');
+ findButton('Unfiled').click();await until(()=>rows().length===1&&rows()[0].dataset.itemId==='2','Unfiled only');folder(10).click();await until(()=>rows().length===1&&rows()[0].dataset.itemId==='1','Folder membership filter');
+ rows()[0].querySelector('[aria-label="4 stars"]').click();await until(()=>lib.items[0].rating===4,'Save rating');await pause(100);
+ [...document.querySelectorAll('.sidebar button')].find(b=>b.querySelector('span')?.textContent==='Links').click();await until(()=>rows().length===3,'Global Links');assert(document.querySelector('[data-item-id="1"] [aria-label="4 stars"]').getAttribute('aria-pressed')==='true','Shared rating across views');
+ setValue(document.querySelector('[aria-label="Filter by rating"]'),'4+');await until(()=>rows().length===2,'Rating filter');setValue(document.querySelector('[aria-label="Sort items"]'),'rating-high');await until(()=>rows()[0].dataset.itemId==='3','Highest rating first');
+ setValue(document.querySelector('[aria-label="Filter by rating"]'),'');document.querySelector('[data-item-id="1"] [aria-label="4 stars"]').click();await until(()=>lib.items[0].rating===null,'Click same rating clears');
+ project(7).click();await until(()=>folder(11),'Project again');folder(11).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:170,clientY:280}));await until(()=>document.querySelector('.project-folder-menu'),'Context menu');findButton('New folder',document.querySelector('.project-folder-menu')).click();await until(()=>document.querySelector('.project-folder-dialog input'),'New nested folder dialog');setValue(document.querySelector('.project-folder-dialog input'),'Organisations');document.querySelector('.project-folder-dialog').requestSubmit();await until(()=>lib.project_folders.some(f=>f.name==='Organisations'),'Folder created');assert(lib.project_folders.at(-1).parent_id===11,'Nested parent retained');
+ const data=new DataTransfer();data.setData('application/design-items','[2]');folder(11).dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));await until(()=>lib.items[1].project_folders.includes(11),'Drop into folder');assert(lib.items[1].projects.includes(7),'Project membership retained');
+ findButton('Unfiled').click();await until(()=>rows().length===0,'Filed item leaves Unfiled');folder(11).click();await until(()=>rows().length===1,'Filed link visible');
+ rows()[0].querySelector('input[type="checkbox"]').click();assert(!document.querySelector('.selection-bar'),'Selection toolbar appeared');findButton('Project folders',await itemMenu()).click();await until(()=>document.querySelector('.project-membership-list'),'Membership dialog');const shared=[...document.querySelectorAll('.project-membership-list label')].find(l=>l.textContent==='Inspiration');shared.querySelector('input').click();await until(()=>lib.items[1].projects.includes(8),'Cross-project filing');assert(lib.items[1].project_folders.includes(11),'Original membership remains');document.querySelector('.project-folder-dialog [aria-label="Close"]').click();await until(()=>!document.querySelector('.project-folder-dialog'),'Dialog closed');
+ // Both queued pastes keep their project/folder even if navigation changes during the first import.
+ clipboard={files:[],url:'https://example.org/paste-one'};hold=true;document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>release,'First import held');clipboard={files:[],url:'https://example.org/paste-two'};document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));await pause(100);project(8).click();release();await until(()=>lib.items.length===5&&lib.items[4].project_folders.includes(11),'Queued imports filed');assert(lib.items.slice(3).every(i=>i.projects.includes(7)&&!i.projects.includes(8)),'Navigation must not change queued destination');
+ project(7).click();folder(11).click();await until(()=>rows().length===3,'Final folder contents');
+ for(const row of rows()){const checkbox=row.querySelector('input[type="checkbox"]');if(!checkbox.checked)checkbox.click();await pause(30);}
+ await until(()=>document.querySelectorAll('.links-table tr.selected').length===3,'Bulk selection');(await itemMenu()).querySelector('[aria-label="5 stars"]').click();await until(()=>lib.items.filter(i=>i.project_folders.includes(11)).every(i=>i.rating===5),'Bulk rating');
+ findButton('Clear rating',await itemMenu()).click();await until(()=>lib.items.filter(i=>i.project_folders.includes(11)).every(i=>i.rating===null),'Bulk clear');await pause(100);
+ const firstId=Number(rows()[0].dataset.itemId);rows()[0].querySelector('[aria-label="3 stars"]').focus();window.__awaitNativeEnter=true;await until(()=>lib.items.find(i=>i.id===firstId).rating===3,'Keyboard rating');
+ const reorder=new DataTransfer();reorder.setData('application/project-folder','10');folder(12).dispatchEvent(new DragEvent('drop',{dataTransfer:reorder,bubbles:true,cancelable:true,clientY:0}));await until(()=>lib.project_folders.find(f=>f.id===10).position===0,'Folder reorder');
+ findButton('Clear selection',await itemMenu()).click();window.__screenshotReady=true;await pause(700);document.querySelector('button[data-category=""]').click();await until(()=>document.querySelector('[aria-label="Sort items"]')?.value==='recent','Return to media sort');
+ // Dialog saves return a link destination too; it must not replace the project route.
+ for(const scope of [null,'unfiled',11]){
+  project(7).click();await pause(120);if(scope==='unfiled')document.querySelector('[data-project-unfiled="7"]').click();else if(scope!==null)folder(scope).click();await pause(120);
+  for(let n=0;n<2;n++){
+   const before=lib.items.length;findButton('Link').click();await until(()=>document.querySelector('.capture-modal'),'Link dialog');
+   setValue(document.querySelector('.capture-modal input[type="url"]'),`https://example.org/modal-${scope}-${n}`);
+   const name=[...document.querySelectorAll('.capture-modal .field')].find(f=>f.textContent.trim()==='Name')?.querySelector('input');if(name)setValue(name,'Saved project link');
+   await pause(30);document.querySelector('.capture-modal form').requestSubmit();await until(()=>!document.querySelector('.capture-modal')&&lib.items.length===before+1,'Link saved');
+   assert(document.querySelector('.project-breadcrumb')?.textContent.includes('AANZPA'),'Saving link left the project');
+   if(scope==='unfiled')assert(document.querySelector('.project-breadcrumb').textContent.includes('Unfiled'),'Saving left Unfiled');
+   if(scope===11)assert(lib.items.at(-1).project_folders.includes(11)&&document.querySelector('.project-breadcrumb').textContent.includes('Psychodrama'),'Saving left project subfolder');
+   assert(lib.items.at(-1).projects.includes(7),'Saved link lost project membership');
+  }
+ }
+ await pause(200);document.activeElement?.blur();
+ const countBeforeLogo=lib.items.length;clipboard={files:[{path:'C:/staging/logo.png',name:'Private logo.png'}],url:''};document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>lib.items.length===countBeforeLogo+1&&lib.items.at(-1).project_folders.includes(11),'Project-only logo pasted');const logo=lib.items.at(-1);assert(logo.project_only,'Project paste did not request project-only storage');
+ document.querySelector('button[data-category=""]').click();await pause(150);assert(!document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo leaked into Design Uncategorised');
+ findButton('All Designs',document.querySelector('.sidebar')).click();await pause(150);assert(!document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo leaked into All Designs');
+ project(7).click();await until(()=>document.querySelector(`.card[data-item-id="${logo.id}"]`),'Project logo still available');
+ // Context pastes target the clicked folder, without changing the current route.
+ findButton('All Designs',document.querySelector('.sidebar')).click();await pause(150);
+ clipboard={files:[{path:'C:/staging/another.png',name:'Context logo.png'}],url:''};
+ folder(11).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:170,clientY:280}));await until(()=>document.querySelector('.project-folder-menu'),'Project paste menu');findButton('Paste here',document.querySelector('.project-folder-menu')).click();
+ await until(()=>lib.items.some(i=>i.name==='Context logo'&&i.project_folders.includes(11)),'Context paste into project');assert(!document.querySelector('.project-breadcrumb'),'Context paste navigated away from Designs');assert(lib.items.at(-1).project_only,'Context project paste leaked to Designs');
+ project(7).click();await pause(150);
+ for(const name of ['Illustration','Components / Headers']){
+  clipboard={files:[{path:'C:/staging/folder.png',name:'Folder paste.png'}],url:''};const before=lib.items.length;
+  document.querySelector(`button[data-category="${name}"]`).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:170,clientY:280}));await until(()=>document.querySelector('[aria-label="Folder actions"]'),'Design/component paste menu');findButton('Paste here',document.querySelector('[aria-label="Folder actions"]')).click();
+  await until(()=>lib.items.length===before+1&&lib.items.at(-1).category===name,'Context paste filed');assert(lib.items.at(-1).projects.length===0,'Current project leaked into context paste');assert(document.querySelector('.project-breadcrumb')?.textContent.includes('AANZPA'),'Context paste left current project');
+ }
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks:['Nested folders and alphabetical order','All items and Unfiled','Drop membership and shared cross-project references','Global ratings, clear, filter, sort, bulk and keyboard controls','Paste queue freezes folder and project before navigation','Repeated link-dialog saves stay in project, Unfiled and subfolder','New project paste is excluded from Design Inspo','Paste here targets project, Design and Component folders without navigation']});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack,calls:calls.map(c=>c.command)});}
+</script></body></html>

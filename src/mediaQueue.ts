@@ -2,6 +2,7 @@ export type MediaProgress = { total: number; completed: number; failed: number; 
 type Job = {
   key: string;
   thumbnail: boolean;
+  priority:number;
   signals: Set<AbortSignal | undefined>;
   run: () => Promise<string>;
   resolve: (value: string) => void;
@@ -26,13 +27,13 @@ export class MediaQueue {
     this.progress = { ...this.progress, ...patch };
     this.listeners.forEach(listener => listener());
   }
-  request(key: string, thumbnail: boolean, run: () => Promise<string>, signal?: AbortSignal): Promise<string> {
+  request(key: string, thumbnail: boolean, run: () => Promise<string>, signal?: AbortSignal, priority=1): Promise<string> {
     if (signal?.aborted) return Promise.reject(new Error("Cancelled"));
     let job = this.jobs.get(key);
     if (!job) {
       let resolve!: Job['resolve'], reject!: Job['reject'];
       const promise = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
-      job = { key, thumbnail, run, signals: new Set(), resolve, reject, promise };
+      job = { key, thumbnail, priority:thumbnail?priority:-1, run, signals: new Set(), resolve, reject, promise };
       this.jobs.set(key, job);
       if (thumbnail) {
         const p = this.progress;
@@ -40,6 +41,8 @@ export class MediaQueue {
         this.queue.push(job);
       } else this.queue.unshift(job);
     }
+    job.priority=Math.min(job.priority,thumbnail?priority:-1);
+    this.queue.sort((a,b)=>a.priority-b.priority);
     job.signals.add(signal);
     const result = !signal ? job.promise : new Promise<string>((resolve, reject) => {
       const abort = () => reject(new Error("Cancelled"));
@@ -48,9 +51,10 @@ export class MediaQueue {
         if (!signal.aborted) resolve(value);
       }, reject).finally(() => signal.removeEventListener('abort', abort));
     });
-    this.pump();
+    if(thumbnail&&priority>0)queueMicrotask(()=>this.pump());else this.pump();
     return result;
   }
+  prioritize(key:string,priority:number){const job=this.jobs.get(key);if(job){job.priority=priority;this.queue.sort((a,b)=>a.priority-b.priority);}}
   private pump() {
     while (this.active < 3 && this.queue.length) {
       const job = this.queue.shift()!;

@@ -275,6 +275,10 @@ pub struct CaptureFile {
 #[derive(Deserialize)]
 pub struct Capture {
     #[serde(default)]
+    pub studio: Option<String>,
+    #[serde(default)]
+    pub project_only: bool,
+    #[serde(default)]
     pub destination: String,
     #[serde(default)]
     pub thumbnail: Option<CaptureFile>,
@@ -312,6 +316,7 @@ pub fn nonce() -> u128 {
         .as_nanos()
 }
 pub(crate) fn attach(db: &Connection, id: i64, c: &Capture) -> Result<()> {
+    if let Some(scope)=&c.studio{crate::studio::attach(db,scope,id)?;}
     for project in &c.projects {
         db::touch_project(db, *project)?;
         db.execute(
@@ -339,6 +344,7 @@ pub(crate) fn attach(db: &Connection, id: i64, c: &Capture) -> Result<()> {
 fn attachment_history(db:&Connection,id:i64,c:&Capture)->Result<Vec<crate::history::Patch>> {
     use crate::history::Patch;
     let mut patches=vec![];
+    if let Some(scope)=&c.studio{patches.push(Patch::Studio(crate::studio::snapshot(db,scope)?));}
     for (project,ids) in [(true,&c.projects),(false,&c.tags)] {
         let mut seen=HashSet::new();
         for label in ids {
@@ -361,10 +367,15 @@ pub fn capture(db_path: &Path, c: Capture) -> Result<CaptureResult> {
     capture_with_progress(db_path,c,&mut |_|{})
 }
 pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMut(DuplicateProgress)) -> Result<CaptureResult> {
+    // Reject an unsupported destination before importing any part of a batch.
+    if c.projects.is_empty() && c.studio.is_none() && c.files.iter().any(|file| library::kind(Path::new(&file.path)).is_none()) {
+        return Err("Add these files to a project. Design Inspo and App Components accept images and videos.".into());
+    }
     if !c.source_url.trim().is_empty() {
         db::valid_url(&c.source_url)?;
     }
     let mut db = db::connect(db_path)?;
+    if let Some(id)=&c.studio{if !crate::studio::get(&db,id)?.is_some_and(|e|!e.archived&&["lead","campaign","content","activity","research","client","client_entry"].contains(&e.kind.as_str())){return Err("Choose an active lead, campaign, content or research record.".into());}}
     // Validate all labels before writing files or adding any metadata.
     for (table, ids) in [("projects", &c.projects), ("tags", &c.tags)] {
         for id in ids {
@@ -380,6 +391,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             }
         }
     }
+    let client_batch:String=db.query_row("SELECT lower(hex(randomblob(16)))",[],|r|r.get(0)).map_err(err)?;
     let mut result = CaptureResult {
         history_labels: vec![],
         move_label: None,
@@ -433,6 +445,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         }
         drop(stmt);
         let tx = db.transaction().map_err(err)?;
+        db::set_setting(&tx,"client_event_batch",&client_batch)?;db::set_setting(&tx,"client_event_action","capture_items")?;
         let id = if let Some(id) = existing {
             result.reused = 1;
             id
@@ -454,6 +467,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             result.added = 1;
             tx.last_insert_rowid()
         };
+        if existing.is_none()&&c.studio.is_some(){tx.execute("UPDATE items SET project_only=1,source='Studio' WHERE id=?",[id]).map_err(err)?;}
         let mut patches=attachment_history(&tx,id,&c)?;
         if existing.is_none(){patches.push(crate::history::Patch::Archived(id,true));}
         if existing.is_some(){
@@ -463,7 +477,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         }
         tx.execute("UPDATE items SET archived=0 WHERE id=?", [id])
             .map_err(err)?;
-        if existing.is_some() {
+        if existing.is_some() && c.studio.is_none() {
             let previous: String = tx.query_row("SELECT source FROM items WHERE id=?", [id], |r| r.get(0)).map_err(err)?;
             if previous != collection && !(collection == "Resources" && previous.starts_with("Resources/")) {
                 let label = if previous.is_empty() { "Links" } else { &previous };
@@ -473,7 +487,9 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
                 result.moved_from = Some(label.to_string());
             }
         }
-        if collection == "Resources" {
+        if c.studio.is_some() {
+            // Reuse an existing link without moving it out of its original collection.
+        } else if collection == "Resources" {
             tx.execute(
                 "UPDATE items SET source='Resources' WHERE id=? AND source NOT LIKE 'Resources/%'",
                 [id],
@@ -491,7 +507,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             let label=result.move_label.clone().unwrap_or_else(||if existing.is_some(){"Update saved link"}else{"Create link"}.to_owned());
             crate::history::record(&tx,&label,patches)?;result.history_labels.push(label);
         }
-        tx.commit().map_err(err)?;
+        crate::clients::end(&tx)?;tx.commit().map_err(err)?;
         thumbnail.0.take();
         result.ids.push(id);
         return Ok(result);
@@ -503,6 +519,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         .canonicalize()
         .map_err(err)?;
     let managed=db::setting(&db,"managed_root").is_some();
+    let dedup_root=db::setting(&db,"managed_root").map(PathBuf::from).unwrap_or_else(||root.clone()).canonicalize().map_err(err)?;
     let destination = if managed {root.clone()}else{root.join("Captures")};
     fs::create_dir_all(&destination).map_err(err)?;
     let destination = destination.canonicalize().map_err(err)?;
@@ -512,14 +529,15 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
     for (position,input) in c.files.iter().enumerate() {
         report(position,input.name.clone());
         let path = PathBuf::from(&input.path).canonicalize().map_err(err)?;
-        let kind = library::kind(&path).ok_or("Unsupported file type")?;
+        let kind = library::kind(&path).or_else(|| (!c.projects.is_empty()||c.studio.is_some()).then_some("file")).ok_or("Add this file to a project. Design Inspo and App Components accept images and videos.")?;
         let fp = fingerprint(&path)?;
-        if let Some(id) = matching(&db, &fp, &root)? {
+        if let Some(id) = matching(&db, &fp, &dedup_root)? {
             let tx = db.transaction().map_err(err)?;
+        db::set_setting(&tx,"client_event_batch",&client_batch)?;db::set_setting(&tx,"client_event_action","capture_items")?;
             let patches=attachment_history(&tx,id,&c)?;
             attach(&tx, id, &c)?;
             if !patches.is_empty(){crate::history::record(&tx,"Update captured reference",patches)?;result.history_labels.push("Update captured reference".to_owned());}
-            tx.commit().map_err(err)?;
+            crate::clients::end(&tx)?;tx.commit().map_err(err)?;
             result.ids.push(id);
             result.reused += 1;
             report(position+1,input.name.clone());
@@ -558,6 +576,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
                 .to_string()
         };
         let tx = db.transaction().map_err(err)?;
+        db::set_setting(&tx,"client_event_batch",&client_batch)?;db::set_setting(&tx,"client_event_action","capture_items")?;
         let source = if db::setting(&tx, "source_layout").is_some() {
             format!(
                 "{}/Captures",
@@ -580,8 +599,8 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
             .map_err(err)?;
         // The file watcher may have indexed it first; capture metadata wins.
         tx.execute(
-            "UPDATE items SET name=?,source_url=? WHERE id=?",
-            params![name, c.source_url.trim(), id],
+            "UPDATE items SET name=?,source_url=?,project_only=? WHERE id=?",
+            params![name, c.source_url.trim(), c.studio.is_some()||((c.project_only||kind=="file")&&!c.projects.is_empty()), id],
         )
         .map_err(err)?;
         let mut patches=attachment_history(&tx,id,&c)?;
@@ -590,7 +609,7 @@ pub fn capture_with_progress(db_path: &Path, c: Capture, progress:&mut impl FnMu
         store(&tx, id, &Fingerprint { modified, ..fp })?;
         crate::history::record(&tx,"Add reference",patches)?;
         result.history_labels.push("Add reference".to_owned());
-        tx.commit().map_err(err)?;
+        crate::clients::end(&tx)?;tx.commit().map_err(err)?;
         result.ids.push(id);
         result.added += 1;
         report(position+1,input.name.clone());
@@ -648,15 +667,8 @@ pub fn stage_begin(data: &Path, name: &str) -> Result<CaptureFile> {
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if ![
-        "jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "ico", "avif", "mp4", "mov",
-        "webm", "m4v", "mkv", "avi",
-    ]
-    .contains(&extension.as_str())
-    {
-        return Err("Unsupported file type".into());
-    }
-    let path = folder.join(format!("{}.{extension}", nonce()));
+    let suffix=if extension.is_empty(){String::new()}else{format!(".{extension}")};
+    let path = folder.join(format!("{}{suffix}", nonce()));
     fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -734,9 +746,9 @@ pub fn clipboard_files(paths: Vec<PathBuf>) -> Result<ClipboardContent> {
         let path = path
             .canonicalize()
             .map_err(|_| format!("File is unavailable: {}", path.display()))?;
-        if !path.is_file() || library::kind(&path).is_none() {
+        if !path.is_file() {
             return Err(format!(
-                "Unsupported file: {}. Choose images, GIFs or videos.",
+                "Not a file: {}. Choose individual files rather than a folder.",
                 path.file_name().unwrap_or_default().to_string_lossy()
             ));
         }
@@ -823,6 +835,8 @@ pub fn remove_duplicates(db_path: &Path, data: &Path, keeper: i64, ids: Vec<i64>
         let tx = db.transaction().map_err(err)?;
         tx.execute("INSERT INTO item_projects(item_id,label_id,favourite) SELECT ?,label_id,favourite FROM item_projects WHERE item_id=? ON CONFLICT(item_id,label_id) DO UPDATE SET favourite=MAX(favourite,excluded.favourite)",params![keeper,id]).map_err(err)?;
         tx.execute("INSERT OR IGNORE INTO item_tags(item_id,label_id) SELECT ?,label_id FROM item_tags WHERE item_id=?",params![keeper,id]).map_err(err)?;
+        tx.execute("INSERT OR IGNORE INTO item_project_folders(item_id,folder_id) SELECT ?,folder_id FROM item_project_folders WHERE item_id=?",params![keeper,id]).map_err(err)?;
+        crate::studio::replace_item(&tx,id,keeper)?;
         tx.execute("UPDATE items SET source_url=(SELECT source_url FROM items WHERE id=?) WHERE id=? AND source_url=''",params![id,keeper]).map_err(err)?;
         tx.execute(
             "INSERT INTO duplicate_recovery VALUES(?,?,?,?,?)",

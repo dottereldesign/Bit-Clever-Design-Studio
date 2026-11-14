@@ -1,0 +1,354 @@
+[
+  {
+    "id": "absolutely-light",
+    "family": "Absolutely",
+    "mode": "light",
+    "background": "#f9f9f7",
+    "foreground": "#2d2d2b",
+    "accent": "#cc7d5e"
+  },
+  {
+    "id": "absolutely-dark",
+    "family": "Absolutely",
+    "mode": "dark",
+    "background": "#2d2d2b",
+    "foreground": "#f9f9f7",
+    "accent": "#cc7d5e"
+  },
+  {
+    "id": "ayu-dark",
+    "family": "Ayu",
+    "mode": "dark",
+    "background": "#10141c",
+    "foreground": "#bfbdb6",
+    "accent": "#e6b450"
+  },
+  {
+    "id": "catppuccin-light",
+    "family": "Catppuccin",
+    "mode": "light",
+    "background": "#eff1f5",
+    "foreground": "#4c4f69",
+    "accent": "#8839ef"
+  },
+  {
+    "id": "catppuccin-dark",
+    "family": "Catppuccin",
+    "mode": "dark",
+    "background": "#1e1e2e",
+    "foreground": "#cdd6f4",
+    "accent": "#cba6f7"
+  },
+  {
+    "id": "codex-light",
+    "family": "Codex",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#0d0d0d",
+    "accent": "#0285ff"
+  },
+  {
+    "id": "codex-dark",
+    "family": "Codex",
+    "mode": "dark",
+    "background": "#181818",
+    "foreground": "#ffffff",
+    "accent": "#339cff"
+  },
+  {
+    "id": "dracula-dark",
+    "family": "Dracula",
+    "mode": "dark",
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "accent": "#ff79c6"
+  },
+  {
+    "id": "everforest-light",
+    "family": "Everforest",
+    "mode": "light",
+    "background": "#fdf6e3",
+    "foreground": "#5c6a72",
+    "accent": "#93b259"
+  },
+  {
+    "id": "everforest-dark",
+    "family": "Everforest",
+    "mode": "dark",
+    "background": "#2d353b",
+    "foreground": "#d3c6aa",
+    "accent": "#a7c080"
+  },
+  {
+    "id": "github-light",
+    "family": "GitHub",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#1f2328",
+    "accent": "#0969da"
+  },
+  {
+    "id": "github-dark",
+    "family": "GitHub",
+    "mode": "dark",
+    "background": "#0d1117",
+    "foreground": "#e6edf3",
+    "accent": "#1f6feb"
+  },
+  {
+    "id": "gruvbox-light",
+    "family": "Gruvbox",
+    "mode": "light",
+    "background": "#fbf1c7",
+    "foreground": "#3c3836",
+    "accent": "#458588"
+  },
+  {
+    "id": "gruvbox-dark",
+    "family": "Gruvbox",
+    "mode": "dark",
+    "background": "#282828",
+    "foreground": "#ebdbb2",
+    "accent": "#458588"
+  },
+  {
+    "id": "linear-light",
+    "family": "Linear",
+    "mode": "light",
+    "background": "#fcfcfd",
+    "foreground": "#1b1b1b",
+    "accent": "#5e6ad2"
+  },
+  {
+    "id": "linear-dark",
+    "family": "Linear",
+    "mode": "dark",
+    "background": "#0f0f11",
+    "foreground": "#e3e4e6",
+    "accent": "#606acc"
+  },
+  {
+    "id": "lobster-dark",
+    "family": "Lobster",
+    "mode": "dark",
+    "background": "#111827",
+    "foreground": "#e4e4e7",
+    "accent": "#ff5c5c"
+  },
+  {
+    "id": "material-dark",
+    "family": "Material",
+    "mode": "dark",
+    "background": "#212121",
+    "foreground": "#eeffff",
+    "accent": "#80cbc4"
+  },
+  {
+    "id": "matrix-dark",
+    "family": "Matrix",
+    "mode": "dark",
+    "background": "#040805",
+    "foreground": "#b8ffca",
+    "accent": "#1eff5a"
+  },
+  {
+    "id": "monokai-dark",
+    "family": "Monokai",
+    "mode": "dark",
+    "background": "#272822",
+    "foreground": "#f8f8f2",
+    "accent": "#99947c"
+  },
+  {
+    "id": "night-owl-dark",
+    "family": "Night Owl",
+    "mode": "dark",
+    "background": "#011627",
+    "foreground": "#d6deeb",
+    "accent": "#44596b"
+  },
+  {
+    "id": "nord-dark",
+    "family": "Nord",
+    "mode": "dark",
+    "background": "#2e3440",
+    "foreground": "#d8dee9",
+    "accent": "#88c0d0"
+  },
+  {
+    "id": "notion-light",
+    "family": "Notion",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#37352f",
+    "accent": "#3183d8"
+  },
+  {
+    "id": "notion-dark",
+    "family": "Notion",
+    "mode": "dark",
+    "background": "#191919",
+    "foreground": "#d9d9d8",
+    "accent": "#3183d8"
+  },
+  {
+    "id": "og-dark",
+    "family": "OG",
+    "mode": "dark",
+    "background": "#343541",
+    "foreground": "#d1d5db",
+    "accent": "#10a37f"
+  },
+  {
+    "id": "one-light",
+    "family": "One",
+    "mode": "light",
+    "background": "#fafafa",
+    "foreground": "#383a42",
+    "accent": "#526fff"
+  },
+  {
+    "id": "one-dark",
+    "family": "One",
+    "mode": "dark",
+    "background": "#282c34",
+    "foreground": "#abb2bf",
+    "accent": "#4d78cc"
+  },
+  {
+    "id": "oscurange-dark",
+    "family": "Oscurange",
+    "mode": "dark",
+    "background": "#0b0b0f",
+    "foreground": "#e6e6e6",
+    "accent": "#f9b98c"
+  },
+  {
+    "id": "proof-light",
+    "family": "Proof",
+    "mode": "light",
+    "background": "#f5f3ed",
+    "foreground": "#2f312d",
+    "accent": "#3d755d"
+  },
+  {
+    "id": "raycast-light",
+    "family": "Raycast",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#030303",
+    "accent": "#ff6363"
+  },
+  {
+    "id": "raycast-dark",
+    "family": "Raycast",
+    "mode": "dark",
+    "background": "#101010",
+    "foreground": "#fefefe",
+    "accent": "#ff6363"
+  },
+  {
+    "id": "rose-pine-light",
+    "family": "Rose Pine",
+    "mode": "light",
+    "background": "#faf4ed",
+    "foreground": "#575279",
+    "accent": "#d7827e"
+  },
+  {
+    "id": "rose-pine-dark",
+    "family": "Rose Pine",
+    "mode": "dark",
+    "background": "#232136",
+    "foreground": "#e0def4",
+    "accent": "#ea9a97"
+  },
+  {
+    "id": "sentry-dark",
+    "family": "Sentry",
+    "mode": "dark",
+    "background": "#2d2935",
+    "foreground": "#e6dff9",
+    "accent": "#7055f6"
+  },
+  {
+    "id": "solarized-light",
+    "family": "Solarized",
+    "mode": "light",
+    "background": "#fdf6e3",
+    "foreground": "#657b83",
+    "accent": "#b58900"
+  },
+  {
+    "id": "solarized-dark",
+    "family": "Solarized",
+    "mode": "dark",
+    "background": "#002b36",
+    "foreground": "#839496",
+    "accent": "#d30102"
+  },
+  {
+    "id": "temple-dark",
+    "family": "Temple",
+    "mode": "dark",
+    "background": "#02120c",
+    "foreground": "#c7e6da",
+    "accent": "#e4f222"
+  },
+  {
+    "id": "tokyo-night-dark",
+    "family": "Tokyo Night",
+    "mode": "dark",
+    "background": "#1a1b26",
+    "foreground": "#a9b1d6",
+    "accent": "#3d59a1"
+  },
+  {
+    "id": "vercel-light",
+    "family": "Vercel",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#171717",
+    "accent": "#006aff"
+  },
+  {
+    "id": "vercel-dark",
+    "family": "Vercel",
+    "mode": "dark",
+    "background": "#000000",
+    "foreground": "#ededed",
+    "accent": "#006efe"
+  },
+  {
+    "id": "vscode-plus-light",
+    "family": "VS Code Plus",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#000000",
+    "accent": "#007acc"
+  },
+  {
+    "id": "vscode-plus-dark",
+    "family": "VS Code Plus",
+    "mode": "dark",
+    "background": "#1e1e1e",
+    "foreground": "#d4d4d4",
+    "accent": "#007acc"
+  },
+  {
+    "id": "xcode-light",
+    "family": "Xcode",
+    "mode": "light",
+    "background": "#ffffff",
+    "foreground": "#000000",
+    "accent": "#0e0eff"
+  },
+  {
+    "id": "xcode-dark",
+    "family": "Xcode",
+    "mode": "dark",
+    "background": "#1f1f24",
+    "foreground": "#ffffff",
+    "accent": "#5482ff"
+  }
+]

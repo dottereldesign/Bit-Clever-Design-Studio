@@ -1,0 +1,94 @@
+{
+  "home-style": 10,
+  "sidebar-section-style": 22,
+  "sidebar-width": 305,
+  "tile-size": 320,
+  "app-branding": {
+    "name": "Bit Clever",
+    "slogan": "Studio",
+    "logo": "",
+    "size": 54,
+    "desktopSync": false
+  },
+  "app-icons": {
+    "folder": "folder",
+    "overrides": {
+      "home": {
+        "kind": "symbol",
+        "value": "home"
+      }
+    }
+  },
+  "home-appearance": {
+    "dragAnywhere": true,
+    "gap": 10,
+    "labels": true,
+    "darkness": 64,
+    "textSize": 32
+  },
+  "reduce-motion": false,
+  "selection-style": 1,
+  "sidebar-layout": 2,
+  "sidebar-section-colours": {
+    "leads": "#b0a103"
+  },
+  "sidebar-section-order": [
+    "Marketing",
+    "Leads",
+    "Clients",
+    "Projects",
+    "General",
+    "Categories",
+    "Components",
+    "Analytics",
+    "Research",
+    "Code"
+  ],
+  "cta-appearance": {
+    "style": "solid",
+    "primary": "#00ff91",
+    "secondary": "#167a70",
+    "strength": 24,
+    "motion": true
+  },
+  "tab-appearance": {
+    "style": "solid",
+    "theme": "night",
+    "colour": "#315c3e",
+    "motion": true
+  },
+  "home-overview": {
+    "enabled": true,
+    "share": 50,
+    "theme": "sage",
+    "events": true,
+    "projects": true,
+    "revenue": true,
+    "eventDays": 30,
+    "eventLimit": 5,
+    "deadlines": true,
+    "projectScope": "active",
+    "projectLimit": 5,
+    "progress": true,
+    "currency": "NZD",
+    "months": 6,
+    "chart": "line",
+    "showChart": true
+  },
+  "analytics-appearance": {
+    "months": 6,
+    "currency": "NZD",
+    "theme": "sage",
+    "trend": "line",
+    "breakdown": "bars",
+    "compact": false,
+    "visible": {
+      "trend": true,
+      "pipeline": true,
+      "sources": true,
+      "delivery": true,
+      "organisations": true,
+      "campaigns": true
+    }
+  }
+}

@@ -1,0 +1,66 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Customization checks</title></head><body><div id="root"></div><pre id="check-result" hidden>pending</pre><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import App from '/src/App.tsx';import '/src/style.css';
+const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#ccd9bc"/><circle cx="300" cy="100" r="100" fill="#a6bba0"/></svg>');
+const item=(id,name,kind='image',source='Design/3d')=>({id,name,kind,source,path:kind==='link'?`https://example.com/${id}`:`C:/Design/${name}.png`,modified:1,added:id,missing:false,tags:[],projects:[]});
+const library={items:[item(1,'Landscape'),item(2,'Brand study','image','Design/branding'),item(3,'Font library','link','Fonts'),item(4,'Code experiment','link','CodePen')],projects:[{id:7,name:'Website',count:0}],tags:[],sources:['Design/3d','Design/branding'],root:'C:/Design',scanning:false};
+let storageBytes=3*1024**3;const history=[],redo=[],calls=[];let callback=0,nextId=8,historyId=0,iconURL=image;
+const snapshot=()=>structuredClone({items:library.items,projects:library.projects});
+window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:path=>path.includes('/icons/')?iconURL:image,invoke:async(command,args)=>{
+ calls.push({command,args});if(command==='apply_app_branding')return; if(command==='storage_usage')return {bytes:storageBytes,app_bytes:1024**3,data_bytes:1024**3,library_bytes:storageBytes-2*1024**3,partial:false};if(command==='open_data_folder')return;if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='open_external_url')return;
+ if(command==='save_home_cover'){const blob=new Blob([new Uint8Array(args.bytes)],{type:'image/png'}),bitmap=await createImageBitmap(blob);assert(bitmap.width===128&&bitmap.height===128,'Icon upload was not normalized');bitmap.close();iconURL=URL.createObjectURL(blob);return {path:'C:/icons/custom.png',width:128,height:128};}
+ if(command==='get_library')return {...structuredClone(library),projects:library.projects.map(p=>({...p,count:library.items.filter(i=>i.projects.includes(p.id)).length})),undo_entries:history.map(h=>({id:h.id,label:h.label})),undo_count:history.length,undo_label:history.at(-1)?.label,redo_count:redo.length,redo_label:redo.at(-1)?.label};
+ if(command==='update'){const c=args.change;
+  if(c.action==='undo_organisation'){const h=history.pop();redo.push({...h,state:snapshot()});Object.assign(library,h.state);return;}
+  if(c.action==='redo_organisation'){const h=redo.pop();history.push({...h,state:snapshot()});Object.assign(library,h.state);return;}
+  const before=snapshot();if(c.action==='create_project'){if(library.projects.some(p=>p.name===c.name))throw Error('That collection already exists.');library.projects.push({id:nextId++,name:c.name,count:0});}
+  else if(c.action==='add_project'){for(const i of library.items.filter(i=>c.ids.includes(i.id)))if(!i.projects.includes(c.target))i.projects.push(c.target);}
+  else throw Error(c.action);
+  history.push({id:++historyId,label:c.action==='create_project'?'Create project':'Add to project',state:before});redo.length=0;return;
+ }throw Error(command);
+}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+localStorage.setItem('sidebar-width','300');localStorage.setItem('app-branding',JSON.stringify({name:'Bit Clever Studio',logo:'',size:80,desktopSync:false}));
+let root=createRoot(document.getElementById('root'));root.render(React.createElement(App));
+const pause=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,label)=>{if(!ok)throw Error(label);};
+async function until(test,label){const start=performance.now();while(!test()){if(performance.now()-start>7000)throw Error('Timed out: '+label);await pause(25);}}
+const input=(label,value)=>{const node=document.querySelector(`[aria-label="${label}"]`);assert(node,'Missing input: '+label);Object.getOwnPropertyDescriptor(node.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));};
+const tab=async name=>{[...document.querySelectorAll('.customise-layout > nav button')].find(b=>b.textContent===name).click();await pause(35);};
+const settings=async name=>{document.querySelector('[title="Customise app"]').click();await until(()=>document.querySelector('.customise-panel'),'Customize');await tab(name);const entrance=document.querySelector('.customise-panel').getAnimations().find(a=>a.animationName==='custom-enter');if(entrance){const frames=entrance.effect.getKeyframes();assert(frames[0].transform==='translateY(100%)'&&frames.every(f=>f.opacity===undefined||Number(f.opacity)===1),'Sheet must slide from below without fading');}await until(()=>Math.abs(document.querySelector('.customise-panel').getBoundingClientRect().top-innerHeight/2)<.5,'Sheet settled');const panel=document.querySelector('.customise-panel'),rect=panel.getBoundingClientRect(),side=document.querySelector('.sidebar').getBoundingClientRect();assert(Math.abs(rect.left-side.right)<1&&Math.abs(rect.top-innerHeight/2)<1&&Math.abs(rect.bottom-innerHeight)<1&&Math.abs(rect.right-innerWidth)<1,'Customise should fill bottom half beside sidebar');assert(getComputedStyle(panel).borderRadius==='0px','Sheet should have square corners');assert(getComputedStyle(document.querySelector('.customise-backdrop')).backgroundColor==='rgba(0, 0, 0, 0)','Backdrop should not dim the app');};
+const close=async()=>{document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close Customize');};
+const prefs=()=>JSON.parse(localStorage.getItem('collection-shortcuts'));
+const entry=name=>prefs().find(s=>s.name===name);
+const nav=name=>[...document.querySelectorAll('nav[aria-label=Library] button')].find(b=>b.querySelector('span')?.textContent===name);
+const shot=async name=>{window.__captureName=name;window.__screenshotReady=true;await pause(550);};
+const add=async(name,target='new',layout='cards')=>{document.querySelector('.custom-section-title button').click();await until(()=>document.querySelector('.general-entry-form'),'New entry form');input('General entry name',name);if(target!=='new')input('General destination',target);await pause(35);[...document.querySelectorAll('.collection-layout-choice')].find(b=>b.textContent.toLowerCase()===layout).click();await pause(35);document.querySelector('.general-entry-form').requestSubmit();await until(()=>entry(name)&&!document.querySelector('.general-entry-form'),'Save '+name);};
+const checks=[];
+try{
+ await until(()=>document.querySelector('.brand-logo'),'Brand visible');
+ assert(document.querySelector('.brand-logo').getBoundingClientRect().width===80,'Default logo should be 80px: '+document.querySelector('.brand-logo').getBoundingClientRect().width+' brand '+document.querySelector('.brand').getBoundingClientRect().width);
+ const originalName=getComputedStyle(document.querySelector('.brand-name > span:first-child')),originalSize=originalName.fontSize,originalWeight=originalName.fontWeight;
+ await settings('Branding');
+ assert(document.querySelector('[aria-label="App name"]').value==='Bit Clever'&&document.querySelector('[aria-label="Slogan"]').value==='Studio','Legacy branding migration');
+ input('App name','Acorn Studio');await pause(500);
+ assert(document.querySelector('.brand-name > span:first-child').textContent==='Acorn Studio','Sidebar name');
+ assert(document.title==='Acorn Studio Studio','Window document title');
+ await until(()=>calls.some(c=>c.command==='apply_app_branding'&&c.args.name==='Acorn Studio Studio'),'Native branding call');
+ document.querySelector('[aria-label="Undo change"]').click();await pause(50);
+ assert(document.querySelector('.brand-name').textContent==='Bit CleverStudio','Name undo');
+ document.querySelector('[aria-label="Redo change"]').click();await pause(50);
+ input('Slogan','Ideas into reality');await pause(50);
+ assert(document.querySelector('.brand-name > span:last-child').textContent==='Ideas into reality','Slogan live update');
+ const editedName=getComputedStyle(document.querySelector('.brand-name > span:first-child'));assert(editedName.fontSize===originalSize&&editedName.fontWeight===originalWeight,'Editing must retain original name styling');
+ assert(parseFloat(getComputedStyle(document.querySelector('.brand-name > span:last-child')).fontSize)<parseFloat(editedName.fontSize),'Slogan stays smaller');
+ input('Logo size','96');await pause(50);assert(document.querySelector('.brand-logo').getBoundingClientRect().width===96,'Logo resize');
+ const canvas=document.createElement('canvas');canvas.width=500;canvas.height=300;const context=canvas.getContext('2d');context.fillStyle='#245742';context.fillRect(0,0,500,300);context.fillStyle='#fff';context.font='bold 160px sans-serif';context.fillText('A',190,210);
+ const blob=await new Promise(resolve=>canvas.toBlob(resolve));const transfer=new DataTransfer();transfer.items.add(new File([blob],'logo.png',{type:'image/png'}));const upload=document.querySelector('[aria-label="Choose app logo"]');upload.files=transfer.files;upload.dispatchEvent(new Event('change',{bubbles:true}));
+ await until(()=>document.querySelector('.brand-logo').src.startsWith('data:image/png'),'Logo upload');
+ const bitmap=await createImageBitmap(await(await fetch(document.querySelector('.brand-logo').src)).blob());assert(bitmap.width===256&&bitmap.height===256,'Bounded PNG logo');bitmap.close();
+ const {collectBackupPreferences}=await import('/src/backupPreferences.ts');assert(collectBackupPreferences()['app-branding'].logo.startsWith('data:image/png'),'Logo included in backup');
+ document.querySelector('.branding-fields input[type=checkbox]').click();
+ await until(()=>calls.some(c=>c.command==='apply_app_branding'&&c.args.shortcut===true),'Desktop shortcut opt in');
+ checks.push('Larger default logo; name and size live updates; undo/redo; normalized PNG; backup includes logo; desktop sync explicit opt-in');
+ await shot('branding');
+ root.unmount();root=createRoot(document.getElementById('root'));root.render(React.createElement(App));await until(()=>document.querySelector('.brand-name > span:last-child')?.textContent==='Ideas into reality','Saved slogan survives remount');
+ const stored=JSON.parse(localStorage.getItem('app-branding'));assert(stored.name==='Acorn Studio'&&stored.slogan==='Ideas into reality','Name and slogan saved');
+ document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
+}catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack});}
+</script></body></html>

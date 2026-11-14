@@ -30,7 +30,7 @@
 .home-tile-icon { margin:18px 0;opacity:.5; }
 .home-tile-index { position:absolute;right:18px;top:52px;font:70px/1 Georgia,serif;opacity:.09;letter-spacing:-6px;pointer-events:none; }
 .home-tile-art { display:none;pointer-events:none; }
-.home-tile-tools { position:absolute;left:10px;top:8px;display:flex;gap:3px;padding:3px;background:#fffdf3f2;box-shadow:0 3px 12px #20291818;border:1px solid #0001;border-radius:7px;opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .16s,transform .16s;z-index:4;color:#3f4938; }
+.home-tile-tools { position:absolute;left:10px;top:8px;display:flex;gap:3px;padding:3px;background:#fffdf3f2;box-shadow:0 3px 12px #20291818;border:1px solid #0001;border-radius:7px;opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity var(--motion-quick) ease,transform var(--motion-standard) var(--motion-ease);z-index:4;color:#3f4938; }
 .home-tile-tools button { display:grid;place-items:center;width:25px;height:24px;border-radius:4px; }
 .home-tile-tools button:hover { background:#e1e8da; }
 .home-tile-tools button:first-child { cursor:grab; }
@@ -177,7 +177,7 @@
 
 .home-tile-tools .home-remove { color:#bd3939; }
 .home-tile-tools .home-remove:hover { color:#a32121;background:#fbe4e1; }
-.home-remove-confirm { position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:8px;max-width:calc(100% - 24px);width:max-content;padding:8px 10px 8px 14px;border-radius:10px;background:#fffdf8f5;backdrop-filter:blur(12px);box-shadow:0 4px 22px #20271f25;border:1px solid #dedfd5;font-size:12px;color:#3e4539;animation:home-confirm-in .16s ease-out; }
+.home-remove-confirm { position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:8px;max-width:calc(100% - 24px);width:max-content;padding:8px 10px 8px 14px;border-radius:10px;background:#fffdf8f5;backdrop-filter:blur(12px);box-shadow:0 4px 22px #20271f25;border:1px solid #dedfd5;font-size:12px;color:#3e4539;animation:home-confirm-in var(--motion-standard) var(--motion-ease); }
 .home-remove-confirm > span { min-width:0;overflow-wrap:anywhere; }
 .home-remove-confirm button { flex-shrink:0;padding:6px 9px;border-radius:6px;color:#626b59;font-size:11px; }
 .home-remove-confirm button:hover { background:#e8eddf; }

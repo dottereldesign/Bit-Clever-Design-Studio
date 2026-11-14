@@ -3,7 +3,7 @@ import { componentInbox } from "./componentsLibrary";
 import { categoryLabel } from "./model";
 
 type Feedback = { count: number; x: number; y: number; action: string };
-type Options = { enabled:boolean; ids:(id:number)=>number[]; category:(ids:number[],name:string)=>void; project:(ids:number[],id:number)=>void; started:()=>void };
+type Options = { enabled:boolean; ids:(id:number)=>number[]; category:(ids:number[],name:string)=>void; project:(ids:number[],id:number)=>void; projectFolder:(ids:number[],id:number)=>void; unfileProject:(ids:number[],id:number)=>void; started:()=>void };
 type PointerDrag = {id:number;ids:number[];startX:number;startY:number;x:number;y:number;active:boolean;host:HTMLElement};
 
 export default function useItemDragFeedback(options:Options) {
@@ -15,20 +15,21 @@ export default function useItemDragFeedback(options:Options) {
   const count=useRef(0);
   useEffect(()=>{
     let scrollFrame=0,clickTimer=0;
+    let edge:{list:HTMLElement;direction:number;since:number}|null=null;
     const clear=()=>{
       const session=pointer.current;pointer.current=null;
-      cancelAnimationFrame(scrollFrame);
+      cancelAnimationFrame(scrollFrame);edge=null;
       if(session?.host.hasPointerCapture(session.id))session.host.releasePointerCapture(session.id);
       document.body.classList.remove('dragging-items');
       count.current=0;setFeedback(null);ghost.current?.remove();ghost.current=null;
-      document.querySelectorAll('.project-row.drop-target,.general-nav.drop-target,.source-item.drop-target,.sidebar-heading.drop-target').forEach(row=>row.classList.remove('drop-target'));
+      document.querySelectorAll('.project-folder-row.drop-target,.project-scope.drop-target,.project-row.drop-target,.general-nav.drop-target,.source-item.drop-target,.sidebar-heading.drop-target').forEach(row=>row.classList.remove('drop-target'));
     };
     const show=(element:Element|null,x:number,y:number)=>{
       if(!count.current)return;
       const sidebar=element?.closest('.sidebar');
-      const target=element?.closest<HTMLElement>('[data-category],[data-project-id]');
+      const target=element?.closest<HTMLElement>('[data-category],[data-project-folder-target],[data-project-unfiled],[data-project-id]');
       const category=target?.dataset.category;
-      const action=target?.dataset.sectionLabel?`Add to ${target.dataset.sectionLabel} · Uncategorised`:category!==undefined?`${category&&category!==componentInbox?"Add to":"Set"} ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
+      const action=target?.dataset.projectUnfiled?`Move to Unfiled`:target?.dataset.projectFolderTarget?`Add to ${target.dataset.projectFolderName}`:target?.dataset.sectionLabel?`Add to ${target.dataset.sectionLabel} · Uncategorised`:category!==undefined?`${category&&category!==componentInbox?"Add to":"Set"} ${categoryLabel(category)}`:target?.dataset.projectName?`Add to ${target.dataset.projectName}`:'references';
       // Keep the badge outside the sidebar so every destination stays readable.
       const left=sidebar?sidebar.getBoundingClientRect().right+12:x+18;
       setFeedback({count:count.current,x:Math.max(8,Math.min(left,window.innerWidth-272)),y:Math.max(8,Math.min(y+18,window.innerHeight-48)),action});
@@ -38,8 +39,8 @@ export default function useItemDragFeedback(options:Options) {
     };
     const highlight=(session:PointerDrag)=>{
       const element=document.elementFromPoint(session.x,session.y);
-      const target=element?.closest('[data-category],[data-project-id]');
-      document.querySelectorAll('.source-item.drop-target,.sidebar-heading.drop-target,.project-row.drop-target,.general-nav.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
+      const target=element?.closest('[data-category],[data-project-folder-target],[data-project-unfiled],[data-project-id]');
+      document.querySelectorAll('.source-item.drop-target,.sidebar-heading.drop-target,.project-folder-row.drop-target,.project-scope.drop-target,.project-row.drop-target,.general-nav.drop-target').forEach(row=>{if(row!==target)row.classList.remove('drop-target');});
       target?.classList.add('drop-target');show(element,session.x,session.y);
     };
     const scroll=()=>{
@@ -48,8 +49,14 @@ export default function useItemDragFeedback(options:Options) {
       const list=inner&&inner.scrollHeight>inner.clientHeight?inner:document.querySelector<HTMLElement>('.sidebar-scroll');
       if(list){const rect=list.getBoundingClientRect();if(session.x>=rect.left&&session.x<=rect.right&&session.y>=rect.top&&session.y<=rect.bottom){
         const speed=session.y<rect.top+28?-Math.ceil((rect.top+28-session.y)/3):session.y>rect.bottom-28?Math.ceil((session.y-rect.bottom+28)/3):0;
-        if(speed){list.scrollTop+=speed;highlight(session);}
-      }}
+        if(speed){
+          const direction=Math.sign(speed);
+          if(!edge||edge.list!==list||edge.direction!==direction)edge={list,direction,since:performance.now()};
+          // Briefly dwell at an edge before scrolling, so a quick drop doesn't
+          // slide the intended folder away from beneath the pointer.
+          if(performance.now()-edge.since>=250){list.scrollTop+=speed;highlight(session);}
+        }else edge=null;
+      }else edge=null;}else edge=null;
       scrollFrame=requestAnimationFrame(scroll);
     };
     const move=(e:globalThis.PointerEvent)=>{
@@ -69,11 +76,13 @@ export default function useItemDragFeedback(options:Options) {
     };
     const up=(e:globalThis.PointerEvent)=>{
       const session=pointer.current;if(!session||session.id!==e.pointerId)return;
-      const target=session.active?document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-category],[data-project-id]'):null;
+      const target=session.active?document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-category],[data-project-folder-target],[data-project-unfiled],[data-project-id]'):null;
       clear();
       if(session.active){
         e.preventDefault();clickTimer=window.setTimeout(()=>{suppressClick.current=false;},250);
         if(target?.dataset.category!==undefined)latest.current.category(session.ids,target.dataset.category);
+        else if(target?.dataset.projectFolderTarget)latest.current.projectFolder(session.ids,Number(target.dataset.projectFolderTarget));
+        else if(target?.dataset.projectUnfiled)latest.current.unfileProject(session.ids,Number(target.dataset.projectUnfiled));
         else if(target?.dataset.projectId)latest.current.project(session.ids,Number(target.dataset.projectId));
       }
     };
@@ -104,8 +113,8 @@ export default function useItemDragFeedback(options:Options) {
     suppressClick.current=false;
     if(!latest.current.enabled||e.button!==0||!e.isPrimary)return;
     const target=e.target instanceof Element?e.target:null;
-    const card=target?.closest<HTMLElement>('.card[data-item-id],.collection-reference[data-item-id]');
-    if(!card||target?.closest('button:not(.card-open):not(.collection-reference-open),input,textarea,select'))return;
+    const card=target?.closest<HTMLElement>('.card[data-item-id],.collection-reference[data-item-id],.links-table tbody tr[data-item-id]');
+    if(!card||target?.closest('button:not(.card-open):not(.collection-reference-open):not(.link-name):not(.link-url),input,textarea,select'))return;
     pointer.current={id:e.pointerId,ids:latest.current.ids(Number(card.dataset.itemId)),startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,active:false,host:e.currentTarget};
   };
   const start=(e:DragEvent)=>{

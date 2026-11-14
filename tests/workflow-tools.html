@@ -6,7 +6,7 @@ const library={items:[item(1,'Assigned',[7]),item(2,'New image'),item(3,'Font',[
 let clipboard='image',captureFailure=false,clipboardReads=0;
 const redo=[],history=[],calls=[];let callback=0;window.isTauri=true;window.__TAURI_INTERNALS__={transformCallback:()=>++callback,convertFileSrc:()=>image,invoke:async(command,args)=>{
  if(command==="capture_items_progress")command="capture_items";
- calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Organisation change':null,redo_label:redo.length?'Organisation change':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='get_media')return 'C:/mock.png';if(command==='open_external_url')return;
+ calls.push({command,args});if(command==='get_library')return {...structuredClone(library),undo_label:history.length?'Organisation change':null,redo_label:redo.length?'Organisation change':null};if(command.startsWith('plugin:event|'))return ++callback;if(command==='project_file_details')return [];if(command==='get_media')return 'C:/mock.png';if(command==='open_external_url')return;
  if(command==='read_clipboard'){clipboardReads++;await new Promise(resolve=>setTimeout(resolve,70));return clipboard==='url'?{files:[],url:'https://example.com/pasted'}:{files:[{path:'C:/staged/paste.png',name:'Pasted image.png'}],url:''};}
  if(command==='save_contact_sheet'){assert(args instanceof Uint8Array && args[0]===137 && args[1]===80 && args.length>500,'Expected PNG bytes');return 'Example sheet.png';}
  if(command==='discard_capture')return;
@@ -58,14 +58,14 @@ try{
  key('v',{ctrlKey:true});key('v',{ctrlKey:true});
  await until(()=>library.items.find(i=>i.id===100)?.category==='3d'&&document.querySelector('[data-item-id="100"]'),'Direct category paste');
  await until(()=>calls.some(c=>c.command==='discard_capture'),'Staged clipboard cleanup');
- assert(clipboardReads===1,'Overlapping paste read twice');assert(!document.querySelector('.capture-modal'),'Category paste opens a modal');
+ await until(()=>calls.filter(c=>c.command==='capture_items').length===2&&!document.querySelector('.capture-status'),'Both queued pastes finish');assert(clipboardReads===2,'Each paste press must read the clipboard');assert(library.items.filter(i=>i.id===100).length===1,'Queued pastes duplicated the reference');assert(!document.querySelector('.capture-modal'),'Category paste opens a modal');
  const savedInput=calls.find(c=>c.command==='capture_items').args.input;assert(savedInput.source==='Design'&&savedInput.files[0].name==='Pasted image.png','Wrong paste destination or file');
  document.querySelector('[data-item-id="100"] .card-open').focus();key('v',{ctrlKey:true});
- await until(()=>calls.filter(c=>c.command==='capture_items').length===2&&!document.querySelector('.capture-status'),'Repeated paste');
+ await until(()=>calls.filter(c=>c.command==='capture_items').length===3&&!document.querySelector('.capture-status'),'Repeated paste');
  await pause(150);assert(library.items.filter(i=>i.id===100).length===1&&!document.querySelector('.capture-modal'),'Repeated paste duplicated or opened dialog');
  assert(document.querySelector('.toast')?.textContent.includes('Already in 3D'),'Expected category reuse receipt');
  document.querySelector('.toast button').click();await until(()=>document.querySelector('.quick-preview header')?.textContent.includes('Pasted image'),'Receipt opens saved reference');key('Escape');await until(()=>!document.querySelector('.quick-preview'),'Close receipt preview');document.querySelector('[data-item-id="100"] .card-open').focus();
- checks.push('Image paste into a category saves immediately, suppresses overlapping pastes, cleans staged files and reuses duplicates');
+ checks.push('Image paste into a category saves immediately, queues overlapping pastes without duplicates, cleans staged files and reuses duplicates');
  captureFailure=true;key('v',{ctrlKey:true});await until(()=>document.querySelector('.error-banner')?.textContent.includes('Could not save'),'Paste failure shown');
  assert(!document.querySelector('.capture-modal'),'Paste error opened modal');captureFailure=false;
  clipboard='url';key('v',{ctrlKey:true});await until(()=>document.querySelector('.capture-modal'),'URL retains capture form');
@@ -82,7 +82,7 @@ try{
  shortcut.querySelector('input').click();document.querySelector('[aria-label="Close customisation"]').click();await until(()=>!document.querySelector('.customise-panel'),'Close customisation');await until(()=>![...document.querySelectorAll('nav[aria-label=Library] button span')].some(el=>el.textContent==='CodePen'),'Hide sidebar shortcut');
  document.querySelector('nav[aria-label=Projects] button.nav-item').click();
  const byText=(selector,text)=>[...document.querySelectorAll(selector)].find(el=>el.textContent.trim()===text);
- await until(()=>byText('button','Contact sheet'),'Project actions');byText('button','Contact sheet').click();await until(()=>document.querySelector('.sheet-picker input'),'Project sheet picker');
+ await until(()=>document.querySelector('[aria-label="Project sections"]'),'Project workspace');byText('[aria-label="Project sections"] button','Files').click();await until(()=>byText('button','Contact sheet'),'Project actions');byText('button','Contact sheet').click();await until(()=>document.querySelector('.sheet-picker input'),'Project sheet picker');
  for(const box of document.querySelectorAll('.sheet-picker input'))box.click();
  await until(()=>!byText('dialog button','Export PNG')?.disabled,'PNG preview ready');
  const ordered=()=>[...document.querySelectorAll('section[aria-label="Sheet order"] .shortcut-row span')].map(el=>el.textContent);

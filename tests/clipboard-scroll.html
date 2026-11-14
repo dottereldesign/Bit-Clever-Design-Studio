@@ -40,8 +40,8 @@ try{
   clipboardMode='overlap';const reads=()=>calls.filter(c=>c==='read_clipboard').length;
   let beforeRead=reads();document.querySelector('.card button[aria-label^="Copy"]').click();await until(()=>finishCopy,'Pending copy');paste();paste();await pause(100);
   assert(reads()===beforeRead,'Paste reads the clipboard before the thumbnail copy has finished');
-  finishCopy();await until(()=>!document.querySelector('.capture-reading')&&reads()===beforeRead+1,'Queued paste completed');assert(!document.querySelector('.capture-modal'),'Copy-paste unexpectedly opened a modal');
-  checks.push('Immediate paste waits for thumbnail copying and repeated paste keys enqueue only one read');
+  finishCopy();await until(()=>!document.querySelector('.capture-reading')&&reads()===beforeRead+2,'Queued pastes completed');assert(!document.querySelector('.capture-modal'),'Copy-paste unexpectedly opened a modal');
+  checks.push('Immediate paste waits for thumbnail copying and separate paste presses each enqueue a read');
   finishCopy=null;beforeRead=reads();document.querySelector('.card button[aria-label^="Copy"]').click();await until(()=>failCopy&&finishCopy,'Failing pending copy');paste();await pause(50);failCopy('The clipboard is currently unavailable.');await until(()=>!document.querySelector('.capture-reading'),'Failed copy releases pending paste');
   assert(reads()===beforeRead,'A failed copy allowed the queued paste to import old clipboard contents');checks.push('A failed copy cancels its queued paste without reading stale clipboard data');
   finishCopy=null;document.querySelector('.card button[aria-label^="Copy"]').click();await until(()=>finishCopy,'Copy can retry');paste();finishCopy();await until(()=>!document.querySelector('.capture-reading')&&reads()===beforeRead+1,'Queue recovers after copy failure');

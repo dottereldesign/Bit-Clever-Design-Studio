@@ -96,6 +96,8 @@ pub fn progress(line: &str) -> Option<Progress> {
 }
 fn capture(request: &Request) -> content::Capture {
     content::Capture {
+        studio: None,
+        project_only:false,
         destination: String::new(),
         thumbnail: None,
         resource: false,

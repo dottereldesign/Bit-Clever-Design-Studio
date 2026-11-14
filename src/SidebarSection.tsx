@@ -1,29 +1,37 @@
-import { type ReactNode, type HTMLAttributes } from "react";
+import { createPortal } from "react-dom";
+import { SectionColourControl, useSectionColours, sectionColourStyle } from "./SectionColours";
+import { useState, type ReactNode, type HTMLAttributes } from "react";
 import { useHistoryState } from "./useAppHistory";
-import { ChevronDown, ChevronRight, Palette, Blocks } from "lucide-react";
+import { ChevronDown, ChevronRight, Palette, Blocks, LayoutGrid, FolderOpen, Megaphone, Users, BookOpen, BriefcaseBusiness, ChartNoAxesCombined, Code2 } from "lucide-react";
 
-export default function SidebarSection({name, label = name, action, children, nested = false, dropProps, styleId, identity, preview = false, icon}: {
-  icon?:ReactNode; styleId?:number; identity?:"design"|"components"; preview?:boolean; name: string; label?: string; action?: ReactNode; children: ReactNode; nested?: boolean; dropProps?: HTMLAttributes<HTMLDivElement> & {"data-category"?:string; "data-section-label"?:string};
+export default function SidebarSection({name, label = name, action, children, nested = false, dropProps, styleId, identity, preview = false, icon, reorder, comingSoon = false}: {
+  comingSoon?:boolean; reorder?:{up?:()=>void;down?:()=>void}; icon?:ReactNode; styleId?:number; identity?:"clients"|"design"|"components"|"general"|"projects"|"marketing"|"leads"|"research"|"business"|"analytics"|"code"; preview?:boolean; name: string; label?: string; action?: ReactNode; children?: ReactNode; nested?: boolean; dropProps?: HTMLAttributes<HTMLDivElement> & {"data-category"?:string; "data-section-label"?:string};
 }) {
+  const [colours]=useSectionColours();
+  const [colourMenu,setColourMenu]=useState<{x:number;y:number}|null>(null);
+  const identities={code:{number:"11",kicker:"Development",Icon:Code2},business:{number:"09",kicker:"Business operations",Icon:BriefcaseBusiness},analytics:{number:"10",kicker:"Performance",Icon:ChartNoAxesCombined},clients:{number:"08",kicker:"Relationships",Icon:Users},research:{number:"07",kicker:"Knowledge",Icon:BookOpen},marketing:{number:"01",kicker:"Campaigns",Icon:Megaphone},leads:{number:"02",kicker:"Relationships",Icon:Users},general:{number:"04",kicker:"Workspace",Icon:LayoutGrid},projects:{number:"03",kicker:"Client work",Icon:FolderOpen},design:{number:"05",kicker:"Visual library",Icon:Palette},components:{number:"06",kicker:"Interface library",Icon:Blocks}};
+  const treatment=identity?identities[identity]:null;
   const key = "sidebar-open:" + name;
   const [open, setOpen, setPreview] = useHistoryState(key,() => {
     const saved = preview?"false":localStorage.getItem(key);
-    return saved === null ? !nested : saved === "true";
+    return saved === "true";
   },`${label} section visibility`);
-  return <section data-section={name} className={`${icon?"has-custom-icon":""} ${nested ? "folder-group" : "sidebar-section"} ${identity?`section-feature section-style-${styleId??1} section-${identity}`:""}`} data-open={open}>
-    <div {...dropProps} className={`${nested ? "folder-heading" : "sidebar-heading"} ${dropProps?.className??""}`}>
-      <button className="section-toggle" aria-label={label} aria-expanded={open} onClick={() => {
+  return <section style={identity?sectionColourStyle(identity,colours,styleId??1):undefined} data-custom-colour={identity&&colours[identity]?true:undefined} data-section={name} className={`${comingSoon?"section-coming-soon":""} ${icon?"has-custom-icon":""} ${nested ? "folder-group" : "sidebar-section"} ${identity?`section-feature section-style-${styleId??1} section-${identity}`:""}`} data-open={!comingSoon&&open}>
+    <div {...dropProps} onContextMenu={identity&&!preview?e=>{e.preventDefault();setColourMenu({x:Math.min(e.clientX,window.innerWidth-290),y:Math.min(e.clientY,window.innerHeight-250)});}:dropProps?.onContextMenu} className={`${nested ? "folder-heading" : "sidebar-heading"} ${dropProps?.className??""}`}>
+      <button title={reorder?"Drag to reorder · Alt+↑/↓ to move":undefined} className="section-toggle" aria-label={comingSoon?`${label} — Coming soon`:label} aria-disabled={comingSoon||undefined} aria-expanded={comingSoon?undefined:open} onClick={() => {
+        if(comingSoon)return;
         if(preview)setPreview(!open);else setOpen(!open);
       }}>
         {identity?<>
-          <span className="section-number" aria-hidden="true">{identity==="design"?"01":"02"}</span>
-          <span className="section-emblem" aria-hidden="true">{icon??(identity==="design"?<Palette size={17}/>:<Blocks size={17}/>)}</span>
-          <span className="section-copy"><span className="section-kicker" aria-hidden="true">{identity==="design"?"Visual library":"Interface library"}</span><span className="section-title">{label}</span></span>
-          <ChevronRight className="section-chevron" size={14} aria-hidden="true"/>
+          <span className="section-number" aria-hidden="true">{treatment?.number}</span>
+          <span className="section-emblem" aria-hidden="true">{icon??(treatment&&<treatment.Icon size={17}/>)}</span>
+          <span className="section-copy"><span className="section-kicker" aria-hidden="true">{treatment?.kicker}</span><span className="section-title">{label}</span></span>
+          {comingSoon?<span className="section-coming-soon-badge">Coming soon</span>:<ChevronRight className="section-chevron" size={14} aria-hidden="true"/>}
         </>:<>{open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>} {icon} {label}</>}
       </button>
       {action}
     </div>
-    {identity?<div className="section-reveal" aria-hidden={!open} inert={!open}><div className="section-reveal-inner">{children}</div></div>:open&&(nested?children:<div className="sidebar-section-body">{children}</div>)}
+    {comingSoon?null:identity?<div className="section-reveal" aria-hidden={!open} inert={!open}><div className="section-reveal-inner">{identity==="general"||identity==="projects"||identity==="clients"||identity==="marketing"||identity==="leads"||identity==="research"||identity==="business"||identity==="analytics"?<div className="sidebar-section-body">{children}</div>:children}</div></div>:open&&(nested?children:<div className="sidebar-section-body">{children}</div>)}
+    {colourMenu&&identity&&createPortal(<div className="section-colour-dismiss" onMouseDown={()=>setColourMenu(null)} onKeyDown={e=>{if(e.key==='Escape')setColourMenu(null);}}><div role="dialog" aria-label={`${label} colour`} className="section-colour-menu" style={{left:colourMenu.x,top:colourMenu.y}} onMouseDown={e=>e.stopPropagation()}>{reorder&&<div className="sidebar-reorder-actions"><button disabled={!reorder.up} onClick={()=>{reorder.up?.();setColourMenu(null);}}>Move up</button><button disabled={!reorder.down} onClick={()=>{reorder.down?.();setColourMenu(null);}}>Move down</button></div>}<SectionColourControl identity={identity}/><button autoFocus onClick={()=>setColourMenu(null)}>Done</button></div></div>,document.body)}
   </section>;
 }

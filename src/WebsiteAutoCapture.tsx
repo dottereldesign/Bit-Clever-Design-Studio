@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {Channel,invoke} from '@tauri-apps/api/core';
+import {Channel,invoke} from "./diagnostics";
 import type {CaptureFile} from './CaptureDialog';
 type Browser={id:string;name:string};
 type Progress={phase:string;message:string};

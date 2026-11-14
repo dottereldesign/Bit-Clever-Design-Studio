@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod diagnostics;
+mod business;
 mod browser;
 mod website_capture;
 mod storage;
@@ -12,6 +14,15 @@ mod sources;
 mod thumbnail;
 mod home_covers;
 mod history;
+mod project_folders;
+mod project_files;
+mod project_overview;
+mod client_records;
+mod studio;
+mod lead_close;
+mod clients;
+mod branding;
+mod calendar_sync;
 mod library_export;
 mod managed_library;
 use db::{err, Result};
@@ -44,6 +55,10 @@ struct State {
     export_cancel: Arc<AtomicBool>,
 }
 #[tauri::command]
+async fn client_meeting_pack(id:String,destination:String,state:tauri::State<'_,State>)->Result<String>{let path=state.db.clone();tauri::async_runtime::spawn_blocking(move||clients::meeting_pack(&db::connect(&path)?,&id,std::path::Path::new(&destination))).await.map_err(err)?}
+#[tauri::command]
+async fn client_feed(client:Option<String>,before:Option<i64>,state:tauri::State<'_,State>)->Result<Vec<clients::Event>>{let path=state.db.clone();tauri::async_runtime::spawn_blocking(move||clients::events(&db::connect(&path)?,client.as_deref(),before,100)).await.map_err(err)?}
+#[tauri::command]
 fn website_capture_browsers()->Vec<website_capture::Browser>{website_capture::browsers()}
 #[tauri::command]
 fn website_capture_control(action:String,jobs:tauri::State<'_,website_capture::Jobs>)->Result<()>{
@@ -71,6 +86,10 @@ async fn website_thumbnail(id:i64,state:tauri::State<'_,State>)->Result<String>{
 fn open_website_screenshot(id:i64,state:tauri::State<'_,State>)->Result<()>{let db=db::connect(&state.db)?;let path:String=db.query_row("SELECT thumbnail FROM items WHERE id=? AND source='Websites' AND archived=0",[id],|r|r.get(0)).map_err(err)?;tauri_plugin_opener::open_path(path,None::<&str>).map_err(err)}
 #[tauri::command]
 async fn library_overview(state:tauri::State<'_,State>)->Result<managed_library::Overview>{let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::overview(&db)).await.map_err(err)?}
+#[tauri::command]
+async fn business_load(location:tauri::State<'_,LibraryLocation>)->Result<business::Snapshot>{let folder=location.config.clone();tauri::async_runtime::spawn_blocking(move||business::load(&folder)).await.map_err(err)?}
+#[tauri::command]
+async fn business_save(revision:i64,data:serde_json::Value,location:tauri::State<'_,LibraryLocation>)->Result<business::Snapshot>{let folder=location.config.clone();tauri::async_runtime::spawn_blocking(move||business::save(&folder,revision,data)).await.map_err(err)?}
 #[tauri::command]
 async fn library_preferences(app:tauri::AppHandle)->Result<Option<serde_json::Value>>{if let Some(error)=&app.state::<LibraryLocation>().error{return Err(error.clone());}let db=app.state::<State>().db.clone();tauri::async_runtime::spawn_blocking(move||managed_library::preferences(&db)).await.map_err(err)?}
 #[tauri::command]
@@ -101,9 +120,9 @@ fn open_library_location(name:String,state:tauri::State<'_,State>)->Result<()>{
     tauri_plugin_opener::open_path(folder.to_string_lossy().into_owned(),None::<&str>).map_err(err)
 }
 #[tauri::command]
-async fn storage_usage(state:tauri::State<'_,State>)->Result<storage::Usage>{
+async fn storage_usage(diagnostic_operation:Option<String>,state:tauri::State<'_,State>)->Result<storage::Usage>{
  let s=state.inner().clone();
- tauri::async_runtime::spawn_blocking(move||{let mut app_files=vec![s.ffmpeg,s.downloader];if let Ok(exe)=std::env::current_exe(){app_files.push(exe);}storage::usage(&s.db,app_files)}).await.map_err(err)?
+ tauri::async_runtime::spawn_blocking(move||{let mut app_files=vec![s.ffmpeg,s.downloader];if let Ok(exe)=std::env::current_exe(){app_files.push(exe);}storage::usage_traced(&s.db,app_files,&diagnostic_operation.unwrap_or_default())}).await.map_err(err)?
 }
 #[tauri::command]
 fn open_data_folder(state:tauri::State<'_,State>)->Result<()>{
@@ -151,48 +170,87 @@ async fn backup_preferences(path:String, app:tauri::AppHandle,state:tauri::State
 #[tauri::command]
 fn cancel_library_export(state: tauri::State<'_, State>) {state.export_cancel.store(true,Ordering::SeqCst);}
 #[tauri::command]
-async fn get_library(state: tauri::State<'_, State>) -> Result<db::Library> {
+async fn get_library(diagnostic_operation:Option<String>,state: tauri::State<'_, State>) -> Result<db::Library> {
     let s = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || db::load(&s.db, s.scanning.load(Ordering::SeqCst)))
+    {let queued=std::time::Instant::now();tauri::async_runtime::spawn_blocking(move || {let op=diagnostic_operation.unwrap_or_default();diagnostics::phase_event(&op,"native.library_worker_wait","success",queued.elapsed().as_secs_f64()*1000.,serde_json::json!({}));diagnostics::phase(&op,"native.library_read",||db::load(&s.db, s.scanning.load(Ordering::SeqCst)))})}
         .await
         .map_err(err)?
 }
 #[tauri::command]
-async fn update(change: db::Change, state: tauri::State<'_, State>) -> Result<()> {
+async fn clients_initialise(state:tauri::State<'_,State>)->Result<bool>{
     let s=state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {let _guard=s.content_lock.lock().map_err(err)?;db::change(&s.db,change)?;managed_library::organise(&s.db)})
+    tauri::async_runtime::spawn_blocking(move||{
+        if db::setting(&db::connect(&s.db)?,"client_profiles_v1").is_some(){return Ok(false);}
+        let _guard=s.content_lock.lock().map_err(err)?;
+        if db::setting(&db::connect(&s.db)?,"client_profiles_v1").is_some(){return Ok(false);}
+        db::change(&s.db,serde_json::from_value(serde_json::json!({"action":"setup_clients"})).map_err(err)?)?;
+        Ok(true)
+    }).await.map_err(err)?
+}
+#[tauri::command]
+async fn update(change: db::Change, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<()> {
+    let s=state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let start=std::time::Instant::now();let operation=diagnostic_operation.unwrap_or_default();let diagnostic_action=change.action.clone();let organise_files=!matches!(change.action.as_str(),"update_studio"|"update_client_records"|"update_project_overview");
+        let log=|name:&str,status:&str,duration:f64|diagnostics::record(diagnostics::Event{time:0,name:name.into(),operation:operation.clone(),status:status.into(),duration,fields:serde_json::json!({"action":diagnostic_action})});
+        let _guard=s.content_lock.lock().map_err(err)?;log("native.lock_wait","success",start.elapsed().as_secs_f64()*1000.);
+        diagnostics::phase(&operation,"native.database_change",||db::change(&s.db,change))?;
+        if !organise_files {log("native.organise_files_skipped","success",0.);return Ok(());}
+        diagnostics::phase(&operation,"native.organise_files",||managed_library::organise(&s.db))
+    })
         .await
         .map_err(err)?
 }
 #[tauri::command]
-async fn get_media(id: i64, mode: String, state: tauri::State<'_, State>) -> Result<String> {
+async fn get_media(id: i64, mode: String, diagnostic_operation:Option<String>, state: tauri::State<'_, State>) -> Result<String> {
     let s = state.inner().clone();
+    let operation=diagnostic_operation.unwrap_or_default();let queued=std::time::Instant::now();
     let _permit = s.media_slots.clone().acquire_owned().await.map_err(err)?;
+    diagnostics::phase_event(&operation,"native.media_queue","success",queued.elapsed().as_secs_f64()*1000.,serde_json::json!({"id":id,"mode":mode}));
     tauri::async_runtime::spawn_blocking(move || {
-        library::media(&s.db, &s.cache, &s.ffmpeg, id, &mode)
+        diagnostics::phase(&operation,"native.media_generate",||library::media(&s.db, &s.cache, &s.ffmpeg, id, &mode))
     })
     .await
     .map_err(err)?
+}
+
+#[tauri::command]
+async fn project_file_details(project:i64,state:tauri::State<'_,State>)->Result<Vec<project_files::FileInfo>> {
+    let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||project_files::details(&db,project)).await.map_err(err)?
+}
+#[tauri::command]
+async fn project_file_preview(id:i64,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<project_files::Preview> {
+    let db=state.db.clone();let result=tauri::async_runtime::spawn_blocking(move||project_files::preview(&db,id)).await.map_err(err)??;
+    if ["image","video","audio","pdf"].contains(&result.kind){app.asset_protocol_scope().allow_file(&result.path).map_err(err)?;}Ok(result)
+}
+#[tauri::command]
+async fn open_project_file(id:i64,state:tauri::State<'_,State>)->Result<()> {
+    let db=state.db.clone();tauri::async_runtime::spawn_blocking(move||project_files::open(&db,id)).await.map_err(err)?
 }
 
 fn scan_background(app: tauri::AppHandle, s: State) {
     if s.scanning.swap(true, Ordering::SeqCst) {
         return;
     }
+    let scan_start=std::time::Instant::now();let operation=format!("scan-{}",diagnostics::now());
+    diagnostics::phase_event(&operation,"native.scan","started",0.,serde_json::json!({}));
     let _ = app.emit("scan-started", ());
     tauri::async_runtime::spawn_blocking(move || {
-        let result = (|| {let _guard=s.content_lock.lock().map_err(err)?;library::scan_all(&s.db)?;managed_library::organise(&s.db)})();
+        let result = (|| {let _guard=diagnostics::phase(&operation,"native.scan_lock_wait",||s.content_lock.lock().map_err(err))?;diagnostics::phase(&operation,"native.scan_files",||library::scan_all(&s.db))?;diagnostics::phase(&operation,"native.scan_organise",||managed_library::organise(&s.db))})();
+        diagnostics::phase_event(&operation,"native.scan",if result.is_ok(){"success"}else{"error"},scan_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
         s.scanning.store(false, Ordering::SeqCst);
         match result {
             Ok(_) => {
                 let _ = app.emit("library-changed", ());
-                let _guard = s.content_lock.lock();
-                let _ = content::index_with_progress(&s.db, &mut |mut progress| {
+                let Ok(_guard) = diagnostics::phase(&operation,"native.index_lock_wait",||s.content_lock.lock().map_err(err)) else {return;};
+                let index_start=std::time::Instant::now();diagnostics::phase_event(&operation,"native.fingerprint_index","started",0.,serde_json::json!({}));
+                let indexed = content::index_with_progress(&s.db, &mut |mut progress| {
                     progress.phase = "indexing";
                     if let Ok(mut current) = s.index_progress.lock() {
                         *current = Some(progress);
                     }
                 });
+                diagnostics::phase_event(&operation,"native.fingerprint_index",if indexed.is_ok(){"success"}else{"error"},index_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));
                 if let Ok(mut current) = s.index_progress.lock() {
                     *current = None;
                 }
@@ -338,9 +396,9 @@ async fn download_video(input: download::Request, on_progress: tauri::ipc::Chann
 #[tauri::command]
 fn cancel_video_download(state: tauri::State<'_,State>) { state.download_cancel.store(true,Ordering::SeqCst); }
 #[tauri::command]
-async fn read_clipboard(app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<content::ClipboardContent> {
+async fn read_clipboard(diagnostic_operation:Option<String>,app: tauri::AppHandle, state: tauri::State<'_, State>) -> Result<content::ClipboardContent> {
     let data = state.db.parent().unwrap().to_path_buf();
-    let result = tauri::async_runtime::spawn_blocking(move || content::clipboard(&data))
+    let result = tauri::async_runtime::spawn_blocking(move || diagnostics::phase(&diagnostic_operation.unwrap_or_default(),"native.clipboard_read",||content::clipboard(&data)))
         .await
         .map_err(err)??;
     // Grant preview access only to the files the user explicitly pasted.
@@ -511,6 +569,19 @@ fn open_external_url(url: String) -> Result<()> {
     browser::open(&url)
 }
 
+#[tauri::command]
+async fn calendar_initialise(app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let mut changed=false;if calendar_sync::needs_initialise(&folder,&s.db)?{let _guard=s.content_lock.lock().map_err(err)?;changed=calendar_sync::initialise(&folder,&s.db)?;}let mut status=calendar_sync::status(&folder,&s.db)?;status.initialised=changed;Ok(status)}).await.map_err(err)?}
+#[tauri::command]
+async fn calendar_connect(url:String,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::connect(&folder,&s.db,&url)?;calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
+#[tauri::command]
+async fn calendar_disconnect(app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::disconnect(&folder,&s.db)?;calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
+#[tauri::command]
+async fn calendar_feed(app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Feed>{let path=state.db.clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||calendar_sync::fetch(&folder,&path)).await.map_err(err)?}
+#[tauri::command]
+async fn calendar_select(meetings:Vec<calendar_sync::Meeting>,generation:String,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::select(&folder,&s.db,meetings,&generation)?;let _=app.emit("library-changed",());calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
+#[tauri::command]
+async fn calendar_apply(meetings:Vec<calendar_sync::Meeting>,generation:String,app:tauri::AppHandle,state:tauri::State<'_,State>)->Result<calendar_sync::Status>{let s=state.inner().clone();let folder=app.state::<LibraryLocation>().config.clone();tauri::async_runtime::spawn_blocking(move||{let _guard=s.content_lock.lock().map_err(err)?;calendar_sync::apply(&folder,&s.db,meetings,&generation)?;let _=app.emit("library-changed",());calendar_sync::status(&folder,&s.db)}).await.map_err(err)?}
+
 fn main() {
     tauri::Builder::default()
         .manage(website_capture::Jobs::default())
@@ -523,12 +594,14 @@ fn main() {
                 .map(PathBuf::from)
                 .unwrap_or(data);
             std::fs::create_dir_all(&data)?;
+            diagnostics::init(&data);
             let config=data.clone();
             let selected=managed_library::selected_db(&config);
             app.manage(LibraryLocation{config:config.clone(),error:selected.as_ref().err().cloned()});
-            let db_path=match selected {Ok(path)=>path,Err(_)=>return Ok(())};
+            let db_path=match selected {Ok(path)=>path,Err(_)=>{diagnostics::event("library.open","error",0.,serde_json::json!({"error_code":"library_unavailable"}));return Ok(())}};
             let library_data=db_path.parent().unwrap().to_path_buf();
-            db::init(&db_path)?;
+            let schema_start=std::time::Instant::now();diagnostics::event("library.schema","started",0.,serde_json::json!({}));
+            let schema_result=db::init(&db_path);diagnostics::event("library.schema",if schema_result.is_ok(){"success"}else{"error"},schema_start.elapsed().as_secs_f64()*1000.,serde_json::json!({}));schema_result?;
             let db = db::connect(&db_path)?;
             if managed_library::root(&db_path)?.is_none(){resources::seed(&db)?;}
             if db::setting(&db, "root").is_none() {
@@ -629,8 +702,14 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            branding::apply_app_branding,clients_initialise,
+            calendar_initialise,calendar_connect,calendar_disconnect,calendar_feed,calendar_apply,calendar_select,diagnostics::diagnostics_record,diagnostics::diagnostics_read,diagnostics::diagnostics_folder,diagnostics::diagnostics_export,
             website_capture_browsers,website_capture_control,capture_website,website_thumbnail,open_website_screenshot,
+            client_feed,
+            client_meeting_pack,
             library_overview,
+            business_load,
+            business_save,
             library_preferences,
             save_library_preferences,
             prepare_library,
@@ -650,6 +729,9 @@ fn main() {
             get_library,
             update,
             get_media,
+            project_file_details,
+            project_file_preview,
+            open_project_file,
             rescan,
             set_root,
             backup,
@@ -673,8 +755,9 @@ fn main() {
             duplicate_recovery,
             restore_duplicate
         ])
-        .run(tauri::generate_context!())
-        .expect("Could not start Design");
+        .build(tauri::generate_context!())
+        .expect("Could not start Design")
+        .run(|_,event|{if matches!(event,tauri::RunEvent::Exit){diagnostics::shutdown();}});
 }
 
 #[cfg(test)]

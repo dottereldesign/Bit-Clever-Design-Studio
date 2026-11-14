@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "./diagnostics";
 import { LoaderCircle, RotateCcw, X } from "lucide-react";
 import type { Library } from "./model";
 type Scan = { groups: number[][]; skipped: number };

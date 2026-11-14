@@ -28,19 +28,21 @@ pub fn metadata_path(folder:&Path)->PathBuf {let path=folder.join("Library Data/
 pub fn manifest_path(folder:&Path)->PathBuf {let path=folder.join("Library Data/manifest.json");if path.exists(){path}else{folder.join("manifest.json")}}
 pub fn preferences_path(folder:&Path)->PathBuf {let path=folder.join("Library Data/preferences.json");if path.exists(){path}else{folder.join("preferences.json")}}
 pub fn collection(item:&db::Item)->&'static str {
+    if item.project_only{return "General";}
     if item.category.as_deref().is_some_and(|c|c.starts_with("Components / ")) || !item.component_folders.is_empty(){"App Components"}
     else if item.kind=="link" || item.source=="Videos" || item.source.starts_with("Videos/") || item.source=="General" || item.source.starts_with("General/"){"General"}
     else {"Design Inspo"}
 }
 pub fn allocate_filename(title:&str,source:&Path,group:&str,used:&mut std::collections::HashSet<String>)->String {
-    let extension=source.extension().and_then(|x|x.to_str()).unwrap_or("bin").to_ascii_lowercase();
+    let extension=source.extension().and_then(|x|x.to_str()).unwrap_or("").to_ascii_lowercase();
+    let suffix=if extension.is_empty(){String::new()}else{format!(".{extension}")};
     let mut stem=title.trim().to_owned();
     if stem.is_empty(){stem=source.file_stem().unwrap_or_default().to_string_lossy().into_owned();}
     if stem.to_lowercase().starts_with("clipboard-") || stem.to_lowercase().starts_with("web image-"){stem="Saved Image".into();}
     let mut stem=safe_name(&stem);
     if ["CON","PRN","AUX","NUL","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9","LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"].contains(&stem.split('.').next().unwrap_or("").to_ascii_uppercase().as_str()){stem=format!("Saved {stem}");}
-    let mut candidate=format!("{stem}.{extension}");let mut n=2;
-    while !used.insert(format!("{group}/{candidate}").to_lowercase()){candidate=format!("{stem} ({n}).{extension}");n+=1;}
+    let mut candidate=format!("{stem}{suffix}");let mut n=2;
+    while !used.insert(format!("{group}/{candidate}").to_lowercase()){candidate=format!("{stem} ({n}){suffix}");n+=1;}
     candidate
 }
 fn display_folder(name:&str,preferences:&serde_json::Value)->String{
@@ -55,7 +57,7 @@ pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::
     let mut html=String::from(r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Bit Clever Library</title><style>body{margin:32px;background:#f6f7f3;color:#26352b;font:15px system-ui}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}h1{font-size:24px;margin-right:auto}input,select{padding:10px;border:1px solid #d3d9ce;border-radius:8px;background:white}main{columns:280px;column-gap:16px;margin-top:24px}article{break-inside:avoid;background:white;border-radius:10px;margin-bottom:16px;padding:12px}article[hidden]{display:none}img,video{width:100%;max-height:500px;object-fit:contain;border-radius:6px}a{color:inherit;overflow-wrap:anywhere}small{display:block;color:#657263;margin-top:6px}button{border:0;border-radius:5px;margin:4px 4px 0 0;padding:5px;background:#e7ecdf;cursor:pointer}</style><header><h1>Bit Clever Library</h1><input id="search" aria-label="Search library" placeholder="Search library"><select id="section" aria-label="Collection"><option value="">All Collections</option><option>Design Inspo</option><option>App Components</option><option>General</option></select><select id="folder" aria-label="Folder"><option value="">All Folders</option></select></header><main>"#);
     for item in &library.items {
         let mut sections=vec![collection(item)];
-        if item.kind!="link"&&(!item.design_folders.is_empty()||item.category.as_deref().is_some_and(|c|!c.starts_with("Components / ")))&& !sections.contains(&"Design Inspo"){sections.push("Design Inspo");}
+        if !item.project_only&&item.kind!="link"&&(!item.design_folders.is_empty()||item.category.as_deref().is_some_and(|c|!c.starts_with("Components / ")))&& !sections.contains(&"Design Inspo"){sections.push("Design Inspo");}
         for section in sections {
         let mut folders=if section=="App Components"{item.component_folders.clone()}else{item.design_folders.clone()};
         if let Some(c)=&item.category {if (c.starts_with("Components / ")== (section=="App Components"))&&c!="Components / Uncategorised"&&!folders.contains(c){folders.push(c.clone());}}
@@ -67,7 +69,7 @@ pub fn write_browser(output:&Path,library:&db::Library,preferences:&serde_json::
         let url=if item.kind=="link" {if db::valid_url(&item.path).is_err(){continue;}item.path.clone()}else{item.path.split('/').map(|s|url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>().replace('+',"%20")).collect::<Vec<_>>().join("/")};
         html.push_str(&format!("<article data-section=\"{}\" data-folders=\"{}\"><a href=\"{}\">",section,escape(&names),escape(&url)));
         if item.kind=="video"{html.push_str(&format!("<video controls preload=\"none\" src=\"{}\"></video>",escape(&url)));}
-        else if item.kind!="link"&&!item.missing{html.push_str(&format!("<img loading=\"lazy\" src=\"{}\" alt=\"{}\">",escape(&url),escape(&item.name)));}
+        else if (item.kind=="image"||item.kind=="animation")&&!item.missing{html.push_str(&format!("<img loading=\"lazy\" src=\"{}\" alt=\"{}\">",escape(&url),escape(&item.name)));}
         html.push_str(&format!("<div>{}</div></a><small>{}</small>",escape(&item.name),section));
         for label in labels{html.push_str(&format!("<button type=\"button\">{}</button>",escape(&label)));}
         html.push_str("</article>");
@@ -217,6 +219,7 @@ fn run(conn: &rusqlite::Connection, output: &Path, data: &Path, preferences: &mu
     let snapshot=output.join("metadata.snapshot.sqlite");
     conn.backup("main",&snapshot,None).map_err(err)?;
     let mut library=db::load(&snapshot,false)?;
+    let client_events=crate::clients::events(&db::connect(&snapshot)?,None,None,-1)?;
     for suffix in ["", "-wal", "-shm"] {let path=output.join(format!("metadata.snapshot.sqlite{suffix}"));if path.exists(){fs::remove_file(path).map_err(err)?;}}
     fs::create_dir_all(output.join("Library Data")).map_err(err)?;
     let mut used=std::collections::HashSet::new();
@@ -307,7 +310,7 @@ fn run(conn: &rusqlite::Connection, output: &Path, data: &Path, preferences: &mu
 
     write_browser(output,&library,preferences)?;
     fs::write(output.join("Read Me.txt"),"BIT CLEVER LIBRARY BACKUP\n\nDesign Inspo/ and App Components/ contain originals, stored once per item. General/ holds other collections. Appearance/ holds custom images. Library Data/ preserves every folder membership, project, tag, saved link and setting.\n\nOpen Browse Library.html to browse offline. In Bit Clever, choose Storage > Open Existing Library to use this folder separately, or Merge Backup to add it to your current library.\n\nCopy this ENTIRE folder to an external drive and Verify Backup on that copy. INCOMPLETE.txt means the backup did not finish. Review unavailable files before relying on a backup. Removed items, undo history, browser sessions and caches are excluded. Keep another copy on a separate drive or location.\n").map_err(err)?;
-    fs::write(output.join("Library Data/library.json.part"),serde_json::to_vec_pretty(&Backup{version:1,portable:true,library}).map_err(err)?).map_err(err)?;
+    fs::write(output.join("Library Data/library.json.part"),serde_json::to_vec_pretty(&Backup{version:1,portable:true,client_events,library}).map_err(err)?).map_err(err)?;
     fs::rename(output.join("Library Data/library.json.part"),output.join("Library Data/library.json")).map_err(err)?;
     fs::write(output.join("Library Data/preferences.json"),serde_json::to_vec_pretty(preferences).map_err(err)?).map_err(err)?;
     for name in ["Library Data/library.json","Library Data/preferences.json","Library Data/links.html","Library Data/links.csv","Read Me.txt","Browse Library.html"] {
@@ -386,6 +389,7 @@ mod tests {
         let conn=db::connect(&path).unwrap();
         conn.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=1",[]).unwrap();
         conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
+        conn.execute_batch("INSERT INTO project_folders VALUES(1,7,NULL,'Research',NULL),(2,7,1,'Psychodrama',0);INSERT INTO item_project_folders VALUES(1,2);UPDATE items SET rating=5 WHERE kind='link';").unwrap();
         db::change(&path,serde_json::from_value(serde_json::json!({"action":"set_category","ids":[2],"value":"Social Media"})).unwrap()).unwrap();
         let cover=path.parent().unwrap().join("home-covers/cover.png");fs::create_dir_all(cover.parent().unwrap()).unwrap();fs::write(&cover,b"cover bytes").unwrap();
         let prefs=serde_json::json!({"colour-history":[{"hex":"#ABCDEF","projects":["project:7","project:999"]}],"home-tiles":[{"id":"project:7","cover":{"path":cover,"width":10,"height":10}}],"app-icons":{"overrides":{"project:7":{"kind":"asset","value":cover}}},"folder-labels":{"Mobile":"iOS & Android"},"collection-shortcuts":[{"target":{"kind":"project","value":"7"}}]});
@@ -397,6 +401,7 @@ mod tests {
         db::import(&restored,metadata_path(&moved)).unwrap();
         let lib=db::load(&restored,false).unwrap();let item=lib.items.iter().find(|i|i.name=="Reference 1").unwrap();
         assert_eq!(item.component_folders,vec!["Components / Headers","Components / Navbars"]);
+        let child=lib.project_folders.iter().find(|f|f.name=="Psychodrama").unwrap();assert_eq!(item.project_folders,vec![child.id]);assert!(child.parent_id.is_some());assert!(item.projects.contains(&child.project_id));assert_eq!(lib.items.iter().find(|i|i.kind=="link").unwrap().rating,Some(5));
         let design=lib.items.iter().find(|i|i.name=="Reference 2").unwrap();assert!(design.design_folders.contains(&"Social Media".to_string()));assert!(design.design_folders.len()>1);
         assert!(fs::read_to_string(moved.join("Browse Library.html")).unwrap().contains("Social Media"));
         let settings=restore_preferences(&moved,&restored).unwrap();let project=lib.projects.iter().find(|p|p.name=="Keep project").unwrap();
@@ -426,7 +431,8 @@ mod tests {
         let (temp,path,destination)=fixture();let conn=db::connect(&path).unwrap();
         conn.execute("DELETE FROM items WHERE missing=1",[]).unwrap();
         conn.execute("UPDATE item_categories SET name='Components / Uncategorised' WHERE item_id=1",[]).unwrap();
-        conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();drop(conn);
+        conn.execute_batch("INSERT INTO item_component_folders VALUES(1,'Components / Headers');INSERT INTO item_component_folders VALUES(1,'Components / Navbars');").unwrap();
+        conn.execute_batch("INSERT INTO project_folders VALUES(1,7,NULL,'Research',NULL),(2,7,1,'Psychodrama',0);INSERT INTO item_project_folders VALUES(1,2);UPDATE items SET rating=5 WHERE kind='link';").unwrap();drop(conn);
         let result=export(&path,&destination,"Bit Clever Library",&AtomicBool::new(false),&mut |_|{}).unwrap();
         let folder=PathBuf::from(result.path);let managed=crate::managed_library::open(&folder).unwrap();
         crate::managed_library::verify_live(&folder).unwrap();

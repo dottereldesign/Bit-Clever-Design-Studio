@@ -75,7 +75,7 @@ try{
  checks.push('Categories replace Sources; Photography lives in Categories; Facebook Videos stays in main navigation');
  category('3d').click();await until(()=>cards().length===2,'3d category');assert(document.querySelector('.card-remove-folder'),'Design quick removal missing');assert([...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='All Designs'),'All Designs label missing');
  for(const id of [1,2]){document.querySelector(`[data-item-id="${id}"] .card-select`).click();await pause(30);}
- assert(document.querySelector('.selection-bar').textContent.includes('2 selected'),'Multi-selection failed');
+ assert(document.querySelectorAll('.card-select[aria-pressed="true"]').length===2,'Multi-selection failed');
  const data=new DataTransfer();let nativeGhost;const setDragImage=data.setDragImage.bind(data);data.setDragImage=(element,x,y)=>{nativeGhost=element;setDragImage(element,x,y);};document.querySelector('[data-item-id="1"]').dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));
  assert(JSON.stringify(JSON.parse(data.getData('application/design-items')))==='[1,2]','Drag lost the selected references');
  await until(()=>document.querySelector('.item-drag-badge'),'Compact badge');
@@ -98,7 +98,7 @@ try{
  await until(()=>button('Organise folders…'),'Context action');button('Organise folders…').click();await until(()=>document.querySelector('.category-picker'),'Picker');choose('branding');
  await until(()=>library.items[0].design_folders?.includes('branding'),'Design checkbox adds folder');assert(library.items[0].design_folders.includes('3d'),'Adding a design folder removed the original');await until(()=>button('Done')&&!button('Done').disabled,'Picker save finished');button('Done').click();await until(()=>!document.querySelector('.category-picker'),'Close picker');await until(()=>button('Undo'),'Picker Undo');button('Undo').click();await until(()=>cards().length===2,'Undo picker');
  for(const id of [1,2]){document.querySelector(`[data-item-id="${id}"] .card-select`).click();await pause(30);}
- button('Organise folders').click();await until(()=>document.querySelector('.category-picker'),'Bulk picker');
+ document.querySelector('[data-item-id="1"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:350,clientY:300}));await until(()=>button('Organise folders…'),'Bulk context action');button('Organise folders…').click();await until(()=>document.querySelector('.category-picker'),'Bulk picker');
  const input=document.querySelector('[aria-label="Find or create category"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Identity');input.dispatchEvent(new Event('input',{bubbles:true}));
  await until(()=>button('Create “Identity” & add'),'Create and move');button('Create “Identity” & add').click();await until(()=>category('Identity')&&cards().length===2,'New category');
  category('Identity').click();await until(()=>cards().length===2,'Open new category');

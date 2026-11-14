@@ -3,16 +3,16 @@ import { Folder, X } from "lucide-react";
 import { categoryLabel, componentFoldersOf, designFoldersOf, type Item } from "./model";
 import { isComponent, componentInbox } from "./componentsLibrary";
 
-export default function CategoryPicker({categories,count,choose,close,componentItems=[],toggleComponent}: {componentItems?:Item[];toggleComponent?:(name:string,remove:boolean)=>Promise<void>;categories:string[];count:number;choose:(name:string)=>Promise<void>;close:()=>void}) {
+export default function CategoryPicker({creatingComponents=false,categories,count,choose,close,componentItems=[],toggleComponent}: {creatingComponents?:boolean;componentItems?:Item[];toggleComponent?:(name:string,remove:boolean)=>Promise<void>;categories:string[];count:number;choose:(name:string)=>Promise<void>;close:()=>void}) {
   const [query,setQuery]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
   const commit=async(name:string)=>{if(busy)return;setBusy(true);setError("");try{await choose(name);}catch(e){setError(String(e));setBusy(false);}};
   const toggle=async(name:string,remove:boolean)=>{if(busy||!toggleComponent)return;setBusy(true);setError("");try{await toggleComponent(name,remove);}catch(e){setError(String(e));}finally{setBusy(false);}};
   const shown=categories.filter(c=>categoryLabel(c).toLocaleLowerCase().includes(query.trim().replace(/_/g," ").toLocaleLowerCase()));
   const isNew=!!query.trim()&&!categories.some(c=>categoryLabel(c).replace(/^Components \/ /, "").toLocaleLowerCase()===categoryLabel(query).toLocaleLowerCase());
-  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)close();}}><div className="modal category-picker" role="dialog" aria-modal="true" aria-label={count?"Change category":"New category"} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'&&!busy)close();}}>
-    <div className="modal-heading"><h2>{count?`Organise folders · ${count}`:"New category"}</h2><button className="icon-button" aria-label="Close category picker" disabled={busy} onClick={close}><X size={17}/></button></div>
+  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)close();}}><div className="modal category-picker" role="dialog" aria-modal="true" aria-label={count?"Change category":(creatingComponents?"New component folder":"New category")} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'&&!busy)close();}}>
+    <div className="modal-heading"><h2>{count?`Organise folders · ${count}`:(creatingComponents?"New component folder":"New category")}</h2><button className="icon-button" aria-label="Close category picker" disabled={busy} onClick={close}><X size={17}/></button></div>
     <form onSubmit={e=>{e.preventDefault();const name=isNew?query.trim():count?shown[0]:undefined;if(name)void commit(name);}}>
-      <input autoFocus aria-label="Find or create category" placeholder={count?"Find a folder or create a category…":"Category name"} maxLength={100} value={query} disabled={busy} onChange={e=>setQuery(e.target.value)}/>
+      <input autoFocus aria-label="Find or create category" placeholder={count?"Find a folder or create a category…":(creatingComponents?"Folder name":"Category name")} maxLength={100} value={query} disabled={busy} onChange={e=>setQuery(e.target.value)}/>
       {count>0&&toggleComponent&&<><p>Add to several folders. Removing the last folder returns an item to Uncategorised.</p>{[false,true].map(component=><section key={String(component)}><h3>{component?'App Components':'Design Inspo'}</h3><div className="category-choices">{shown.filter(n=>!!n&&isComponent(n)===component&&n!==componentInbox).map(name=>{
         const assigned=componentItems.filter(i=>(component?componentFoldersOf(i):designFoldersOf(i)).includes(name)).length;
         const all=assigned===count;

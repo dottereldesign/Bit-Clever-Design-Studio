@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum Patch {
+    Studio(crate::studio::Snapshot),
+    ClientEdit(crate::client_records::EditSnapshot),
+    ProjectOnly(i64,bool),
+    ProjectOrganisation(crate::project_folders::State),
+    Rating(i64, Option<i64>),
     Category(i64, Option<String>),
     ComponentFolders(i64, Vec<String>),
     DesignFolders(i64,Vec<String>),
@@ -23,20 +28,30 @@ pub enum Patch {
 }
 
 pub fn snapshot(db: &Connection, c: &Change) -> Result<Option<(String, Vec<Patch>)>> {
+    if c.action=="close_studio_lead"{return Ok(Some(("Close lead".into(),crate::lead_close::snapshot(db,c.value.as_deref().unwrap_or(""))?)));}
+    if c.action=="update_studio"||["convert_studio_lead","win_studio_lead"].contains(&c.action.as_str()){let id=if c.action=="update_studio"{let v:serde_json::Value=serde_json::from_str(c.value.as_deref().unwrap_or("")).map_err(err)?;v["id"].as_str().ok_or("Missing record")?.to_owned()}else{c.value.clone().unwrap_or_default()};let mut patches=vec![Patch::Studio(crate::studio::snapshot(db,&id)?)];if ["convert_studio_lead","win_studio_lead"].contains(&c.action.as_str()){if let Some(lead)=crate::studio::get(db,&id)? {let client=crate::clients::lead_client(db,&lead,c.target)?;patches.push(Patch::Studio(crate::studio::snapshot(db,&client)?));}patches.push(Patch::ProjectOrganisation(crate::project_folders::snapshot_with_clients(db)?));for e in crate::studio::load(db)?.into_iter().filter(|r|r.kind=="contact"){patches.push(Patch::Studio(crate::studio::snapshot(db,&e.id)?));}}return Ok(Some((if ["convert_studio_lead","win_studio_lead"].contains(&c.action.as_str()){"Hand over lead to project"}else{"Edit studio record"}.into(),patches)));}
+    if c.action=="update_client_records"{let mut patches=vec![Patch::ClientEdit(crate::client_records::snapshot(db,c.target.unwrap_or(0),c.value.as_deref().unwrap_or(""))?)];let v:serde_json::Value=serde_json::from_str(c.value.as_deref().unwrap_or("")).map_err(err)?;if v["type"]=="contact"{let cid=v["id"].as_str().unwrap_or("");let p=c.target.unwrap_or(0);let shared=crate::client_records::load(db)?.contacts.iter().find(|r|r.project_id==p&&r.id==cid).map(crate::studio::contact_id).unwrap_or(format!("project:{p}:{cid}"));patches.push(Patch::Studio(crate::studio::snapshot(db,&shared)?));if let Some(company)=v["patch"]["company"].as_str(){patches.push(Patch::Studio(crate::studio::snapshot(db,&crate::studio::company_id(&shared,company))?));}}return Ok(Some(("Edit client records".into(),patches)));}
+    if c.action=="delete_project"{let mut patches=vec![Patch::ProjectOrganisation(crate::project_folders::snapshot_with_clients(db)?)];for e in crate::studio::load(db)?.into_iter().filter(|e|e.projects.contains(&c.target.unwrap_or(0))){patches.push(Patch::Studio(crate::studio::snapshot(db,&e.id)?));}return Ok(Some(("Delete project".into(),patches)));}
+    if c.action.contains("project_folder") || ["update_project_overview","delete_project","remove_project"].contains(&c.action.as_str()) {
+        return Ok(Some((match c.action.as_str(){"update_client_records"=>"Edit client records","update_project_overview"=>"Edit project overview","unfile_project_folder"=>"Move to Unfiled","create_project_folder"=>"Create project folder","rename_project_folder"=>"Rename project folder","delete_project_folder"=>"Delete project folder","add_project_folder"=>"Add to project folder","remove_project_folder"=>"Remove from project folder","remove_project"=>"Remove from project","delete_project"=>"Delete project","create_project"=>"Create project","rename_project"=>"Rename project","add_project"=>"Add to project","pin_project"=>"Pin reference","unpin_project"=>"Unpin reference",_=>"Arrange project folders"}.into(),vec![Patch::ProjectOrganisation(if c.action=="delete_project"{crate::project_folders::snapshot_with_clients(db)?}else{crate::project_folders::snapshot(db)?})])));
+    }
     let mut patches = vec![];
     let value = c.value.as_deref().unwrap_or("").trim();
     let target = c.target.unwrap_or(0);
     let label = match c.action.as_str() {
+        "rate_links"=>{for id in &c.ids{let rating=db.query_row("SELECT rating FROM items WHERE id=? AND kind='link'",[id],|r|r.get::<_,Option<i64>>(0)).optional().map_err(err)?;if let Some(rating)=rating{if rating!=c.value.as_deref().and_then(|v|v.parse::<i64>().ok()){patches.push(Patch::Rating(*id,rating));}}}"Rate links"},
         "set_category" | "remove_component_folder" | "remove_design_folder" => {
             let mut ids=c.ids.clone();ids.sort();ids.dedup();
             for id in ids {
                 let source: Option<String> = db.query_row("SELECT source FROM items WHERE id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                 if let Some(source)=source {
+                    let project_only=db::project_only(db,id)?;
+                    if project_only {patches.push(Patch::ProjectOnly(id,true));}
                     let previous: Option<String>=db.query_row("SELECT name FROM item_categories WHERE item_id=?",[id],|r|r.get(0)).optional().map_err(err)?;
                     let folders=db::component_memberships(db,id)?;
 
                     if c.action=="set_category"&&db::category_is_new(db,id,value)?{patches.push(Patch::CategoryArrivals(id,db::category_arrivals(db,id)?));}
-                    if previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") || c.action=="remove_design_folder" {
+                    if project_only || previous.clone().unwrap_or_else(||db::default_category(&source))!=value || !folders.is_empty() || value.starts_with("Components / ") || c.action=="remove_design_folder" {
                         patches.push(Patch::DesignFolders(id,db::design_memberships(db,id)?));
                         patches.push(Patch::Category(id,previous));
                         patches.push(Patch::ComponentFolders(id,folders));
@@ -122,6 +137,11 @@ pub fn redo(db:&Connection)->Result<()> { transfer(db, true) }
 // travel back to the other stack without replaying commands or changing IDs.
 fn inverse(db: &Connection, patch: &Patch) -> Result<Patch> {
     Ok(match patch {
+        Patch::Studio(s)=>Patch::Studio(crate::studio::snapshot(db,&s.id)?),
+        Patch::ProjectOnly(id,_)=>Patch::ProjectOnly(*id,db::project_only(db,*id)?),
+        Patch::ClientEdit(s)=>Patch::ClientEdit(crate::client_records::inverse(db,s)?),
+        Patch::ProjectOrganisation(s)=>Patch::ProjectOrganisation(if s.includes_clients(){crate::project_folders::snapshot_with_clients(db)?}else{crate::project_folders::snapshot(db)?}),
+        Patch::Rating(id,_)=>Patch::Rating(*id,db.query_row("SELECT rating FROM items WHERE id=?",[id],|r|r.get(0)).map_err(err)?),
         Patch::DesignFolders(id,_) => Patch::DesignFolders(*id,db::design_memberships(db,*id)?),
         Patch::CategoryArrivals(id,_) => Patch::CategoryArrivals(*id,db::category_arrivals(db,*id)?),
         Patch::ComponentFolders(id,_) => Patch::ComponentFolders(*id,db::component_memberships(db,*id)?),
@@ -165,10 +185,16 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
     let (from,to)=if redo {("organisation_redo","organisation_history")} else {("organisation_history","organisation_redo")};
     let entry:Option<(i64,String,String)>=db.query_row(&format!("SELECT id,label,patches FROM {from} ORDER BY id DESC LIMIT 1"),[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(err)?;
     let (entry,label,patches)=entry.ok_or(if redo {"Nothing to redo yet."} else {"Nothing to undo yet."})?;
-    let mut inverses=vec![];
-    for patch in serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)? {
-        inverses.push(inverse(db,&patch)?);
+    let patches=serde_json::from_str::<Vec<Patch>>(&patches).map_err(err)?;
+    // Shared contacts can update several records. Capture all inverses before applying any patch.
+    let mut inverses=patches.iter().map(|patch|inverse(db,patch)).collect::<Result<Vec<_>>>()?;
+    for patch in patches {
         match patch {
+            Patch::Studio(s)=>crate::studio::apply(db,s)?,
+            Patch::ProjectOnly(id,value)=>{db.execute("UPDATE items SET project_only=? WHERE id=?",params![value,id]).map_err(err)?;},
+            Patch::ClientEdit(state)=>crate::client_records::apply(db,state)?,
+            Patch::ProjectOrganisation(state)=>crate::project_folders::restore(db,state)?,
+            Patch::Rating(id,rating)=>{db.execute("UPDATE items SET rating=? WHERE id=?",params![rating,id]).map_err(err)?;},
             Patch::DesignFolders(id,names)=>{db.execute("DELETE FROM item_design_folders WHERE item_id=?",[id]).map_err(err)?;for name in names{db.execute("INSERT INTO item_design_folders VALUES(?,?)",params![id,name]).map_err(err)?;}},
             Patch::CategoryArrivals(id,arrivals)=>{
                 db.execute("DELETE FROM category_arrivals WHERE item_id=?",[id]).map_err(err)?;
@@ -181,12 +207,12 @@ fn transfer(db:&Connection,redo:bool)->Result<()> {
             Patch::Category(id,name)=>{if let Some(name)=name {db.execute("INSERT INTO item_categories(item_id,name) SELECT id,? FROM items WHERE id=? ON CONFLICT(item_id) DO UPDATE SET name=excluded.name",params![name,id]).map_err(err)?;}else{db.execute("DELETE FROM item_categories WHERE item_id=?",[id]).map_err(err)?;}},
             Patch::Member(project,id,label,previous)=>{
                 let table=if project{"item_projects"}else{"item_tags"};
-                db.execute(&format!("DELETE FROM {table} WHERE item_id=? AND label_id=?"),params![id,label]).map_err(err)?;
+                if previous.is_none() || !project {db.execute(&format!("DELETE FROM {table} WHERE item_id=? AND label_id=?"),params![id,label]).map_err(err)?;}
                 if let Some(favourite)=previous {
                     let labels=if project{"projects"}else{"tags"};
                     let valid:bool=db.query_row(&format!("SELECT EXISTS(SELECT 1 FROM items WHERE id=?) AND EXISTS(SELECT 1 FROM {labels} WHERE id=?)"),params![id,label],|r|r.get(0)).map_err(err)?;
                     if !valid {return Err("A reference or label needed for Undo no longer exists.".into());}
-                    if project {db.execute("INSERT INTO item_projects(item_id,label_id,favourite) VALUES(?,?,?)",params![id,label,favourite]).map_err(err)?;}else{db.execute("INSERT INTO item_tags(item_id,label_id) VALUES(?,?)",params![id,label]).map_err(err)?;}
+                    if project {db.execute("INSERT INTO item_projects(item_id,label_id,favourite) VALUES(?,?,?) ON CONFLICT(item_id,label_id) DO UPDATE SET favourite=excluded.favourite",params![id,label,favourite]).map_err(err)?;}else{db.execute("INSERT INTO item_tags(item_id,label_id) VALUES(?,?)",params![id,label]).map_err(err)?;}
                 }
             },
             Patch::Archived(id,previous)=>{db.execute("UPDATE items SET archived=? WHERE id=? AND NOT EXISTS(SELECT 1 FROM duplicate_recovery WHERE item_id=items.id)",params![previous,id]).map_err(err)?;},

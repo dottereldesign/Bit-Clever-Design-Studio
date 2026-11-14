@@ -1,9 +1,19 @@
 import { allComponents, filingCategory, isComponent, isWebDesign, componentInbox, isHeaderFolder } from "./componentsLibrary";
+export type ClientContact={id:string;project_id:number;name:string;role:string;company:string;email:string;phone:string;notes:string;primary:boolean;archived:boolean};
+export type ClientRecord={id:string;project_id:number;kind:'meeting'|'feedback'|'decision';title:string;date:string;people:string[];body:string;status:string;files:number[];related:string[];archived:boolean};
+export type ClientData={contacts:ClientContact[];records:ClientRecord[]};
+export type ProjectSection='overview'|'files'|'client'|'moodboard';
+export type MoodboardNode={id:string;kind:"reference"|"note"|"color";item_id:number|null;text:string;color:string;x:number;y:number;width:number;height:number};
+export type ProjectOverviewData={moodboard?:MoodboardNode[]|null;project_id:number;brief:string;status:string;deadline:string;actions:{priority?:string;waiting?:boolean;source_record?:string|null;id:string;text:string;deadline:string;done:boolean}[]};
+export type ProjectFolder = {id:number;project_id:number;parent_id:number|null;name:string;position:number|null};
 export type Item = {
+  project_only?:boolean;
+  rating?: number|null;
+  project_folders?: number[];
   id: number;
   path: string;
   name: string;
-  kind: "image" | "video" | "animation" | "link";
+  kind: "image" | "video" | "animation" | "link" | "file";
   source: string;
   modified: number;
   added: number;
@@ -27,9 +37,13 @@ export const isBoardDestination = (destination: string): destination is BoardKey
 export const isBoardLink = (item: Item) => item.kind === "link" && Object.values(boardNames).includes(item.source);
 export const isTableCollection = (destination: string | null) => destination === "fonts" || destination === "brand-guidelines";
 export const isTableLink = (item: Item) => item.kind === "link" && (item.source === "Fonts" || item.source === "Brand Guidelines");
-export const isCollectionLink = (item: Item) => isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
+export const isCollectionLink = (item: Item) => item.source === "Studio" || isResource(item) || isBoardLink(item) || (item.kind === "link" && componentFoldersOf(item).length>0);
 export const canCopyImage = (item: Item) => item.kind === "image" || item.kind === "animation";
 export type Library = {
+  studio?:import("./studio").StudioEntry[];
+  client_records?:ClientData;
+  project_overviews?: ProjectOverviewData[];
+  project_folders?: ProjectFolder[];
   undo_entries?: {id:number;label:string}[];
   undo_label?: string | null;
   undo_count?: number;
@@ -50,6 +64,10 @@ export function orderedProjects(projects: Label[], recent: number[] = []) {
   return [...projects].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.name.localeCompare(b.name));
 }
 export type Filters = {
+  designsOnly?: boolean;
+  projectFolder?: number|"unfiled"|null;
+  projectFolderIds?:number[];
+  rating?:string;
   includeCollections?: boolean;
   tagMode?: "any" | "all";
   category?: string | null;
@@ -63,16 +81,61 @@ export type Filters = {
   sort: string;
   seed: number;
 };
-export function filterItems(items: Item[], f: Filters): Item[] {
+// Derived from one immutable library snapshot. Never persisted or incrementally
+// patched: imports, edits, undo/redo and restores all replace the item array.
+export type MembershipIndex = {
+  items: Item[];
+  categories: ReadonlyMap<string, Item[]>;
+  projects: ReadonlyMap<number, Item[]>;
+  projectFolders: ReadonlyMap<number, Item[]>;
+  designs: Item[];
+};
+export function createMembershipIndex(items: Item[]): MembershipIndex {
+  const categories = new Map<string, Item[]>();
+  const projects = new Map<number, Item[]>();
+  const projectFolders = new Map<number, Item[]>();
+  const designs: Item[] = [];
+  const add = <K,>(map: Map<K, Item[]>, key: K, item: Item) => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(item);
+    else map.set(key, [item]);
+  };
+  for (const item of items) {
+    const components = componentFoldersOf(item), folders = designFoldersOf(item);
+    if (folders.length) designs.push(item);
+    // Match the existing folder visibility rule for ordinary links.
+    if (item.kind !== 'link' || components.length) {
+      for (const folder of [...components, ...folders]) add(categories, folder, item);
+      if (components.length) add(categories, allComponents, item);
+    }
+    for (const project of new Set(item.projects)) add(projects, project, item);
+    for (const folder of new Set(item.project_folders)) add(projectFolders, folder, item);
+  }
+  return { items, categories, projects, projectFolders, designs };
+}
+
+export function filterItems(items: Item[], f: Filters, index?: MembershipIndex): Item[] {
   if(f.category!=null&&isHeaderFolder(f.category))f={...f,category:filingCategory(f.category)};
+  // A stale index must never hide a newly imported or restored item.
+  if (index?.items !== items) index = undefined;
+  let candidates = items;
+  const categoryItems = index && f.category != null ? index.categories.get(f.category) ?? [] : undefined;
+  const designItems = index && f.designsOnly ? index.designs : undefined;
+  const options = [categoryItems, designItems,
+    index && f.project ? index.projects.get(f.project) ?? [] : undefined,
+    index && typeof f.projectFolder === 'number' ? index.projectFolders.get(f.projectFolder) ?? [] : undefined];
+  for (const bucket of options) if (bucket && bucket.length <= candidates.length) candidates = bucket;
   const query = f.search.toLocaleLowerCase().trim();
-  const result = items.filter(
+  const result = candidates.filter(
     (i) =>
       (f.collection ? i.kind === "link" && i.source === f.collection : (f.includeCollections || (f.category && (isComponent(f.category) || f.category === allComponents)) || !isCollectionLink(i) || (!!f.project && !f.linksOnly))) &&
       (!f.project || i.projects.includes(f.project)) &&
+      (f.projectFolder==null || (f.projectFolder==='unfiled' ? !i.project_folders?.some(id=>f.projectFolderIds?.includes(id)) : i.project_folders?.includes(f.projectFolder))) &&
+      (!f.rating || (i.kind==='link' && (f.rating==='unrated' ? !i.rating : f.rating==='4+' ? (i.rating??0)>=4 : i.rating===Number(f.rating)))) &&
       (!f.linksOnly || i.kind === "link") &&
       (f.type === "all" || i.kind === f.type) &&
-      (f.category == null || ((i.kind !== "link" || componentFoldersOf(i).length>0) && (f.category === allComponents ? componentFoldersOf(i).length>0 : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
+      (f.category == null || candidates === categoryItems || ((i.kind !== "link" || componentFoldersOf(i).length>0) && (f.category === allComponents ? componentFoldersOf(i).length>0 : (isComponent(f.category) ? componentFoldersOf(i).includes(f.category) : designFoldersOf(i).includes(f.category))))) &&
+      (!f.designsOnly || candidates === designItems || designFoldersOf(i).length > 0) &&
       (!f.source ||
         i.source === f.source ||
         i.source.startsWith(f.source + "/")) &&
@@ -94,7 +157,7 @@ export function filterItems(items: Item[], f: Filters): Item[] {
         ? Number(b.favourites?.includes(f.project) || false) -
           Number(a.favourites?.includes(f.project) || false)
         : 0) ||
-      (f.sort === "name"
+      (f.sort.startsWith("rating-") ? (a.rating==null?1:0)-(b.rating==null?1:0) || (f.sort==="rating-high"?(b.rating??0)-(a.rating??0):(a.rating??0)-(b.rating??0)) || a.name.localeCompare(b.name) : f.sort === "name"
         ? a.name.localeCompare(b.name, undefined, { numeric: true })
         : f.sort === "shuffle"
           ? hash(a.id) - hash(b.id)
@@ -105,7 +168,8 @@ export const categoryOf = (item: Item): string => {
   const name=item.category ?? (item.source === "Photography" || item.source.startsWith("Photography/") ? "Photography" : item.source.startsWith("Design/") ? item.source.slice(7).split('/')[0] : "");
   return name.toLowerCase()==="captures"?"":filingCategory(name);
 };
-export const readFolderLabels=():Record<string,string>=>{try{const value=JSON.parse(localStorage.getItem('folder-labels')??'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch{return {};}};
+let labelText:string|null=null,labelCache:Record<string,string>={};
+export const readFolderLabels=():Record<string,string>=>{try{const text=localStorage.getItem('folder-labels')??'{}';if(text!==labelText){const value=JSON.parse(text);labelCache=value&&typeof value==='object'&&!Array.isArray(value)?value:{};labelText=text;}return labelCache;}catch{return {};}};
 export const categoryLabel = (name: string): string => {
  const label=readFolderLabels()[name];if(typeof label==='string'&&label.trim())return isComponent(name)?`Components / ${label}`:label;
  if(/^business[ _-]+cards$/i.test(name.trim()))return "Cards";
@@ -120,6 +184,7 @@ export const libraryCategories = (lib: Library): string[] => [...new Set([...(li
 
 
 export const designFoldersOf=(item:Item):string[]=>{
+ if(item.project_only)return [];
  const category=categoryOf(item);
  const folders=[...new Set([...(item.design_folders??[]),...(category?[category]:[])])].filter(n=>n&&!isComponent(n)&&!isWebDesign(n));
  return folders.length?folders:(!isComponent(category)?['']:[]);
