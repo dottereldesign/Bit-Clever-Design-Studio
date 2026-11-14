@@ -181,3 +181,8 @@
 .section-feature[data-custom-colour=true]:is(.section-style-12,.section-style-13,.section-style-14,.section-style-15,.section-style-17,.section-style-19,.section-style-20)>.sidebar-heading{background:var(--section-tint);color:var(--section-ink)}
 
 .section-clients .section-chevron{display:none}
+
+/* Placeholder headers inherit the chosen treatment and remain reorderable. */
+.section-coming-soon > .sidebar-heading { filter:saturate(.4); opacity:.72; }
+.section-coming-soon .section-toggle { cursor:default; }
+.section-coming-soon-badge { flex-shrink:0; border:1px solid currentColor; border-radius:20px; padding:3px 6px; font-family:inherit; font-size:9px; font-weight:500; line-height:1.2; letter-spacing:0; text-transform:none; white-space:nowrap; }

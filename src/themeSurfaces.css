@@ -1473,9 +1473,6 @@
         border-bottom: 1px solid var(--app-border)
     }
 }
-:root[data-app-theme]:not([data-app-theme="studio"]) .sidebar-tools {
-    border-bottom: 1px solid var(--app-border)
-}
 :root[data-app-theme]:not([data-app-theme="studio"]) .sidebar-tools>button {
     color: var(--app-muted)
 }
@@ -2345,6 +2342,9 @@
 :root[data-app-theme]:not([data-app-theme="studio"]) .sidebar-heading.drop-target {
     background: var(--app-background);
     outline: 2px solid var(--app-accent)
+}
+:root[data-app-theme]:not([data-app-theme="studio"]) .sidebar-footer > button:hover {
+    background: var(--section-tint,var(--app-background))
 }
 :root[data-app-theme]:not([data-app-theme="studio"]) .source-item .folder-star {
     color: var(--app-accent)
