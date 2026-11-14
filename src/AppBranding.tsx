@@ -5,7 +5,7 @@ import {invoke,isTauri} from './diagnostics';
 import appLogo from './assets/app-logo.svg';
 import './branding.css';
 type Branding={name:string;slogan:string;logo:string;size:number;desktopSync:boolean};
-const defaults=():Branding=>({name:'Bit Clever',slogan:'Studio',logo:'',size:80,desktopSync:false});
+const defaults=():Branding=>({name:'Bit Clever',slogan:'Studio',logo:'',size:54,desktopSync:false});
 function normalize(saved:Partial<Branding>):Branding{
  const legacy=saved.slogan===undefined;
  return {...defaults(),...saved,name:legacy&&saved.name==='Bit Clever Studio'?'Bit Clever':saved.name??'Bit Clever',slogan:saved.slogan??(saved.name===undefined||saved.name==='Bit Clever Studio'?'Studio':'')};
@@ -20,7 +20,7 @@ export const brandingTitle=(value:Branding)=>[value.name.trim()||'Bit Clever',va
 let queue:Promise<unknown>=Promise.resolve();
 export function useAppBranding(){
  const [saved]=useBranding();
- const branding={...defaults(),...saved,name:saved.name.trim()||'Bit Clever',size:Math.max(40,Math.min(100,saved.size||80))};
+ const branding={...defaults(),...saved,name:saved.name.trim()||'Bit Clever',size:Math.max(40,Math.min(100,saved.size||defaults().size))};
  useEffect(()=>{
   document.title=brandingTitle(branding);
   const icon=document.querySelector<HTMLLinkElement>('link[rel="icon"]');if(icon)icon.href=branding.logo||appLogo;
