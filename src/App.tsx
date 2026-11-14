@@ -1,3 +1,4 @@
+import {useTabAppearance} from './TabAppearance';
 import {useCtaAppearance} from './CtaAppearance';
 import {isOrganisation} from './studio';
 import ClientSidebar from './ClientSidebar';
@@ -264,6 +265,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
  const branding=useAppBranding();
   useSelectionAppearance();
   useCtaAppearance();
+  useTabAppearance();
   const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
   const savedView=savedSession?.view;
   const [homeView,setHomeView]=useState(savedView?.homeView??startOnHome??true);
