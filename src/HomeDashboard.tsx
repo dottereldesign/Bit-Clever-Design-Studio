@@ -2,7 +2,7 @@ import {recordError} from './diagnostics';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "./diagnostics";
 import { createPortal } from "react-dom";
-import { ArrowUpRight, Grip, Palette, Plus, SlidersHorizontal, X, Folder, Layers, LayoutGrid } from "lucide-react";
+import { ArrowUpRight, Grip, Plus, SlidersHorizontal, X, Folder, Layers, LayoutGrid } from "lucide-react";
 import "./homeDashboard.css";
 import { appHistory } from "./appHistory";
 import { useHistoryState, HistoryButtons } from "./useAppHistory";
@@ -41,7 +41,7 @@ export const homeStyles=[
   ["Ember","Dark warm surfaces with a glowing edge."],
 ];
 const loadTiles=():HomeTile[]=>{try {const rows=JSON.parse(localStorage.getItem("home-tiles")??"[]");if(!Array.isArray(rows))return [];const seen=new Set<string>();return rows.filter(t=>t&&typeof t.id==="string"&&!seen.has(t.id)&&seen.add(t.id)).slice(0,100).map(t=>({id:t.id,span:Number.isFinite(t.span)?Math.max(2,Math.min(12,t.span)):undefined,height:Number.isFinite(t.height)?Math.max(128,Math.min(512,t.height)):224,radius:Number.isFinite(t.radius)?Math.max(0,Math.min(48,t.radius)):18,cover:t.cover&&typeof t.cover.path==="string"&&Number.isFinite(t.cover.width)&&t.cover.width>0&&Number.isFinite(t.cover.height)&&t.cover.height>0?t.cover:undefined,autoImageSize:t.autoImageSize===true}));}catch{return [];}};
-export default function HomeDashboard({destinations,open,incoming,received,dragging=false,style,appearance,customize,icons,headerActions,summary,summaryShare=50}:{summary?:ReactNode;summaryShare?:number;headerActions?:ReactNode;icons:IconPreferences;style:number;appearance:HomeAppearance;customize:()=>void;destinations:HomeDestination[];open:(d:HomeDestination)=>void;incoming?:string|null;received?:()=>void;dragging?:boolean}){
+export default function HomeDashboard({destinations,open,incoming,received,dragging=false,style,appearance,icons,headerActions,summary,summaryShare=50}:{summary?:ReactNode;summaryShare?:number;headerActions?:ReactNode;icons:IconPreferences;style:number;appearance:HomeAppearance;destinations:HomeDestination[];open:(d:HomeDestination)=>void;incoming?:string|null;received?:()=>void;dragging?:boolean}){
   const [reorderGhost,setReorderGhost]=useState<{id:string;x:number;y:number}|null>(null);
   const [dropTarget,setDropTarget]=useState<string|null>(null),[plan,,setPlan]=useHistoryState<HomePlan|null>("home-plan",loadPlan,"Home layout");
   const suppressTileClick=useRef(false);
@@ -135,7 +135,7 @@ export default function HomeDashboard({destinations,open,incoming,received,dragg
   useEffect(()=>{if(modal){returnFocus.current=document.activeElement as HTMLElement;modalRef.current?.focus();}else{returnFocus.current?.focus();returnFocus.current=null;}},[modal]);
   const close=()=>{setAddPicker(false);setGroup(null);};
   return <div onClickCapture={e=>{if(suppressTileClick.current){e.preventDefault();e.stopPropagation();suppressTileClick.current=false;}}} data-drag-anywhere={appearance.dragAnywhere} className={`home-dashboard home-style-${style} ${appearance.labels?"has-label-overlays":""}`} style={{"--home-overlay":appearance.darkness/100,"--home-label-size":`${appearance.textSize}px`} as React.CSSProperties} onDragOver={e=>{if(e.dataTransfer.types.includes(homeMime)||e.dataTransfer.types.includes(tileMime)||e.dataTransfer.types.includes("Files")){e.preventDefault();e.dataTransfer.dropEffect=e.dataTransfer.types.includes(tileMime)?"move":"copy";setOver(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))setOver(false);}} onDrop={e=>drop(e)}>
-    <div className="home-toolbar"><h1>Home</h1><div>{headerActions}<button onClick={()=>setAddPicker(true)} title="Add a sidebar destination"><Plus size={15}/>Add tile</button><button aria-pressed={editing} onClick={()=>{setEditing(!editing);setOptions(null);}}><LayoutGrid size={14}/>{editing?"Done":"Arrange"}</button><HistoryButtons home/><button onClick={customize} title="Customise Home"><Palette size={15}/>Customise</button></div></div>
+    <div className="home-toolbar"><h1>Home</h1><div>{headerActions}<button onClick={()=>setAddPicker(true)} title="Add a sidebar destination"><Plus size={15}/>Add tile</button><button aria-pressed={editing} onClick={()=>{setEditing(!editing);setOptions(null);}}><LayoutGrid size={14}/>{editing?"Done":"Arrange"}</button><HistoryButtons home/></div></div>
     <div className="home-body" data-overview={!!summary} style={{"--overview-share":`${summaryShare}fr`,"--tiles-share":`${100-summaryShare}fr`} as React.CSSProperties}>{summary}
     <div className="home-scroll"><div ref={board} className={`home-canvas ${editing||over||dragging?"show-grid":""} ${over?"is-over":""}`} style={{"--grid-unit":`${layout.unit+layout.gap}px`} as React.CSSProperties}>
       {!tiles.length&&<div className="home-empty"><span className="home-empty-mark" aria-hidden="true"><Plus size={22}/></span><p>{over?"Drop to make it yours":"Drag a destination here from the sidebar"}</p><small>Start with just one. Your space will grow with you.</small></div>}
