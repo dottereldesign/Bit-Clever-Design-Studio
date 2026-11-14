@@ -74,3 +74,5 @@
 .custom-scope-note { margin:-4px 0 12px;font-size:11px;color:#737c6b; }
 
 .studio-default-look{grid-column:1/-1;padding-top:18px;border-top:1px solid #dce2d6}.studio-default-look h3{font-size:13px}.studio-default-look p,.studio-default-look small{font-size:12px;line-height:1.6;color:#5c6d55}.studio-default-look small{display:block;margin-top:8px}
+
+.customise-layout>nav [data-custom-tab]{touch-action:pan-y;user-select:none;cursor:grab}.customise-layout>nav [data-custom-tab]:active{cursor:grabbing}.customise-layout>nav [data-dragging=true]{opacity:.4}.customise-order-announcement{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.customise-tab-drag{position:fixed;inset:0;pointer-events:none;z-index:30000}.customise-tab-insertion{position:fixed;width:2px;background:#45653c;border-radius:2px}.customise-tab-ghost{position:fixed;padding:9px 14px;border:1px solid #9bab90;background:#f4f7ef;border-radius:6px;box-shadow:0 5px 18px #25351e24;font-size:12px;color:#34482b}

@@ -1,3 +1,4 @@
+import CustomiseTabs from './CustomiseTabs';
 import {defaultAppearance} from './defaultAppearance';
 import {appHistory} from './appHistory';
 import AnalyticsSettings from './AnalyticsSettings';
@@ -32,7 +33,7 @@ export default function Customization({initial,close,sectionStyle,chooseSection,
  return <div className={`customise-backdrop ${closing?'is-closing':''}`} onMouseDown={e=>{if(e.currentTarget===e.target)dismiss();}}>
  <div className="customise-panel" data-entered={entered&&!closing} onTransitionEnd={e=>{if(closing&&e.target===ref.current&&e.propertyName==='transform'){clearTimeout(timer.current);close();}}} ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="customise-title" onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape')dismiss();if(e.key==='Tab'){const nodes=[...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select,[tabindex="0"]')].filter(n=>!n.closest('[inert]')&&n.getClientRects().length),first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===ref.current)){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}>
  <header><h1 id="customise-title">Customise</h1><div className="customise-history"><HistoryButtons/><button className="icon-button" aria-label="Close customisation" onClick={dismiss}><X size={20}/></button></div></header>
- <div className="customise-layout"><nav aria-label="Customisation sections">{tabs.map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={16}/>{label}</button>)}</nav>
+ <div className="customise-layout"><CustomiseTabs tabs={tabs.map(([id,label,Icon])=>({id,label,icon:<Icon size={16}/>}))} active={tab} select={id=>setTab(id as CustomTab)}/>
  <div className="customise-content" data-tab={tab} key={tab}><h2>{tabs.find(([id])=>id===tab)![1]}</h2>
  {tab==='branding'&&<><BrandingControls/><div className="studio-default-look"><h3>Studio default look</h3><p>Restore the saved studio colours, buttons, tabs, layouts and spacing.</p><button className="custom-action" onClick={()=>{const before=Object.fromEntries(Object.keys(defaultAppearance).map(key=>[key,appHistory.read(key,()=>{try{return JSON.parse(localStorage.getItem(key)??'null');}catch{return null;}})]));appHistory.commit('Apply studio default look',before,{...defaultAppearance});}}>Apply studio default look</button><small>You can undo this change.</small></div></>}
  {tab==='analytics'&&<AnalyticsSettings/>}
