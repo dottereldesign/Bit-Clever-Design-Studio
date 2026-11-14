@@ -37,5 +37,5 @@ export default function AddContactDialog({entries,mutate,close,added,organisatio
  <label className="wide">Email<input required type="email" maxLength={500} autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy}/></label>
  <label className="wide">Phone number <span>(optional)</span><input type="tel" maxLength={100} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} disabled={busy}/></label>
  <label className="wide">Location <span>(optional)</span><input aria-label="Location" maxLength={300} autoComplete="address-level2" placeholder="City or region" value={location} onChange={e=>setLocation(e.target.value)} disabled={busy}/></label>
- </div>{error&&<p role="alert">{error}</p>}<footer><button type="button" disabled={busy} onClick={close}>Cancel</button><button className="studio-add-contact" disabled={busy}>{busy?'Saving…':'Save contact'}</button></footer></form></dialog>,document.body);
+ </div>{error&&<p role="alert">{error}</p>}<footer><button type="button" disabled={busy} onClick={close}>Cancel</button><button className="studio-add-contact app-cta" disabled={busy}>{busy?'Saving…':'Save contact'}</button></footer></form></dialog>,document.body);
 }

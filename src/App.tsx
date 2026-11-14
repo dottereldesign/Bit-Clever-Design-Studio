@@ -1,3 +1,4 @@
+import {useCtaAppearance} from './CtaAppearance';
 import {isOrganisation} from './studio';
 import ClientSidebar from './ClientSidebar';
 import { useAppBranding } from "./AppBranding";
@@ -262,6 +263,7 @@ function Popover({
 export default function App({startOnHome}:{startOnHome?:boolean}={}) {
  const branding=useAppBranding();
   useSelectionAppearance();
+  useCtaAppearance();
   const [savedSession]=useState(()=>startOnHome===undefined?readViewSession():null);
   const savedView=savedSession?.view;
   const [homeView,setHomeView]=useState(savedView?.homeView??startOnHome??true);
