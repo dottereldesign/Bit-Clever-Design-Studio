@@ -1,4 +1,6 @@
-import Analytics, {InsightNavigation} from './Analytics';
+import AnalyticsTile from './AnalyticsTile';
+import {analyticsPages} from './AnalyticsSettings';
+import Analytics, {InsightNavigation,AnalyticsNavigation} from './Analytics';
 import HomeOverview from './HomeOverview';
 import {useHomeOverview} from './HomeOverviewSettings';
 import {useTabAppearance} from './TabAppearance';
@@ -599,6 +601,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const categoryCounts = useMemo(() => new Map([...membershipIndex.categories].map(([name,items])=>[name,items.length])), [membershipIndex]);
   const generalCounts=useMemo(()=>{const counts=new Map<string,number>();for(const item of lib.items){counts.set(item.source,(counts.get(item.source)??0)+1);if(item.kind==='link'&&!isCollectionLink(item))counts.set('__links',(counts.get('__links')??0)+1);if(item.kind==='video'&&(item.source==='Videos'||item.source.startsWith('Videos/')))counts.set('__videos',(counts.get('__videos')??0)+1);}return counts;},[lib.items]);
   const studioShortcuts: {id:string;label:string;route:StudioRoute}[]=[
+    ...analyticsPages.map(page=>({id:`studio:analytics:${page.id}`,label:page.id==='overview'?'Analytics overview':page.label,route:{section:'analytics' as const,page:page.id}})),
     ...['campaigns','ideas','calendar'].map(page=>({id:`studio:marketing:${page}`,label:page[0].toUpperCase()+page.slice(1),route:{section:'marketing' as const,page}})),
     ...['pipeline','follow-ups','contacts'].map(page=>({id:`studio:leads:${page}`,label:page[0].toUpperCase()+page.slice(1),route:{section:'leads' as const,page}})),
     ...researchPages.map(([page,label])=>({id:`studio:research:${page}`,label,route:{section:'research' as const,page}})),
@@ -606,14 +609,14 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     ...(lib.studio??[]).filter(e=>isOrganisation(e)&&!e.archived).map(e=>({id:`studio:client:${e.id}`,label:e.name,route:{section:'clients' as const,page:'today',id:e.id,tab:'feed'}})),
   ];
   const homeDestinations=useMemo<HomeDestination[]>(()=>[
-    ...studioShortcuts.map(s=>({id:s.id,label:s.label,kind:'studio' as const,value:JSON.stringify(s.route),group:s.route.section})),
+    ...studioShortcuts.map(s=>({id:s.id,label:s.label,kind:'studio' as const,value:JSON.stringify(s.route),group:s.route.section,preview:s.route.section==='analytics'?<AnalyticsTile lib={lib} page={s.route.page}/>:undefined})),
     {id:"design",label:"Design Inspo",kind:"category",value:"__all__",group:"design",count:lib.items.filter(i=>i.kind!=="link"&&designFoldersOf(i).length>0).length},
     {id:"group:general",label:"General",kind:"group",value:"general",group:"general"},
     {id:"group:projects",label:"Projects",kind:"group",value:"projects",group:"projects",count:lib.projects.length},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:s.name,kind:"collection" as const,value:s.key,group:"general"})),
     ...lib.projects.map(p=>({id:`project:${p.id}`,label:p.name,kind:"project" as const,value:String(p.id),group:"projects",count:p.count})),
     ...[...categories,"",allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:name===allComponents?"App Components":isComponent(name)?categoryLabel(name).slice("Components / ".length):categoryLabel(name),kind:"category" as const,value:name,group:isComponent(name)||name===allComponents?"components":"design",count:categoryCounts.get(name)??0})),
-  ],[lib.items,lib.projects,lib.studio,collectionPrefs,categories,folderLabels,categoryCounts,componentFolders]);
+  ],[lib,lib.items,lib.projects,lib.studio,collectionPrefs,categories,folderLabels,categoryCounts,componentFolders]);
   const generalOptions=useMemo<GeneralOption[]>(()=>[
     ...collections.map(entry=>({label:entry.name,target:{kind:'view' as const,value:entry.key}})),
     {label:'Design Inspo / All',target:{kind:'category',value:'__all__'}},{label:'App Components / All',target:{kind:'category',value:allComponents}},
@@ -1428,7 +1431,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           </nav>
         </SidebarSection>
         <InsightNavigation name="Code"/>
-        <InsightNavigation name="Analytics" active={studioView?.section==='analytics'} open={()=>openStudio({section:'analytics',page:'overview'})}/>
+        <AnalyticsNavigation name="Analytics" route={studioView} open={page=>openStudio({section:'analytics',page})} homeProps={homeDrag}/>
         <SidebarSection name="Research" action={<IconButton title="Add research" onClick={()=>startSectionAdd('research')}><Plus size={14}/></IconButton>} identity="research" styleId={sectionStyle} icon={icons.overrides['section:Research']&&<AppIcon value={icons.overrides['section:Research']}/>}><nav>{researchPages.map(([page,label])=><button key={page} className={`nav-item ${studioView?.section==='research'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='research'&&studioView.page===page?'page':undefined} {...homeDrag(`studio:research:${page}`)} onClick={()=>openStudio({section:'research',page})}>{label}</button>)}</nav></SidebarSection>
         </SidebarNavigation>
         <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('branding')}><SlidersHorizontal size={15}/><span>Customise</span></button>
@@ -1452,7 +1455,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
         />
       </aside>
       <main inert={thumbnailEnlarged || !!customTab || quickPreview !== null || (viewer !== null && !widePreview) || (!!modal&&modal.kind!=='settings') || !!capture || !!videoDialog || duplicatesOpen || removedOpen || libraryExportOpen || storageOpen}>
-        {modal?.kind==='settings'?libraryDialog:<>{studioView?.section==='analytics'?<Analytics lib={lib} open={openStudio} openProject={navigate} customize={()=>setCustomTab('analytics')}/>:studioView?.section==='clients'?<ClientsWorkspace initialise={initialiseClients} lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} openProject={id=>navigate(id)}/>:studioView?.section==='research'?<ResearchWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else {setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:studioView?<StudioWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else{setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:homeView?<><HomeDashboard summaryShare={homeOverviewPrefs.share} summary={homeOverviewPrefs.enabled&&(homeOverviewPrefs.events||homeOverviewPrefs.projects||homeOverviewPrefs.revenue)?<HomeOverview lib={lib} prefs={homeOverviewPrefs} openProject={id=>{navigate(id);setProjectSection("overview");}} openStudio={openStudio}/>:undefined} headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("branding")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
+        {modal?.kind==='settings'?libraryDialog:<>{studioView?.section==='analytics'?<Analytics lib={lib} page={studioView.page} open={openStudio} openProject={navigate} customize={()=>setCustomTab('analytics')}/>:studioView?.section==='clients'?<ClientsWorkspace initialise={initialiseClients} lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>item.kind==='link'?void openUrl(item.path).catch(report):setQuickPreview(item.id)} openProject={id=>navigate(id)}/>:studioView?.section==='research'?<ResearchWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else {setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:studioView?<StudioWorkspace lib={lib} route={studioView} navigate={setStudioView} mutate={mutate} importInto={importStudio} preview={item=>{if(item.kind==='link')void openUrl(item.path).catch(report);else{setReceiptBrowse((lib.studio??[]).find(e=>e.id===studioView.id)?.files??[item.id]);setQuickPreview(item.id);}}} openProject={id=>navigate(id)}/>:homeView?<><HomeDashboard summaryShare={homeOverviewPrefs.share} summary={homeOverviewPrefs.enabled&&(homeOverviewPrefs.events||homeOverviewPrefs.projects||homeOverviewPrefs.revenue)?<HomeOverview lib={lib} prefs={homeOverviewPrefs} openProject={id=>{navigate(id);setProjectSection("overview");}} openStudio={openStudio}/>:undefined} headerActions={<ColourPicker projects={lib.projects}/>} icons={icons} style={homeStyle} appearance={homeAppearance} customize={()=>setCustomTab("branding")} destinations={homeDestinations} open={openHomeDestination} incoming={homeDrop} received={()=>setHomeDrop(null)} dragging={!!homeShortcutDrag.ghost}/></>:<>
         <header className="topbar">
           <div className="view-title">
             <h1>{title}</h1>
