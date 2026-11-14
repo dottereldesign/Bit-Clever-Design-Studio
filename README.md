@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="src/assets/app-logo.svg" width="72" alt="Bit Clever Studio mascot logo">
+  <img src="docs/images/readme-logo.svg" width="104" alt="Bit Clever Studio mascot logo">
 </p>
 
 <h1 align="center">Bit Clever Studio</h1>
-<p align="center">A local workspace for finding clients, delivering projects and running a creative business.</p>
+<p align="center">A customisable local workspace for leads, clients, projects and the business behind them.</p>
 <p align="center">
   <a href="https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest">Download for Windows</a> ·
   <a href="#your-library--backups">Storage & backups</a> ·
@@ -11,6 +11,12 @@
 </p>
 
 ![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.jpg)
+
+## From first enquiry to finished work
+
+Bit Clever Studio brings your sales pipeline, client relationships, project delivery and creative library into one Windows workspace. Track the next follow-up, turn a won opportunity into a project, prepare meetings and review what is bringing in work. **My Business** keeps your own setup tasks, subscriptions and planned costs separate from client records.
+
+Start with the sidebar: each section opens the tools for that part of your work. Home brings upcoming events, active projects, won value and the reports you choose into a personal dashboard. Customise controls the whole app’s appearance, from branding and typography to buttons, tabs and navigation.
 
 ## Your sidebar is the workspace
 
@@ -78,7 +84,7 @@ Theme colours cover app surfaces, controls, dialogs and navigation. Explicit col
 
 - **Buttons** — 100 CTA styles, two colours, tint intensity down to zero and hover motion. Add actions share the same styling.
 - **Tabs** — 20 styles, colour choices including monochrome, accessible selection cues and optional animation.
-- **Layouts, Sidebar and Icons** — compact named layouts, section styles, colours, width and custom icons, including My Business, Analytics and Code.
+- **Layouts, Sidebar and Icons** — compact named layouts, 30 shared section styles, colours, width and custom icons across all 11 sections, including My Business, Analytics and Code. Working accordions share opening/closing transitions and hover treatments; Code keeps the chosen treatment with a muted Coming soon badge. Motion settings support reduced animation.
 - **Home and Analytics** — choose summaries, chart styles, reporting periods, visible charts, tile labels, spacing and overlays.
 - **Library, General, Websites and Motion** — selection treatments, shortcuts, website preview behaviour and reduced motion.
 
@@ -94,7 +100,7 @@ Settings uses a searchable directory with top tabs or a side menu. **Connections
 
 1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest) and install it.
 2. Launch Bit Clever Studio. Open **Settings → Library** to create or open a self-contained library.
-3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
+3. Start where your work is: add a lead, create a project, plan your own business setup, or collect references in Design Inspo and App Components. Use Customise to make the workspace yours.
 
 Check **Settings → Get latest update** for new releases. Close the app before installing an update.
 
