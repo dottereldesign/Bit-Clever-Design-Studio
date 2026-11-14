@@ -35,10 +35,21 @@ const checks=[];
 try{
  await until(()=>document.querySelector('.brand-logo'),'App ready');
  await settings('Buttons');
+ assert([...document.querySelectorAll('.customise-layout > nav button')].slice(0,7).map(n=>n.textContent).join('|')==='Branding|Layouts|Icons|Sidebar|Library|Home|General','Requested menu order');
  const {ctaStyles,readCta}=await import('/src/CtaAppearance.tsx');
- assert(document.querySelectorAll('.cta-style-card').length===20,'20 styles');
+ assert(document.querySelectorAll('.cta-style-card').length===100,'100 styles');
  assert(getComputedStyle(document.querySelector('[aria-label="Button main colour"]')).paddingLeft==='2px','Colour swatch remains visible');
  for(const [id] of ctaStyles){document.querySelector(`[data-cta-preview="${id}"]`).closest('button').click();await until(()=>document.documentElement.dataset.ctaStyle===id,'Style applied '+id);assert(document.querySelector('.cta-style-card[aria-pressed=true] [data-cta-preview]').dataset.ctaPreview===id,'Selected style');}
+ assert(new Set(ctaStyles.map(([id])=>id)).size===100,'Unique style IDs');
+ assert(readCta().style==='signature','New style survives preference parsing');
+ input('Button tint intensity','0');await pause(80);
+ assert(document.querySelector('[aria-label="Button tint intensity"]').min==='0'&&readCta().strength===0,'Zero tint retained');
+ assert(document.documentElement.style.getPropertyValue('--cta-strength')==='0%','Zero tint applied');
+ await close();await settings('Buttons');assert(document.querySelector('[aria-label="Button tint intensity"]').value==='0','Zero persists on reopen');
+ document.querySelector('[data-cta-preview="soft"]').closest('button').click();await pause(250);
+ const zeroBg=getComputedStyle(document.querySelector('.cta-live button')).backgroundColor;
+ assert(zeroBg==='rgb(255, 255, 255)'||zeroBg==='color(srgb 1 1 1)','Zero removes tint: '+zeroBg);
+ input('Button tint intensity','24');await pause(60);
  input('Button main colour','#cc3399');await pause(60);document.querySelector('[aria-label="Button main colour"]').dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
  input('Button second colour','#3366cc');await pause(60);document.querySelector('[aria-label="Button second colour"]').dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
  input('Button tint intensity','16');await pause(60);
@@ -52,7 +63,10 @@ try{
  const panel=document.querySelector('.customise-content');assert(panel.scrollWidth<=panel.clientWidth+1,'No horizontal overflow');
  const sample=document.querySelector('.cta-live button');sample.focus();assert(getComputedStyle(sample).outlineStyle==='solid','Keyboard focus');
  await shot('buttons');
- checks.push('20 selectable styles, live colours, tint, undo/redo, backup, persisted settings, motion off, reset, focus and responsive layout');
+ document.querySelector('[data-cta-preview="paper-stack"]').closest('button').scrollIntoView({block:'start'});await shot('tactile');
+ document.querySelector('[data-cta-preview="pinstripe"]').closest('button').scrollIntoView({block:'start'});await shot('patterns');
+ document.querySelector('[data-cta-preview="signature"]').closest('button').scrollIntoView({block:'end'});await shot('final');
+ checks.push('100 selectable styles, live colours, tint, undo/redo, backup, persisted settings, motion off, reset, focus and responsive layout');
  document.getElementById('check-result').textContent=JSON.stringify({ok:true,checks,width:innerWidth});
 }catch(error){document.getElementById('check-result').textContent=JSON.stringify({ok:false,error:String(error),stack:error.stack});}
 </script></body></html>
