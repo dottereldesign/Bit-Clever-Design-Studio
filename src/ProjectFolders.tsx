@@ -30,6 +30,7 @@ export function ProjectTree({project,folders,items,active,overviewActive,scope,o
   externalDrop:(data:DataTransfer,folder:number|null)=>void;
 }) {
   const [expanded,setExpanded]=useState(false),[closed,setClosed]=useState<Set<number>>(new Set());
+  useEffect(()=>{const collapse=()=>setExpanded(false);window.addEventListener('collapse-sidebar',collapse);return()=>window.removeEventListener('collapse-sidebar',collapse);},[]);
   const [menu,setMenu]=useState<{id:number|null;x:number;y:number}|null>(null);
   const [dialog,setDialog]=useState<{action:'create'|'rename'|'move'|'delete';id:number|null}|null>(null);
   const [name,setName]=useState(''),[parent,setParent]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
