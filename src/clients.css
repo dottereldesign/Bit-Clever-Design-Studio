@@ -25,3 +25,5 @@
 .client-feed-compose>summary { cursor:pointer;color:#63715e; }
 
 .client-activity-row { content-visibility:auto;contain-intrinsic-size:auto 64px; }
+
+.clients-header>.clients-history{flex-wrap:nowrap;flex-shrink:0;gap:8px}
