@@ -292,7 +292,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
   const [receiptBrowse,setReceiptBrowse]=useState<number[]>([]);
   const track=useCallback((item:Item)=>setHistory(old=>old[0]?.id===item.id&&old[0].path===item.path?old:
     [{id:item.id,path:item.path},...old.filter(entry=>entry.id!==item.id)].slice(0,60)),[setHistory]);
-  const [studioView,setStudioView]=useState<StudioRoute|null>(()=>localStorage.getItem("clients-startup")==="true"?{section:"clients",page:"today"}:savedView?.studioView??null);
+  const [studioView,setStudioView]=useState<StudioRoute|null>(()=>savedView?.studioView??null);
   const [projectSection,setProjectSection]=useState<"overview"|"files"|"client"|"moodboard">(savedView?.projectSection??(savedView?.projectFolder!=null?"files":"overview"));
   const [projectFolder,setProjectFolder]=useState<FolderScope>(savedView?.projectFolder??null);
   const [ratingFilter,setRatingFilter]=useState(savedView?.ratingFilter??'');

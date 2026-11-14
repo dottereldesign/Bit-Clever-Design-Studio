@@ -14,7 +14,7 @@ export default function SidebarSection({name, label = name, action, children, ne
   const key = "sidebar-open:" + name;
   const [open, setOpen, setPreview] = useHistoryState(key,() => {
     const saved = preview?"false":localStorage.getItem(key);
-    return saved === null ? (identity==="clients"||identity==="marketing"||identity==="leads"||identity==="research"?false:!nested) : saved === "true";
+    return saved === "true";
   },`${label} section visibility`);
   return <section style={identity?sectionColourStyle(identity,colours,styleId??1):undefined} data-custom-colour={identity&&colours[identity]?true:undefined} data-section={name} className={`${icon?"has-custom-icon":""} ${nested ? "folder-group" : "sidebar-section"} ${identity?`section-feature section-style-${styleId??1} section-${identity}`:""}`} data-open={open}>
     <div {...dropProps} onContextMenu={identity&&!preview?e=>{e.preventDefault();setColourMenu({x:Math.min(e.clientX,window.innerWidth-290),y:Math.min(e.clientY,window.innerHeight-250)});}:dropProps?.onContextMenu} className={`${nested ? "folder-heading" : "sidebar-heading"} ${dropProps?.className??""}`}>

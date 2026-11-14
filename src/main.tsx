@@ -1,3 +1,4 @@
+import {prepareHomeStartup} from './startup';
 import {startDiagnostics,flushDiagnostics,record,recordError} from './diagnostics';
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -18,9 +19,10 @@ const stopDiagnostics=startDiagnostics();
 if(import.meta.hot)import.meta.hot.dispose(stopDiagnostics);
 const root=ReactDOM.createRoot(document.getElementById("root")!);
 loadLibraryPreferences().then(async()=>{
+ prepareHomeStartup();
  if(isTauri())await getCurrentWindow().onCloseRequested(async event=>{event.preventDefault();try{await flushLibraryPreferences();await flushDiagnostics();await getCurrentWindow().destroy();}catch(error){root.render(<Recovery error={error}/>);}});
  root.render(
   <React.StrictMode>
-    <DiagnosticBoundary><React.Profiler id="App" onRender={(_,phase,duration,base)=>{if(duration>16)record('frontend.render','warning',duration,{phase,render_ms:duration,base_ms:base});}}><App /></React.Profiler></DiagnosticBoundary>
+    <DiagnosticBoundary><React.Profiler id="App" onRender={(_,phase,duration,base)=>{if(duration>16)record('frontend.render','warning',duration,{phase,render_ms:duration,base_ms:base});}}><App startOnHome/></React.Profiler></DiagnosticBoundary>
   </React.StrictMode>,
 );}).catch(error=>{recordError('frontend.initialise',error);root.render(<Recovery error={error}/>);});
