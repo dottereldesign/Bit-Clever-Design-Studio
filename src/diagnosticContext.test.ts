@@ -28,3 +28,11 @@ test('metadata snapshots remain stable and malformed updates are safe',()=>{
  const invalid=commandFields('update',{change:{action:'update_studio',value:'private invalid json'}});
  assert.equal(invalid.error_code,'invalid_payload');assert.ok(!JSON.stringify(invalid).includes('private invalid'));
 });
+
+test('business and calendar payloads never become diagnostic fields',()=>{
+ setDiagnosticContext({section:'business',page:'budget'});
+ const result=commandFields('business_save',{revision:7,data:{profile:{name:'PRIVATE BUSINESS',email:'private@example.invalid'},records:[{name:'PRIVATE DOMAIN',amount:'12345',notes:'PRIVATE TAX NOTES'}]}});
+ assert.deepEqual(result,{section:'business',page:'budget'});
+ const feed=commandFields('calendar_connect',{url:'https://private.invalid/secret-feed'});
+ assert.ok(!JSON.stringify(feed).includes('private.invalid'));
+});

@@ -1,4 +1,5 @@
-import {invoke, isTauri} from '@tauri-apps/api/core';
+import {traceDiagnostic} from './diagnostics';
+import {invoke, isTauri} from './diagnostics';
 export const businessPages = [['overview','Overview'],['details','Business details'],['setup','Setup checklist'],['domains','Domains'],['tax','Taxes & records'],['budget','Budget'],['hosting','Hosting & services'],['subscriptions','Subscriptions']] as const;
 export type BusinessKind = 'setup'|'tax'|'domain'|'hosting'|'subscription'|'purchase';
 export type BusinessRecord = {id:string;kind:BusinessKind;name:string;status:'planned'|'active'|'done'|'paused';due:string;amount:string;frequency:'once'|'monthly'|'yearly';currency:string;provider:string;url:string;notes:string};
@@ -6,13 +7,13 @@ export type BusinessData = {version:1;profile:{name:string;email:string;website:
 export type BusinessSnapshot = {revision:number;data:BusinessData};
 export const emptyBusiness = ():BusinessData => ({version:1,profile:{name:'',email:'',website:'',country:'',structure:'Undecided',registration:'',currency:'NZD',budget:'',notes:''},records:[]});
 const key='private-business-workspace-v1';
-// Deliberately outside diagnostic wrappers, history, appearance exports and library backups.
+// Diagnostic metadata only; record contents never enter history or appearance/library exports.
 export async function loadBusiness():Promise<BusinessSnapshot> {
- if(isTauri())return invoke('business_load');
+ if(isTauri())return traceDiagnostic('business.load',{section:'business'},()=>invoke('business_load'));
  const raw=localStorage.getItem(key);return raw?JSON.parse(raw):{revision:0,data:emptyBusiness()};
 }
 export async function saveBusiness(snapshot:BusinessSnapshot,data:BusinessData):Promise<BusinessSnapshot> {
- if(isTauri())return invoke('business_save',{revision:snapshot.revision,data});
+ if(isTauri())return traceDiagnostic('business.save',{section:'business',count:data.records.length},()=>invoke('business_save',{revision:snapshot.revision,data}));
  const current=await loadBusiness();if(current.revision!==snapshot.revision)throw Error('Business information changed in another tab. Reload before saving.');
  const next={revision:current.revision+1,data};localStorage.setItem(key,JSON.stringify(next));return next;
 }

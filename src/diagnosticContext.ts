@@ -1,6 +1,6 @@
 // Diagnostic metadata is an allowlisted description, never a copy of user data.
 export type DiagnosticFields = Record<string, string | number | boolean | null>;
-export const diagnosticSections = ['clients','research','marketing','leads','general','projects','designs','components','home','settings'] as const;
+export const diagnosticSections = ['clients','research','marketing','leads','general','projects','designs','components','home','settings','analytics','business','customise','sidebar','calendar'] as const;
 const kinds = ['client','client_entry','research','lead','campaign','contact','organization','content','activity','pipeline','meeting'];
 const fields = new Set(['name','archived','organization','contacts','projects','campaign','parent','files','tags','status','service','source','value','currency','date','end_date','body','email','phone','website','audience','message','offer','channel','results','activity_type','actions','moodboard','stages','brief','deadline','action','done','text','primary','role','company','notes','title','people','related','kind','milestones','metrics','variant_group']);
 let context: DiagnosticFields = {};

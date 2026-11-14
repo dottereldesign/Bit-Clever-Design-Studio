@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Bit Clever Studio</h1>
-<p align="center">A local studio for research, inspiration, leads and creative projects.</p>
+<p align="center">A local workspace for finding clients, delivering projects and running a creative business.</p>
 <p align="center">
   <a href="https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest">Download for Windows</a> ·
   <a href="#your-library--backups">Storage & backups</a> ·
@@ -12,20 +12,28 @@
 
 ![Design library with a masonry gallery and separate Design Inspo and App Components folders](docs/images/library.jpg)
 
-## Eight areas, one studio
+## Your sidebar is the workspace
 
-| Area | Purpose | Availability |
-| --- | --- | --- |
-| **Marketing** | Plan campaigns, organise creative assets and schedule content. | Development |
-| **Leads** | Track opportunities, contacts and follow-ups through to a project. | Development |
-| **Organisations** | Prepare meetings, track tasks and pricing, keep documents and a lasting relationship history. | Development |
-| **Projects** | Manage files, briefs, deadlines, next actions, client records and moodboards. | Available |
-| **General** | Save websites, links, resources, fonts and brand guidelines. | Available |
-| **Design Inspo** | Collect visual references in flexible, shared folders. | Available |
-| **App Components** | Organise interface references, components and page templates. | Available |
-| **Research** | Analyse markets, competitors and pricing; keep plans, books, podcasts, courses and findings. | Development |
+**Version 0.4.0 (development).** The sidebar is the app's main navigation. Open a section for its tools, drag sections into your preferred order, or drag supported destinations and Analytics reports onto Home. The app starts on Home with sidebar sections collapsed.
 
-Organisations, Marketing, Leads and Research are available in the development workspace. Installed releases can lag behind source changes; check release notes before downloading. [Leads and Marketing details](docs/STUDIO-WORKSPACES.md).
+| Section | What it helps you solve |
+| --- | --- |
+| **Home** | See upcoming meetings, active projects and won business value together; keep shortcuts and live reports close at hand. |
+| **Marketing** | Keep campaign plans, content, ideas and manually recorded results together instead of scattered notes. |
+| **Leads** | See your open pipeline, keep contacts and follow-ups organised, and close opportunities through a short Won/Lost flow. A win can confirm contact details, link an organisation and create a project with its first meeting and deadline. |
+| **Organisations** | Keep the relationship after a sale: meeting preparation, tasks, contacts, files, pricing and an activity history in one profile. |
+| **My Business** | Plan your own business setup, domains, tax reminders, hosting, subscriptions and purchases. Separate planned costs from active commitments and see upcoming renewals. Private device records stay separate from client libraries and GitHub. |
+| **Projects** | Turn agreed work into a brief, deadlines, next actions, organised files, client records and moodboards. |
+| **General** | Find reusable links, resources, fonts and brand guidelines without searching old browser tabs. |
+| **Design Inspo** | Collect and organise visual references in shared folders without duplicating originals. |
+| **App Components** | Build a reusable reference library of interfaces, components and page patterns. |
+| **Code** | A reserved workspace for future development tools. Clearly marked Coming soon. |
+| **Analytics** | Review won value, open pipeline, lead sources, project workload, organisations, campaign contribution and items needing attention. Reports use your recorded data; won value is not cash received, and campaign contribution is not ROI. |
+| **Research** | Keep competitor research, pricing, sources, findings and learning materials connected to your work. |
+
+The small toolbar below the logo keeps common actions within reach: **Collapse all** tidies navigation, **Search** finds work across sections, **Quick add** creates a Lead, Contact, Organisation or Project, and **Recent** returns to recently opened records.
+
+**Customise** controls how the workspace looks. **Settings** handles the library, backups, connections, help and diagnostics. These remain in the sidebar, rather than repeated in page headers. New features are available in Design Dev; published installers may lag behind this source version.
 
 ## Client relationships
 
@@ -60,11 +68,23 @@ Saved relationship changes, including undo/redo, have a durable local history in
 
 ![Home dashboard with resizable image tiles linking to collections and projects](docs/images/home.jpg)
 
-Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrange tiles, drop in cover images and adjust labels, overlays and spacing. Clicking the logo returns Home; reopening the app restores your last workspace.
+Drag sidebar destinations onto **Home** to create shortcuts. Resize and rearrange tiles, drop in cover images and adjust labels, overlays and spacing. Clicking the logo returns Home; reopening the app starts on Home with all sidebar sections collapsed.
 
 ![Customisation panel with sidebar appearance choices](docs/images/customise.jpg)
 
-Customise sidebar layouts, section styles, icons and Home tiles. Branding controls change the app name, slogan, logo and logo size, with an optional branded Windows desktop shortcut. Branding is included in backups and supports Undo/Redo. Windows may require re-pinning a shortcut to refresh a cached taskbar icon; installer and executable metadata remain unchanged. Collapse sections, reorder folders and add your own General shortcuts. Appearance changes, including per-section colours from Customise or right-click, and organisation actions support Undo/Redo; settings undo lasts for the current session.
+Open **Customise → Branding** for app-wide colour themes and typography. There are 29 Codex-inspired theme families with 44 light/dark variants, including Dracula, Ayu, Catppuccin, Raycast and VS Code Plus. Your existing look stays the **Studio default**, and a local snapshot lets you restore it. Choose one font throughout or separate heading and body fonts; installed-font fallbacks work offline.
+
+Theme colours cover app surfaces, controls, dialogs and navigation. Explicit colours in Buttons, Tabs, Sidebar, Home and Analytics take priority; each has **Use app theme default**. Themes do not recolour your images, logos or saved artwork. Text and accent colours are adjusted for contrast.
+
+- **Buttons** — 100 CTA styles, two colours, tint intensity down to zero and hover motion. Add actions share the same styling.
+- **Tabs** — 20 styles, colour choices including monochrome, accessible selection cues and optional animation.
+- **Layouts, Sidebar and Icons** — compact named layouts, section styles, colours, width and custom icons, including My Business, Analytics and Code.
+- **Home and Analytics** — choose summaries, chart styles, reporting periods, visible charts, tile labels, spacing and overlays.
+- **Library, General, Websites and Motion** — selection treatments, shortcuts, website preview behaviour and reduced motion.
+
+Customise tabs can be reordered by dragging or with Alt+Left/Right. Appearance changes support session Undo/Redo and travel with appearance backups. Branding changes the displayed app name, slogan, logo and size (54px on reset), with an optional branded Windows shortcut. Executable and installer names stay unchanged.
+
+Settings uses a searchable directory with top tabs or a side menu. **Connections** identifies Google Calendar with its logo and supports read-only sync of selected meetings. **Diagnostics** records local feature usage, timing and failures across the new workspaces without form contents, private calendar addresses or automatic uploads. [Theme behaviour and maintenance](docs/APP-THEMES.md).
 
 *Screenshots show the app with the owner’s design library. Reference artwork belongs to its respective creators and is not bundled with the app.*
 
@@ -73,7 +93,7 @@ Customise sidebar layouts, section styles, icons and Home tiles. Branding contro
 **Windows 10/11 · 64-bit.** The installer includes media tools and installs WebView2 if needed.
 
 1. Download **Design-Setup.exe** from the [latest release](https://github.com/dottereldesign/Bit-Clever-Studio/releases/latest) and install it.
-2. Launch Bit Clever Studio. Click **Storage** in the header to create or open a self-contained library.
+2. Launch Bit Clever Studio. Open **Settings → Library** to create or open a self-contained library.
 3. Choose a Design Inspo or App Components folder, then paste or drop your first references. Use **Websites** for saved sites and screenshots.
 
 Check **Settings → Get latest update** for new releases. Close the app before installing an update.
@@ -100,6 +120,8 @@ Files are stored once; the database preserves every folder membership, project h
 
 Portable backups exclude removed items, undo history and temporary caches. Metadata-only exports are not full backups. **Merge Backup** imports into an existing library and can replace matching records’ organisation; opening a separate copy keeps the libraries separate.
 
+**My Business is separate:** its desktop database and browser storage are not included in library or appearance exports. Keep a private device backup; see [My Business storage](docs/MY-BUSINESS.md).
+
 Do not manually rename files inside a managed library. This repository contains the application source, not your personal library.
 
 [Storage details](docs/LIBRARY-STORAGE.md) · [Website capture](docs/WEBSITE-CAPTURE.md)
@@ -116,7 +138,7 @@ Do not manually rename files inside a managed library. This repository contains 
 | Undo / redo | `Ctrl + Z` / `Ctrl + Shift + Z` |
 | Settings | `Ctrl + ,` |
 
-See Settings for the full shortcut list. Single-key shortcuts apply outside text fields.
+See Settings → Help for the full shortcut list. Single-key shortcuts apply outside text fields.
 
 ## Development
 

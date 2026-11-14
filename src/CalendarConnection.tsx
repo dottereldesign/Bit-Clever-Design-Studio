@@ -1,3 +1,4 @@
+import googleCalendarLogo from './assets/google-calendar.ico';
 import {useEffect,useState,useSyncExternalStore} from 'react';
 import {invoke,record,recordError} from './diagnostics';
 import {openUrl} from './api';
@@ -30,7 +31,7 @@ function MeetingPicker({close}:{close:()=>void}){
 export default function CalendarConnection(){
  const {status,busy,error}=useSyncExternalStore(subscribe,()=>snapshot);const [url,setUrl]=useState(''),[choosing,setChoosing]=useState(false);
  const connect=async()=>{publish({busy:true,error:''});try{const status=await invoke<CalendarStatus>('calendar_connect',{url});setUrl('');publish({status,busy:false});if(status.meetings.length)await syncCalendar();else setChoosing(true);}catch(error){publish({busy:false,error:calendarError(error)});}};
- return <section className="calendar-connection"><h2>Google Calendar</h2><p>Read-only sync for the selected project meetings. Updates every 15 minutes while Studio is open.</p>
+ return <section className="calendar-connection"><h2 className="calendar-brand"><img src={googleCalendarLogo} alt=""/>Google Calendar</h2><p>Read-only sync for the selected project meetings. Updates every 15 minutes while Studio is open.</p>
  {status?.meetings.map(m=><div key={m.source_id}>{m.project_name} · {m.name}</div>)}
  <p>{status?.connected?(status.meetings.length?'Connected': 'Connected · no meetings selected'): 'Not connected'}{status?.last_sync?` · Last synced ${new Date(status.last_sync*1000).toLocaleString()}`:''}</p>
  {!status?.connected?<><label>Secret address in iCal format<input aria-label="Private calendar feed" type="password" autoComplete="off" value={url} onChange={e=>setUrl(e.target.value)} placeholder="Paste the private feed address here"/></label><button disabled={busy||!url.trim()} onClick={()=>void connect()}>Connect calendar</button><button onClick={()=>void openUrl('https://calendar.google.com/calendar/u/0/r/settings')}>Open Google Calendar settings</button><small>Choose your calendar → Integrate calendar → Secret address in iCal format. The address is protected by Windows and excluded from backups. It can read the source calendar; Studio stores only the selected meetings.</small></>:<><button disabled={busy} onClick={()=>setChoosing(true)}>Choose meetings</button><button disabled={busy||!status.meetings.length} onClick={()=>void syncCalendar()}>{busy?'Syncing…':'Sync now'}</button><button disabled={busy} onClick={()=>{void invoke<CalendarStatus>('calendar_disconnect').then(status=>{setChoosing(false);publish({status,error:''});}).catch(()=>publish({error:'Could not disconnect. Try again.'}));}}>Disconnect</button></>}

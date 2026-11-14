@@ -1,3 +1,4 @@
+import {overrideColours} from './AppTheme';
 import {useEffect} from 'react';
 import {Plus} from 'lucide-react';
 import {useHistoryState} from './useAppHistory';
@@ -53,7 +54,7 @@ export default function CtaControls(){
  const [p,set]=usePreferences();
  return <div className="cta-customizer"><div className="cta-controls"><h3>Action buttons</h3><p>One look for Add contact, Add lead, Add organisation, campaigns, ideas, research and records. Changes save automatically.</p>
  <div className="cta-live"><button type="button" className="app-cta"><Plus size={15}/>Add contact</button><small>Hover to try your selected style</small></div>
- {(['primary','secondary'] as const).map((key,i)=><label className="cta-colour" key={key}><span>{i?'Second colour':'Main colour'}</span><input type="color" aria-label={i?'Button second colour':'Button main colour'} value={p[key]} onBlur={()=>appHistory.endGesture()} onChange={e=>{appHistory.beginGesture(`cta-${key}`);set({...p,[key]:e.target.value});}}/><code>{p[key]}</code></label>)}
+ {(['primary','secondary'] as const).map((key,i)=><label className="cta-colour" key={key}><span>{i?'Second colour':'Main colour'}</span><input type="color" aria-label={i?'Button second colour':'Button main colour'} value={p[key]} onBlur={()=>appHistory.endGesture()} onChange={e=>{appHistory.beginGesture(`cta-${key}`);overrideColours('buttons');set({...p,[key]:e.target.value});}}/><code>{p[key]}</code></label>)}
  <label className="custom-setting"><span>Tint intensity <output>{p.strength}%</output></span><input aria-label="Button tint intensity" type="range" min="0" max="60" value={p.strength} onPointerDown={()=>appHistory.beginGesture('cta-intensity')} onPointerUp={()=>appHistory.endGesture()} onBlur={()=>appHistory.endGesture()} onChange={e=>set({...p,strength:Number(e.target.value)})}/><small>0% removes the surface tint. Solid styles stay rich.</small></label>
  <label className="custom-toggle custom-setting"><span>Hover motion<small>Also respects Reduce motion and your system preference.</small></span><input aria-label="Button hover motion" type="checkbox" checked={p.motion} onChange={e=>set({...p,motion:e.target.checked})}/></label>
  <button className="custom-action" onClick={()=>set({...defaultCta})}>Reset button appearance</button></div>

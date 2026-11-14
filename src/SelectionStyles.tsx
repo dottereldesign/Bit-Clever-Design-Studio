@@ -1,3 +1,4 @@
+import {overrideColours} from './AppTheme';
 import {useEffect} from 'react';
 import {useHistoryState} from './useAppHistory';
 import './selectionStyles.css';
@@ -11,5 +12,5 @@ export function useSelectionAppearance(){
 }
 export default function SelectionStyles(){
  const [style,setStyle]=useHistoryState('selection-style',initial,'Selection style');
- return <><h3>Selected thumbnails</h3><div className="selection-style-options">{selectionStyles.map((name,i)=><button key={name} className={`selection-style-option selection-style-${i+1}`} aria-pressed={style===i+1} onClick={()=>setStyle(i+1)}><span className="selection-sample" aria-hidden="true"><span/></span><strong>{name}</strong></button>)}</div></>;
+ return <><h3>Selected thumbnails</h3><div className="selection-style-options">{selectionStyles.map((name,i)=><button key={name} className={`selection-style-option selection-style-${i+1}`} aria-pressed={style===i+1} onClick={()=>{overrideColours('selection');setStyle(i+1);}}><span className="selection-sample" aria-hidden="true"><span/></span><strong>{name}</strong></button>)}</div></>;
 }

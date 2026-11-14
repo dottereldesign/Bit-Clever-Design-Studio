@@ -56,7 +56,7 @@ export class AppHistory {
       group: this.gesture ? `${this.gesture}:${Object.keys(after).sort().join(",")}` : undefined,
     });
     this.write(after);
-    if(!this.gesture)diagnosticRecord('settings.change','success',0,{count:Object.keys(after).length});
+    if(!this.gesture)diagnosticRecord('settings.change','success',0,{count:Object.keys(after).length,field:Object.keys(after).filter(k=>['app-theme','app-colour-sources','cta-appearance','tab-appearance','analytics-appearance','home-overview','sidebar-section-order','customise-tab-order','sidebar-layout','selection-style','settings-appearance','home-plan','home-tiles','home-style','home-appearance','app-icons','folder-appearance','sidebar-section-colours','sidebar-width','studio-layouts','project-file-layouts','reduce-motion'].includes(k)).join('.')});
   }
   record(entry: HistoryEntry) {
     if (this.replaying) return;

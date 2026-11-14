@@ -1,3 +1,4 @@
+import {record} from './diagnostics';
 import {useEffect,useMemo,useState} from 'react';
 import {CalendarDays,FolderOpen,TrendingUp,ArrowUpRight} from 'lucide-react';
 import type {Library} from './model';
@@ -8,6 +9,7 @@ export default function HomeOverview({lib,prefs:p,openProject,openStudio}:{lib:L
  const [now,setNow]=useState(()=>new Date());
  useEffect(()=>{const refresh=()=>setNow(new Date()),timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};},[]);
  const events=useMemo(()=>upcomingEvents(lib,p,now),[lib,p,now]),projects=useMemo(()=>activeProjects(lib,p),[lib,p]),revenue=useMemo(()=>recordedRevenue(lib,p,now),[lib,p,now]);
+ useEffect(()=>{record('home.summaries','success',0,{section:'home',count:events.length,items:projects.length,mode:p.chart});},[events.length,projects.length,p.chart]);
  const money=(value:number)=>new Intl.NumberFormat(undefined,{style:'currency',currency:p.currency,currencyDisplay:'code',maximumFractionDigits:0}).format(value);
  const date=(day:string)=>new Date(day+'T12:00:00').toLocaleDateString(undefined,{day:'numeric',month:'short'});
  const values=revenue.months.map(m=>m.value),min=Math.min(0,...values),max=Math.max(1,...values),y=(v:number)=>78-(v-min)/(max-min)*66,x=(i:number)=>12+i*276/Math.max(1,values.length-1),points=values.map((v,i)=>`${x(i)},${y(v)}`).join(' ');

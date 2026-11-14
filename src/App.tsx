@@ -1,3 +1,4 @@
+import {useAppTheme} from './AppTheme';
 import MyBusiness, {BusinessNavigation} from './MyBusiness';
 import SidebarTools from './SidebarTools';
 import AddContactDialog from './AddContactDialog';
@@ -272,6 +273,7 @@ function Popover({
 }
 
 export default function App({startOnHome}:{startOnHome?:boolean}={}) {
+ useAppTheme();
  const branding=useAppBranding();
   useSelectionAppearance();
   useCtaAppearance();
@@ -628,7 +630,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
     ...lib.projects.map(p=>({label:`Project / ${p.name}`,target:{kind:'project' as const,value:String(p.id)}})),
     ...[...categories,'',...componentFolders].map(name=>({label:`${isComponent(name)?'App Components':'Design Inspo'} / ${categoryLabel(name)}`,target:{kind:'category' as const,value:name}})),
   ],[lib.projects,categories,folderLabels,componentFolders]);
-  const iconTargets=useMemo(()=>[{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:Marketing',label:'Marketing section'},{id:'section:Leads',label:'Leads section'},{id:'section:Clients',label:'Organisations section'},{id:'section:Research',label:'Research section'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
+  const iconTargets=useMemo(()=>[{id:'section:My Business',label:'My Business section'},{id:'section:Analytics',label:'Analytics section'},{id:'section:Code',label:'Code section'},{id:'home',label:'Home'},{id:'folders',label:'All folder icons'},{id:'section:Marketing',label:'Marketing section'},{id:'section:Leads',label:'Leads section'},{id:'section:Clients',label:'Organisations section'},{id:'section:Research',label:'Research section'},{id:'section:General',label:'General section'},{id:'section:Projects',label:'Projects section'},{id:'design',label:'Design Inspo section'},{id:'components',label:'App Components section'},{id:'design:all',label:'All Design Inspo'},
     ...collectionPrefs.map(s=>({id:`collection:${s.key}`,label:`General / ${s.name}`})),...sitePrefs.map(s=>({id:`website:${s.key}`,label:`Website / ${s.name}`})),...lib.projects.map(p=>({id:`project:${p.id}`,label:`Project / ${p.name}`})),...[...categories,'',allComponents,...componentFolders].map(name=>({id:`category:${name}`,label:categoryLabel(name)}))],[collectionPrefs,sitePrefs,lib.projects,categories,folderLabels,componentFolders]);
   const designRows=useMemo(()=>sortedFolders([...categories,''],'design'),[categories,folderOrder,folderLabels]);
   const componentRows=useMemo(()=>sortedFolders(componentFolders,'components'),[folderOrder,folderLabels,componentFolders]);
@@ -1439,9 +1441,9 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
             {componentRows.map(folderRow)}
           </nav>
         </SidebarSection>
-        <InsightNavigation name="Code"/>
-        <BusinessNavigation name="My Business" route={studioView} open={page=>openStudio({section:'business',page})}/>
-        <AnalyticsNavigation name="Analytics" route={studioView} open={page=>openStudio({section:'analytics',page})} homeProps={homeDrag}/>
+        <InsightNavigation icon={icons.overrides['section:Code']} name="Code"/>
+        <BusinessNavigation icon={icons.overrides['section:My Business']} name="My Business" route={studioView} open={page=>openStudio({section:'business',page})}/>
+        <AnalyticsNavigation icon={icons.overrides['section:Analytics']} name="Analytics" route={studioView} open={page=>openStudio({section:'analytics',page})} homeProps={homeDrag}/>
         <SidebarSection name="Research" action={<IconButton title="Add research" onClick={()=>startSectionAdd('research')}><Plus size={14}/></IconButton>} identity="research" styleId={sectionStyle} icon={icons.overrides['section:Research']&&<AppIcon value={icons.overrides['section:Research']}/>}><nav>{researchPages.map(([page,label])=><button key={page} className={`nav-item ${studioView?.section==='research'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='research'&&studioView.page===page?'page':undefined} {...homeDrag(`studio:research:${page}`)} onClick={()=>openStudio({section:'research',page})}>{label}</button>)}</nav></SidebarSection>
         </SidebarNavigation>
         <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('branding')}><SlidersHorizontal size={15}/><span>Customise</span></button>
@@ -2643,7 +2645,7 @@ function Dialog({
             </div>
           </>
         ) : kind === "settings" ? (
-          <SettingsHub customize={customize}
+          <SettingsHub
             library={<><div className="setting-block">
               <span className="setting-label">Storage folders</span>
               {lib.source_paths?.length ? lib.source_paths.map(([name, path]) => <div className="storage-source" key={name}>
