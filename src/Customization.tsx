@@ -1,3 +1,4 @@
+import AnalyticsSettings from './AnalyticsSettings';
 import HomeOverviewSettings from './HomeOverviewSettings';
 import TabControls from './TabAppearance';
 import CtaControls from './CtaAppearance';
@@ -15,10 +16,10 @@ import { sidebarLayouts } from './appearance';
 import { AppIcon, IconPicker, folderIcons, type IconPreferences, type IconValue } from './AppIcon';
 import GeneralEditor, {type GeneralDraft,type GeneralOption} from './GeneralEditor';
 import { HistoryButtons } from "./useAppHistory";
-export type CustomTab="tabs"|"buttons"|"branding"|"sidebar"|"home"|"library"|"websites"|"motion"|"layouts"|"icons"|"general";
+export type CustomTab="analytics"|"tabs"|"buttons"|"branding"|"sidebar"|"home"|"library"|"websites"|"motion"|"layouts"|"icons"|"general";
 export type HomeAppearance={dragAnywhere:boolean;gap:number;labels:boolean;darkness:number;textSize:number};
 export const readHomeAppearance=():HomeAppearance=>{try{const saved=JSON.parse(localStorage.getItem('home-appearance')??'{}');return {dragAnywhere:saved.dragAnywhere!==false,gap:Math.max(4,Math.min(24,Number(saved.gap)||10)),labels:saved.labels!==false,darkness:Math.max(55,Math.min(85,Number(saved.darkness)||64)),textSize:Math.max(22,Math.min(48,Number(saved.textSize)||32))};}catch{return {dragAnywhere:true,gap:10,labels:true,darkness:64,textSize:32};}};
-const tabs=[['branding','Branding',Sparkles],['layouts','Layouts',LayoutPanelLeft],['icons','Icons',Shapes],['sidebar','Sidebar',PanelLeft],['library','Library',Grid2X2],['home','Home',House],['general','General',List],['buttons','Buttons',Sparkles],['tabs','Tabs',LayoutPanelLeft],['websites','Websites',Globe],['motion','Motion',Sparkles]] as const;
+const tabs=[['branding','Branding',Sparkles],['layouts','Layouts',LayoutPanelLeft],['icons','Icons',Shapes],['sidebar','Sidebar',PanelLeft],['library','Library',Grid2X2],['home','Home',House],['general','General',List],['analytics','Analytics',Grid2X2],['buttons','Buttons',Sparkles],['tabs','Tabs',LayoutPanelLeft],['websites','Websites',Globe],['motion','Motion',Sparkles]] as const;
 export default function Customization({initial,close,sectionStyle,chooseSection,homeStyle,chooseHome,sidebarWidth,setSidebarWidth,tileSize,setTileSize,collections,setCollections,sites,setSites,reduced,setReduced,home,changeHome,manageLibrary,sidebarLayout,chooseLayout,icons,changeIcons,iconTargets,generalOptions,saveGeneral}:{initial:CustomTab;close:()=>void;sectionStyle:number;chooseSection:(n:number)=>void;homeStyle:number;chooseHome:(n:number)=>void;sidebarWidth:number;setSidebarWidth:(n:number)=>void;tileSize:number;setTileSize:(n:number)=>void;collections:Shortcut[];setCollections:(s:Shortcut[])=>void;sites:Shortcut[];setSites:(s:Shortcut[])=>void;reduced:boolean;setReduced:(b:boolean)=>void;home:HomeAppearance;changeHome:(s:HomeAppearance)=>void;manageLibrary:()=>void;sidebarLayout:number;chooseLayout:(n:number)=>void;icons:IconPreferences;changeIcons:(p:IconPreferences)=>void;iconTargets:{id:string;label:string}[];generalOptions:GeneralOption[];saveGeneral:(draft:GeneralDraft,key?:string)=>Promise<void>}){
  const [tab,setTab]=useState(initial),[closing,setClosing]=useState(false),[entered,setEntered]=useState(false),ref=useRef<HTMLDivElement>(null),returnFocus=useRef(document.activeElement as HTMLElement),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
  useEffect(()=>{let second=0;ref.current?.focus({preventScroll:true});const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>setEntered(true));});return ()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);clearTimeout(timer.current);requestAnimationFrame(()=>{if(!ref.current?.isConnected&&returnFocus.current?.isConnected)returnFocus.current.focus({preventScroll:true});});};},[]);
@@ -32,6 +33,7 @@ export default function Customization({initial,close,sectionStyle,chooseSection,
  <div className="customise-layout"><nav aria-label="Customisation sections">{tabs.map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={16}/>{label}</button>)}</nav>
  <div className="customise-content" data-tab={tab} key={tab}><h2>{tabs.find(([id])=>id===tab)![1]}</h2>
  {tab==='branding'&&<BrandingControls/>}
+ {tab==='analytics'&&<AnalyticsSettings/>}
  {tab==='buttons'&&<CtaControls/>}
  {tab==='tabs'&&<TabControls/>}
  {tab==='sidebar'&&<><div className="custom-controls">{range('Sidebar width',sidebarWidth,168,320,setSidebarWidth)}<div className="section-colour-controls"><h3>Section colours</h3>{sectionIdentities.map(identity=><SectionColourControl key={identity} identity={identity}/>)}</div><button className="custom-action" onClick={()=>setTab("general")}>Edit General entries</button></div><div className="custom-options"><h3>Parent style</h3><p className="custom-scope-note">All sidebar sections</p><SectionStyleOptions selected={sectionStyle} choose={chooseSection}/></div></>}

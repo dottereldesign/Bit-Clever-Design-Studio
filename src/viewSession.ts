@@ -33,7 +33,7 @@ export function readViewSession(): ViewSession | null {
     if(!["overview","files","client","moodboard"].includes(v.projectSection))v.projectSection=v.projectFolder!=null?"files":"overview";
     if(v.projectFolder!==undefined && v.projectFolder!=="unfiled" && !nullableId(v.projectFolder))v.projectFolder=null;
     if(!["","unrated","4+","1","2","3","4","5"].includes(v.ratingFilter))v.ratingFilter="";
-    if(v.studioView && (!["marketing","leads","research","clients"].includes(v.studioView.section)||typeof v.studioView.page!=="string"))v.studioView=null;
+    if(v.studioView && (!["analytics","marketing","leads","research","clients"].includes(v.studioView.section)||typeof v.studioView.page!=="string"))v.studioView=null;
     const anchor = saved.scroll.anchor;
     if (anchor && (!finite(anchor.id) || !finite(anchor.offset))) delete saved.scroll.anchor;
     return { view: v, scroll: saved.scroll };

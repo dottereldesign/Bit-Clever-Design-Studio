@@ -1,0 +1,29 @@
+import type {Library} from './model';
+import {isOrganisation,leadStages,nextAction} from './studio';
+import {localDay,validDay} from './homeOverviewData';
+export const chartKeys=['trend','pipeline','sources','delivery','organisations','campaigns'] as const;
+export type ChartKey=typeof chartKeys[number];
+export type AnalyticsPrefs={months:number;currency:string;theme:'sage'|'blue'|'plum'|'mono';trend:'line'|'bars';breakdown:'bars'|'table';compact:boolean;visible:Record<ChartKey,boolean>};
+export const analyticsDefaults:AnalyticsPrefs={months:6,currency:'NZD',theme:'sage',trend:'line',breakdown:'bars',compact:false,visible:Object.fromEntries(chartKeys.map(k=>[k,true])) as Record<ChartKey,boolean>};
+export function normalizeAnalytics(value:unknown):AnalyticsPrefs{const v=(value&&typeof value==='object'?value:{}) as Partial<AnalyticsPrefs>;return {months:[0,3,6,12].includes(v.months??-1)?v.months!:6,currency:typeof v.currency==='string'&&/^[A-Z]{3}$/.test(v.currency)?v.currency:'NZD',theme:['sage','blue','plum','mono'].includes(v.theme??'')?v.theme!:'sage',trend:v.trend==='bars'?'bars':'line',breakdown:v.breakdown==='table'?'table':'bars',compact:v.compact===true,visible:Object.fromEntries(chartKeys.map(k=>[k,typeof v.visible?.[k]==='boolean'?v.visible[k]:true])) as Record<ChartKey,boolean>};}
+export type AnalyticsRow={label:string;value:number;detail:string};
+export function analyticsData(lib:Library,p:AnalyticsPrefs,now=new Date()){
+ const entries=lib.studio??[],leads=entries.filter(e=>e.kind==='lead'),end=now.getTime()/1000,start=p.months?new Date(now.getFullYear(),now.getMonth()-p.months+1,1).getTime()/1000:0;
+ const inPeriod=(stamp:number|null|undefined)=>!!stamp&&stamp>=start&&stamp<=end;
+ const closed=leads.filter(e=>['won','lost'].includes(e.status)&&(p.months?inPeriod(e.closed_at):true));
+ const won=closed.filter(e=>e.status==='won'),money=(e:typeof leads[number])=>e.currency.toUpperCase()===p.currency&&typeof e.value==='number'&&Number.isFinite(e.value)&&e.value>=0;
+ const valued=won.filter(money),open=leads.filter(e=>!e.archived&&!['won','lost'].includes(e.status));
+ const sum=(rows:typeof leads)=>rows.filter(money).reduce((n,e)=>n+e.value!,0);
+ const durations=won.filter(e=>e.closed_at&&e.created>0&&e.closed_at>=e.created).map(e=>(e.closed_at!-e.created)/86400).sort((a,b)=>a-b);
+ const median=durations.length?(durations[Math.floor((durations.length-1)/2)]+durations[Math.floor(durations.length/2)])/2:null;
+ const trend=Array.from({length:p.months||12},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-(p.months||12)+1+i,1),key=localDay(d).slice(0,7);const rows=leads.filter(e=>e.status==='won'&&inPeriod(e.closed_at)&&localDay(new Date(e.closed_at!*1000)).slice(0,7)===key);return {label:d.toLocaleDateString('en-NZ',{month:'short',year:'2-digit'}),value:sum(rows),detail:`${rows.length} won`};});
+ const stageMap=new Map([...leadStages,...entries.filter(e=>e.kind==='pipeline').flatMap(e=>e.stages)].map(s=>[s.id,s]));for(const e of open)if(!stageMap.has(e.status))stageMap.set(e.status,{id:e.status,name:e.status||'Unspecified'});const stages=[...stageMap.values()].filter(s=>!['won','lost'].includes(s.id));
+ const pipeline=stages.map(s=>({label:s.name,value:sum(open.filter(e=>e.status===s.id)),detail:`${open.filter(e=>e.status===s.id).length} open leads`}));
+ const cohort=leads.filter(e=>p.months?inPeriod(e.created):true),sources=[...new Set(cohort.map(e=>e.source.trim()||'Unspecified'))].map(label=>{const rows=cohort.filter(e=>(e.source.trim()||'Unspecified')===label),wins=rows.filter(e=>e.status==='won').length;return {label,value:rows.length,detail:`${wins} won · ${rows.filter(e=>e.status==='lost').length} lost · ${rows.filter(e=>!['won','lost'].includes(e.status)).length} unresolved`};}).sort((a,b)=>b.value-a.value);
+ const projects=lib.projects.map(project=>({...project,overview:lib.project_overviews?.find(o=>o.project_id===project.id)}));
+ const delivery=[['planned','Planned'],['active','In progress'],['waiting','Waiting on client'],['complete','Completed']].map(([status,label])=>({label,value:projects.filter(p=>(p.overview?.status??'planned')===status).length,detail:'projects now'}));
+ const organisations=entries.filter(e=>isOrganisation(e)).map(org=>({label:org.name,value:sum(won.filter(e=>e.organization===org.id)),detail:`${won.filter(e=>e.organization===org.id).length} won · ${projects.filter(p=>org.projects.includes(p.id)&&p.overview?.status!=='complete').length} open projects`})).filter(row=>row.value>0||!row.detail.startsWith('0 won · 0 ')).sort((a,b)=>b.value-a.value);
+ const campaigns=entries.filter(e=>e.kind==='campaign').map(c=>{const rows=cohort.filter(e=>e.campaign===c.id);return {label:c.name,value:rows.length,detail:`${rows.filter(e=>e.status==='won').length} won · ${sum(rows.filter(e=>e.status==='won')).toLocaleString('en-NZ')} ${p.currency} agreed`};}).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
+ const day=localDay(now),overdue=open.filter(e=>{const due=nextAction(e)?.deadline;return due&&validDay(due)&&due<day;}),noNext=open.filter(e=>!nextAction(e)),late=projects.filter(p=>p.overview?.status!=='complete'&&p.overview?.deadline&&validDay(p.overview.deadline)&&p.overview.deadline<day);
+ return {closed:closed.length,won:won.length,wonValue:sum(won),winRate:closed.length?won.length/closed.length*100:null,openCount:open.length,pipelineValue:sum(open),median,cycleSample:durations.length,trend,pipeline,sources,delivery,organisations,campaigns,overdue,noNext,late,missingClose:leads.filter(e=>['won','lost'].includes(e.status)&&!e.closed_at).length,missingValue:won.filter(e=>e.value===null).length,otherCurrency:won.filter(e=>typeof e.value==='number'&&!money(e)).length,unattributed:cohort.filter(e=>!e.campaign).length,unlinkedWon:won.filter(e=>!e.organization).length,valued:valued.length};
+}

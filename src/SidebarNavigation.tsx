@@ -6,11 +6,13 @@ export default function SidebarNavigation({order,children}:{order:string[];child
  const arranged=order.filter(n=>n!=="Projects");
  arranged.splice(Math.max(0,arranged.indexOf("General")),0,"Projects");
  const defaults=["Marketing","Leads","Clients",...arranged.filter(n=>!["Marketing","Leads","Research"].includes(n))];
- defaults.splice(defaults.indexOf("Components")+1,0,"Research");
+ defaults.splice(defaults.indexOf("Components")+1,0,"Code","Analytics","Research");
  const [saved,setSaved]=useHistoryState<string[]>('sidebar-section-order',()=>{try{const v=JSON.parse(localStorage.getItem('sidebar-section-order')??'[]');return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];}catch{return [];}},'Sidebar section order');
  const nodes=Children.toArray(children);
  const names=nodes.flatMap(c=>isValidElement<{name?:string}>(c)&&c.props.name?[c.props.name]:[]);
  const preferred=[...saved];if(!preferred.includes("Clients")&&preferred.includes("Leads"))preferred.splice(preferred.indexOf("Leads")+1,0,"Clients");
+ if(!preferred.includes("Code")&&preferred.includes("Components"))preferred.splice(preferred.indexOf("Components")+1,0,"Code");
+ if(!preferred.includes("Analytics")&&preferred.includes("Code"))preferred.splice(preferred.indexOf("Code")+1,0,"Analytics");
  const fullOrder=[...new Set([...preferred,...defaults,...names])].filter(n=>names.includes(n));
  const root=useRef<HTMLDivElement>(null), cleanup=useRef<()=>void>(()=>{}), suppressClick=useRef(false);
  const positions=useRef(new Map<string,number>());
