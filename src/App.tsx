@@ -1,3 +1,4 @@
+import SettingsHub from './SettingsHub';
 import AnalyticsTile from './AnalyticsTile';
 import {analyticsPages} from './AnalyticsSettings';
 import Analytics, {InsightNavigation,AnalyticsNavigation} from './Analytics';
@@ -1224,6 +1225,7 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           report={report}
           project={project}
           chooseRoot={chooseRoot}
+          customize={tab=>{setModal(null);setCustomTab(tab);}}
           exportLibrary={()=>{setModal(null);setLibraryMigration(false);setLibraryExportOpen(true);}}
           backup={backup}
           duplicates={() => {
@@ -2415,6 +2417,7 @@ function Viewer({
 }
 
 function Dialog({
+  customize,
   duplicates,
   removed,
   modal,
@@ -2431,6 +2434,7 @@ function Dialog({
   setModal,
   onDeleteProject,
 }: {
+  customize: (tab:CustomTab) => void;
   duplicates: () => void;
   removed: () => void;
   modal: Modal;
@@ -2630,16 +2634,8 @@ function Dialog({
             </div>
           </>
         ) : kind === "settings" ? (
-          <div className="settings-content">
-            <OnboardingSettings/><CalendarConnection/><Diagnostics/>
-            <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
-              <span className="setting-label">Keyboard shortcuts</span>
-              <div className="shortcuts">
-                {[["Search", "/ · Ctrl F · Ctrl K"],["Settings", "Ctrl ,"],["Undo", "Ctrl Z"],["Redo", "Ctrl Shift Z · Ctrl Y"],["Quick preview", "Space"],["Previous / next preview", "← / →"],["Close / clear selection", "Esc"],["Select all visible items", "Ctrl A"],["Organise selected images", "C"],["Remove selected items", "Delete"],["Copy image in viewer", "Ctrl C"],["Paste files, images or links", "Ctrl V"],["Enlarge hovered thumbnail", "Ctrl + mouse wheel"],["Scroll website screenshot", "Ctrl + mouse wheel"]].map(([label,keys])=><span key={label}>{label}<kbd>{keys}</kbd></span>)}
-              </div>
-              <small>Single-key shortcuts work outside text fields. Selection and preview shortcuts apply while browsing your library.</small>
-            </section>
-            <div className="setting-block">
+          <SettingsHub customize={customize}
+            library={<><div className="setting-block">
               <span className="setting-label">Storage folders</span>
               {lib.source_paths?.length ? lib.source_paths.map(([name, path]) => <div className="storage-source" key={name}>
                 <button className="text-button" onClick={() => void revealItemInDir(path).catch(report)}>{name} <ExternalLink size={12} /></button>
@@ -2653,7 +2649,7 @@ function Dialog({
                 Change Design folder
               </button>
             </div>
-            <div className="setting-block">
+<div className="setting-block">
               <span className="setting-label">Library</span>
               <button className="subtle-button" onClick={duplicates}>
                 <Copy size={13} /> Find duplicates
@@ -2672,7 +2668,8 @@ function Dialog({
                 <Tag size={13} /> Manage tags
               </button>
             </div>
-            <div className="setting-block">
+</>}
+            backup={<><div className="setting-block">
               <span className="setting-label">Backup</span>
               <button className="primary" onClick={exportLibrary}><Download size={14}/> Export full library</button>
               <small>Original media, saved links and organisation in one portable folder.</small>
@@ -2694,7 +2691,17 @@ function Dialog({
                 Projects, tags and links. Imports merge with your library.
               </small>
             </div>
-            <div className="setting-block">
+</>}
+            connections={<CalendarConnection/>}
+            help={<><OnboardingSettings/>            <section className="setting-block keyboard-shortcuts" aria-label="Keyboard shortcuts">
+              <span className="setting-label">Keyboard shortcuts</span>
+              <div className="shortcuts">
+                {[["Search", "/ · Ctrl F · Ctrl K"],["Settings", "Ctrl ,"],["Undo", "Ctrl Z"],["Redo", "Ctrl Shift Z · Ctrl Y"],["Quick preview", "Space"],["Previous / next preview", "← / →"],["Close / clear selection", "Esc"],["Select all visible items", "Ctrl A"],["Organise selected images", "C"],["Remove selected items", "Delete"],["Copy image in viewer", "Ctrl C"],["Paste files, images or links", "Ctrl V"],["Enlarge hovered thumbnail", "Ctrl + mouse wheel"],["Scroll website screenshot", "Ctrl + mouse wheel"]].map(([label,keys])=><span key={label}>{label}<kbd>{keys}</kbd></span>)}
+              </div>
+              <small>Single-key shortcuts work outside text fields. Selection and preview shortcuts apply while browsing your library.</small>
+            </section>
+</>}
+            diagnostics={<><Diagnostics initiallyOpen/><div className="setting-block">
               <button
                 className="text-button"
                 onClick={() =>
@@ -2707,9 +2714,9 @@ function Dialog({
               </button>
               <small>Original files stay in your source folder.</small>
             </div>
-            <AppInfo/>
-
-          </div>
+</>}
+            about={<AppInfo/>}
+          />
         ) : kind === "manageTags" ? (
           <>
             <div className="tag-manager">

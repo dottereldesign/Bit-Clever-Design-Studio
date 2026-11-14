@@ -6,11 +6,11 @@ import {save} from './nativeUi';
 import {revealItemInDir} from './nativeUi';
 import './diagnostics.css';
 type Snapshot={events:DiagnosticEvent[];total:number;bytes:number;dropped:number;failed_writes:number;unreadable_files?:number;version:string;mode:string;crash?:string};
-export default function Diagnostics(){
+export default function Diagnostics({initiallyOpen=false}:{initiallyOpen?:boolean}={}){
  const [section,setSection]=useState('');
  const [incident,setIncident]=useState<DiagnosticEvent|null>(null);
 
- const [open,setOpen]=useState(false),[tab,setTab]=useState('Activity'),[data,setData]=useState<Snapshot|null>(null),[query,setQuery]=useState(''),[hours,setHours]=useState(168),[status,setStatus]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[limit,setLimit]=useState(100),[busy,setBusy]=useState(false);
+ const [open,setOpen]=useState(initiallyOpen),[tab,setTab]=useState('Activity'),[data,setData]=useState<Snapshot|null>(null),[query,setQuery]=useState(''),[hours,setHours]=useState(168),[status,setStatus]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[limit,setLimit]=useState(100),[busy,setBusy]=useState(false);
  const refreshing=useRef<Promise<void>|null>(null);
  const refresh=()=>{if(refreshing.current)return refreshing.current;refreshing.current=(async()=>{try{await flushDiagnostics();setData(await invoke<Snapshot>('diagnostics_read'));setError('');}catch(e){setError(String(e));}finally{refreshing.current=null;}})();return refreshing.current;};
  useEffect(()=>{if(!open)return;void refresh();const timer=setInterval(()=>void refresh(),5000);return()=>clearInterval(timer);},[open]);

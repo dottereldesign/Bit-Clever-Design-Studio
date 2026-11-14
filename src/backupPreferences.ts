@@ -1,7 +1,7 @@
 import {record} from './diagnostics';
 import {invoke,isTauri} from "./diagnostics";
 import {appHistory} from "./appHistory";
-const keys=['customise-tab-order','analytics-appearance','home-overview','tab-appearance','cta-appearance','app-branding','clients-startup','clients-last-seen','sidebar-section-order','research-view','onboarding','sidebar-section-colours','studio-layouts','project-file-layouts','selection-style','colour-history','collection-shortcuts','site-shortcuts','tile-size','sidebar-width','sidebar-section-style','home-style','home-appearance','reduce-motion','sidebar-layout','app-icons','folder-labels','folder-appearance','sidebar-folder-order','home-plan','home-tiles'];
+const keys=['settings-appearance','customise-tab-order','analytics-appearance','home-overview','tab-appearance','cta-appearance','app-branding','clients-startup','clients-last-seen','sidebar-section-order','research-view','onboarding','sidebar-section-colours','studio-layouts','project-file-layouts','selection-style','colour-history','collection-shortcuts','site-shortcuts','tile-size','sidebar-width','sidebar-section-style','home-style','home-appearance','reduce-motion','sidebar-layout','app-icons','folder-labels','folder-appearance','sidebar-folder-order','home-plan','home-tiles'];
 const allowed=(key:string)=>keys.includes(key)||key.startsWith('sidebar-open:');
 const invalidKeys=new Set<string>();
 export function collectBackupPreferences(){
