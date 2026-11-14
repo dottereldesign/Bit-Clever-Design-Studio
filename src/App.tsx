@@ -1442,8 +1442,8 @@ export default function App({startOnHome}:{startOnHome?:boolean}={}) {
           </nav>
         </SidebarSection>
         <InsightNavigation icon={icons.overrides['section:Code']} name="Code"/>
-        <BusinessNavigation icon={icons.overrides['section:My Business']} name="My Business" route={studioView} open={page=>openStudio({section:'business',page})}/>
-        <AnalyticsNavigation icon={icons.overrides['section:Analytics']} name="Analytics" route={studioView} open={page=>openStudio({section:'analytics',page})} homeProps={homeDrag}/>
+        <BusinessNavigation styleId={sectionStyle} icon={icons.overrides['section:My Business']} name="My Business" route={studioView} open={page=>openStudio({section:'business',page})}/>
+        <AnalyticsNavigation styleId={sectionStyle} icon={icons.overrides['section:Analytics']} name="Analytics" route={studioView} open={page=>openStudio({section:'analytics',page})} homeProps={homeDrag}/>
         <SidebarSection name="Research" action={<IconButton title="Add research" onClick={()=>startSectionAdd('research')}><Plus size={14}/></IconButton>} identity="research" styleId={sectionStyle} icon={icons.overrides['section:Research']&&<AppIcon value={icons.overrides['section:Research']}/>}><nav>{researchPages.map(([page,label])=><button key={page} className={`nav-item ${studioView?.section==='research'&&studioView.page===page?'active':''}`} aria-current={studioView?.section==='research'&&studioView.page===page?'page':undefined} {...homeDrag(`studio:research:${page}`)} onClick={()=>openStudio({section:'research',page})}>{label}</button>)}</nav></SidebarSection>
         </SidebarNavigation>
         <div className="sidebar-footer"><button title="Customise app" onClick={()=>setCustomTab('branding')}><SlidersHorizontal size={15}/><span>Customise</span></button>

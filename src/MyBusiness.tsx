@@ -1,17 +1,15 @@
-import {useSectionColours,sectionColourStyle} from './SectionColours';
+import SidebarSection from './SidebarSection';
 import {AppIcon,type IconValue} from './AppIcon';
 import {isTauri,invoke} from './diagnostics';
 import {useEffect,useState,useRef,type FormEvent} from 'react';
-import {BriefcaseBusiness,ChevronDown,LockKeyhole,Plus,ArrowUpRight} from 'lucide-react';
-import {useHistoryState} from './useAppHistory';
+import {LockKeyhole,Plus,ArrowUpRight} from 'lucide-react';
 import type {StudioRoute} from './studio';
 import {businessPages,budgetTotals,isCost,loadBusiness,money,newBusinessRecord,saveBusiness,setupSuggestions,type BusinessData,type BusinessKind,type BusinessRecord,type BusinessSnapshot} from './businessData';
 import './myBusiness.css';
-export function BusinessNavigation({name,route,open,icon}:{icon?:IconValue;name:string;route:StudioRoute|null;open:(page:string)=>void}){
- const [colours]=useSectionColours();
- const [expanded,setExpanded]=useHistoryState('sidebar-open:My Business',()=>localStorage.getItem('sidebar-open:My Business')==='true','My Business section visibility');
- return <section data-section={name} data-custom-colour={!!colours.business} style={sectionColourStyle('business',colours,1)} data-open={expanded} className="sidebar-section insight-navigation analytics-navigation"><button className="section-toggle" aria-label="My Business" aria-expanded={expanded} aria-controls="business-sidebar" onClick={()=>setExpanded(!expanded)}><AppIcon value={icon} fallback={<BriefcaseBusiness size={17}/>}/><span>My Business</span><ChevronDown size={14} className="analytics-chevron"/></button>{expanded&&<nav id="business-sidebar" aria-label="My Business sections">{businessPages.map(([id,label])=><button key={id} className={`nav-item ${route?.section==='business'&&route.page===id?'active':''}`} aria-current={route?.section==='business'&&route.page===id?'page':undefined} onClick={()=>open(id)}>{label}</button>)}</nav>}</section>;
+export function BusinessNavigation({name,route,open,icon,styleId,reorder}:{icon?:IconValue;styleId?:number;reorder?:{up?:()=>void;down?:()=>void};name:string;route:StudioRoute|null;open:(page:string)=>void}){
+ return <SidebarSection name={name} identity="business" styleId={styleId} reorder={reorder} icon={icon&&<AppIcon value={icon}/>}><nav id="business-sidebar" aria-label="My Business sections">{businessPages.map(([id,label])=><button key={id} className={`nav-item ${route?.section==='business'&&route.page===id?'active':''}`} aria-current={route?.section==='business'&&route.page===id?'page':undefined} onClick={()=>open(id)}>{label}</button>)}</nav></SidebarSection>;
 }
+
 const currencies=['NZD','AUD','USD','GBP','EUR','CAD'];
 const kinds:Record<BusinessKind,string>={setup:'Setup task',tax:'Tax reminder',domain:'Domain',hosting:'Hosting / service',subscription:'Subscription',purchase:'One-off purchase'};
 const statuses={planned:'Planned',active:'Active',done:'Completed',paused:'Paused'};

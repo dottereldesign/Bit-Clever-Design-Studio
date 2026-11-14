@@ -1,20 +1,19 @@
+import SidebarSection from './SidebarSection';
 import {useSectionColours,sectionColourStyle} from './SectionColours';
 import {AppIcon,type IconValue} from './AppIcon';
 import {record} from './diagnostics';
-import {useHistoryState} from './useAppHistory';
 import {useEffect,useMemo,useState,type CSSProperties,type HTMLAttributes} from 'react';
-import {ChartNoAxesCombined,Code2,ChevronDown,ArrowUpRight} from 'lucide-react';
+import {ChartNoAxesCombined,Code2,ArrowUpRight} from 'lucide-react';
 import type {Library} from './model';
 import type {StudioRoute} from './studio';
 import {analyticsData,chartKeys,type AnalyticsRow} from './analyticsData';
 import {analyticsPages,chartLabels,useAnalytics} from './AnalyticsSettings';
 import './analytics.css';
 export function InsightNavigation({name,active,open,icon}:{icon?:IconValue;name:string;active?:boolean;open?:()=>void}){const code=name==='Code',[colours]=useSectionColours();return <section data-section={name} data-custom-colour={!!colours.code} style={sectionColourStyle('code',colours,1)} className={`sidebar-section insight-navigation ${code?'code-placeholder':''}`}><button className="section-toggle" aria-label={code?'Code — Coming soon':'Analytics'} aria-disabled={code||undefined} aria-current={active?'page':undefined} onClick={code?undefined:open}><AppIcon value={icon} fallback={code?<Code2 size={17}/>:<ChartNoAxesCombined size={17}/>}/><span>{name}</span>{code?<small>Coming soon</small>:<ArrowUpRight size={13}/>}</button></section>;}
-export function AnalyticsNavigation({name,route,open,homeProps,icon}:{icon?:IconValue;name:string;route:StudioRoute|null;open:(page:string)=>void;homeProps:(id:string)=>HTMLAttributes<HTMLElement>}){
- const [colours]=useSectionColours();
- const [expanded,setExpanded]=useHistoryState('sidebar-open:Analytics',()=>localStorage.getItem('sidebar-open:Analytics')==='true','Analytics section visibility');
- return <section data-section={name} data-custom-colour={!!colours.analytics} style={sectionColourStyle('analytics',colours,1)} data-open={expanded} className="sidebar-section insight-navigation analytics-navigation"><button className="section-toggle" aria-label="Analytics" aria-expanded={expanded} aria-controls="analytics-sidebar-reports" onClick={()=>setExpanded(!expanded)}><AppIcon value={icon} fallback={<ChartNoAxesCombined size={17}/>}/><span>Analytics</span><ChevronDown size={14} className="analytics-chevron"/></button>{expanded&&<nav id="analytics-sidebar-reports" aria-label="Analytics reports">{analyticsPages.map(page=><button key={page.id} className={`nav-item ${route?.section==='analytics'&&route.page===page.id?'active':''}`} aria-current={route?.section==='analytics'&&route.page===page.id?'page':undefined} {...homeProps(`studio:analytics:${page.id}`)} title="Drag to Home to add this report" onClick={()=>open(page.id)}>{page.label}</button>)}</nav>}</section>;
+export function AnalyticsNavigation({name,route,open,homeProps,icon,styleId,reorder}:{icon?:IconValue;styleId?:number;reorder?:{up?:()=>void;down?:()=>void};name:string;route:StudioRoute|null;open:(page:string)=>void;homeProps:(id:string)=>HTMLAttributes<HTMLElement>}){
+ return <SidebarSection name={name} identity="analytics" styleId={styleId} reorder={reorder} icon={icon&&<AppIcon value={icon}/>}><nav id="analytics-sidebar-reports" aria-label="Analytics reports">{analyticsPages.map(page=><button key={page.id} className={`nav-item ${route?.section==='analytics'&&route.page===page.id?'active':''}`} aria-current={route?.section==='analytics'&&route.page===page.id?'page':undefined} {...homeProps(`studio:analytics:${page.id}`)} title="Drag to Home to add this report" onClick={()=>open(page.id)}>{page.label}</button>)}</nav></SidebarSection>;
 }
+
 export default function Analytics({lib,page='overview',open,openProject,customize}:{lib:Library;page?:string;open:(route:StudioRoute)=>void;openProject:(id:number)=>void;customize:()=>void}){
  const [p,set]=useAnalytics(),[now,setNow]=useState(()=>new Date());useEffect(()=>{const t=setInterval(()=>setNow(new Date()),60000);return()=>clearInterval(t);},[]);
  const selectedPage=analyticsPages.find(p=>p.id===page)??analyticsPages[0],overview=selectedPage.id==='overview',attention=selectedPage.id==='attention';
